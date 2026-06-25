@@ -17,6 +17,7 @@ import { buildUserSoulProfile, clearAllMemory, getUserSoulData, seedInitialMemor
 import { decorateAnimeListWithSpanishTranslation, decorateAnimeWithSpanishTranslation } from './translation/translationService';
 import { ensureLibreTranslateRunning, getLibreTranslateRuntimeStatus, stopLibreTranslateRuntime } from './translation/translationRuntime';
 import { enforceSupportedAppearance } from './settings/settingsPolicy';
+import { clearPendingActions } from './chatbot/actionConfirmation';
 import axios from 'axios';
 
 const app = express();
@@ -1798,7 +1799,9 @@ app.post('/backup/restore', async (req, res) => {
     }
     const result = await restoreBackup(backupPath);
     if (result.success) {
-      res.json({ message: 'Base de datos restaurada. Reinicia la aplicación para que los cambios surtan efecto.' });
+      invalidateLibraryReadCaches();
+      clearPendingActions();
+      res.json({ message: 'Base de datos restaurada correctamente. Los cambios ya están disponibles.' });
     } else {
       res.status(400).json({ error: result.error });
     }

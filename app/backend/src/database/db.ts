@@ -11,9 +11,14 @@ if (!fs.existsSync(DB_DIR)) {
   fs.mkdirSync(DB_DIR, { recursive: true });
 }
 
-const db = new sqlite3.Database(DB_PATH);
+function createDatabaseConnection(): sqlite3.Database {
+  const connection = new sqlite3.Database(DB_PATH);
+  connection.configure('busyTimeout', 10000);
+  return connection;
+}
+
+let db = createDatabaseConnection();
 let isDbClosed = false;
-db.configure('busyTimeout', 10000); // 10 seconds timeout
 db.serialize(() => {
   db.run("PRAGMA journal_mode = WAL;");
   db.run("PRAGMA synchronous = NORMAL;");
@@ -48,6 +53,33 @@ function rawAll(sql: string, params: any[] = []): Promise<any[]> {
       else resolve(rows);
     });
   });
+}
+
+function rawClose(): Promise<void> {
+  if (isDbClosed) return Promise.resolve();
+
+  return new Promise((resolve, reject) => {
+    db.close((error) => {
+      if (error) return reject(error);
+
+      isDbClosed = true;
+      resolve();
+    });
+  });
+}
+
+async function reopenDatabase(): Promise<void> {
+  db = createDatabaseConnection();
+  isDbClosed = false;
+  await rawGet('PRAGMA journal_mode = WAL');
+  await rawRun('PRAGMA synchronous = NORMAL');
+  await rawRun('PRAGMA foreign_keys = ON');
+}
+
+function getIntegrityCheckResult(row: any): string {
+  if (!row || typeof row !== 'object') return '';
+  const [value] = Object.values(row);
+  return String(value || '').toLowerCase();
 }
 
 function enqueueDbOperation<T>(operation: () => Promise<T>): Promise<T> {
@@ -87,17 +119,102 @@ export function withTransaction<T>(operation: () => Promise<T>): Promise<T> {
   }));
 }
 
+export function replaceDatabaseFromStaging(
+  stagingPath: string,
+  emergencyBackupPath?: string
+): Promise<void> {
+  const resolvedStagingPath = path.resolve(stagingPath);
+  const resolvedDbDir = path.resolve(DB_DIR);
+  const relativeStagingPath = path.relative(resolvedDbDir, resolvedStagingPath);
+
+  if (relativeStagingPath.startsWith('..') || path.isAbsolute(relativeStagingPath)) {
+    return Promise.reject(new Error('El archivo temporal de restauración está fuera del directorio permitido.'));
+  }
+
+  return enqueueDbOperation(async () => {
+    const rollbackPath = path.join(
+      DB_DIR,
+      `${path.basename(DB_PATH)}.rollback-${process.pid}-${Date.now()}`
+    );
+    let swapStarted = false;
+    let originalMoved = false;
+    let replacementMoved = false;
+
+    try {
+      if (!fs.existsSync(resolvedStagingPath)) {
+        throw new Error('El archivo temporal de restauración no existe.');
+      }
+
+      if (emergencyBackupPath && fs.existsSync(DB_PATH)) {
+        const escapedEmergencyPath = emergencyBackupPath.replace(/'/g, "''");
+        await rawRun(`VACUUM INTO '${escapedEmergencyPath}'`);
+      }
+
+      await rawGet('PRAGMA wal_checkpoint(TRUNCATE)');
+      await rawClose();
+      swapStarted = true;
+
+      fs.rmSync(`${DB_PATH}-wal`, { force: true });
+      fs.rmSync(`${DB_PATH}-shm`, { force: true });
+
+      if (fs.existsSync(DB_PATH)) {
+        fs.renameSync(DB_PATH, rollbackPath);
+        originalMoved = true;
+      }
+
+      fs.renameSync(resolvedStagingPath, DB_PATH);
+      replacementMoved = true;
+
+      await reopenDatabase();
+      const integrityRow = await rawGet('PRAGMA integrity_check');
+      if (getIntegrityCheckResult(integrityRow) !== 'ok') {
+        throw new Error('La base restaurada no superó la verificación de integridad.');
+      }
+
+      fs.rmSync(rollbackPath, { force: true });
+    } catch (error) {
+      if (!swapStarted) {
+        throw error;
+      }
+
+      let rollbackError: unknown = null;
+      try {
+        await rawClose();
+
+        if (replacementMoved) {
+          fs.rmSync(DB_PATH, { force: true });
+          fs.rmSync(`${DB_PATH}-wal`, { force: true });
+          fs.rmSync(`${DB_PATH}-shm`, { force: true });
+        }
+
+        if (originalMoved && fs.existsSync(rollbackPath)) {
+          fs.renameSync(rollbackPath, DB_PATH);
+        }
+
+        if (fs.existsSync(DB_PATH)) {
+          await reopenDatabase();
+        }
+      } catch (restoreError) {
+        rollbackError = restoreError;
+      }
+
+      if (rollbackError) {
+        const originalMessage = error instanceof Error ? error.message : String(error);
+        const rollbackMessage = rollbackError instanceof Error ? rollbackError.message : String(rollbackError);
+        throw new Error(`${originalMessage} El rollback automático también falló: ${rollbackMessage}`);
+      }
+
+      throw error;
+    } finally {
+      fs.rmSync(resolvedStagingPath, { force: true });
+    }
+  });
+}
+
 export function closeDb(): Promise<void> {
   if (isDbClosed) return Promise.resolve();
 
-  return enqueueDbOperation(() => new Promise((resolve, reject) => {
-    db.close((error) => {
-      if (error) return reject(error);
-
-      isDbClosed = true;
-      resolve();
-    });
-  }));
+  return enqueueDbOperation(() => rawClose());
 }
 
 export async function initDb() {
