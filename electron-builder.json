@@ -1,0 +1,35 @@
+{
+  "appId": "com.maplevault.local",
+  "productName": "MapleVault",
+  "directories": {
+    "output": "dist"
+  },
+  "files": [
+    "app/frontend/dist/**/*",
+    "dist/desktop/**/*",
+    "app/backend/dist/**/*",
+    "app/backend/node_modules/**/*",
+    "app/desktop/splash.html",
+    "app/desktop/error.html",
+    "app/desktop/assets/**/*",
+    "package.json"
+  ],
+  "asarUnpack": [
+    "app/backend/**/*"
+  ],
+  "includeSubNodeModules": true,
+  "win": {
+    "target": ["nsis"],
+    "icon": "app/desktop/assets/icon.png"
+  },
+  "linux": {
+    "target": ["AppImage", "deb"],
+    "icon": "app/desktop/assets/icon.png"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true
+  }
+}

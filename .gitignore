@@ -1,0 +1,47 @@
+
+# Playwright
+node_modules/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
+
+# Build artifacts
+dist/
+app/backend/dist/
+app/frontend/dist/
+*.exe
+*.AppImage
+*.deb
+
+# Local runtime data
+data/*.sqlite*
+data/*.log
+data/settings.json
+data/user_soul.json
+data/backups/
+app/data/*.sqlite*
+app/data/*.log
+app/data/settings.json
+app/data/user_soul.json
+app/data/backups/
+app/data/libretranslate/.venv/
+app/app/data/*.sqlite*
+app/app/data/*.log
+app/app/data/settings.json
+app/app/data/user_soul.json
+app/app/data/backups/
+app/backend/data/
+app/backend/test_maplevault.db*
+app/backend/test_maplevault_*.db*
+app/backend/tmp/
+logs/
+
+# Local validation artifacts
+scratch/
+tmp-ui-validation/
+
+# Environment
+.env
+.env.local

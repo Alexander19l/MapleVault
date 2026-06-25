@@ -1,0 +1,159 @@
+@import "./styles/theme.css";
+@import "./styles/assistant-ui.css";
+@import "tailwindcss";
+@import "tw-shimmer";
+
+@theme {
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  --color-dark-bg: var(--bg-primary);
+  --color-dark-secondary: var(--bg-secondary);
+  --color-dark-panel: var(--bg-panel);
+  --color-dark-card: var(--bg-card);
+  --color-dark-border: var(--border-medium);
+
+  --color-text-main: var(--text-main);
+  --color-text-muted: var(--text-muted);
+  --color-text-dim: var(--text-dim);
+
+  --color-primary-500: var(--accent-primary);
+  --color-primary-600: var(--accent-primary-hover);
+  --color-primary-700: var(--accent-primary-hover);
+  --color-secondary-500: var(--accent-secondary);
+  --color-secondary-650: var(--accent-secondary);
+
+  --color-status-watching: var(--status-watching);
+  --color-status-completed: var(--status-completed);
+  --color-status-pending: var(--status-pending);
+  --color-status-dropped: var(--status-dropped);
+}
+
+/* Clases de utilidad y personalizaciones globales */
+@layer base {
+  body {
+    background-color: var(--bg-primary);
+    color: var(--text-main);
+    font-family: var(--font-sans);
+    overflow: hidden;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+}
+
+@keyframes maple-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes maple-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes maple-backdrop-in {
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0);
+  }
+  to {
+    opacity: 1;
+    backdrop-filter: blur(12px);
+  }
+}
+
+@keyframes maple-list-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@layer utilities {
+  .maple-page-enter {
+    animation: maple-page-in 180ms ease-out both;
+  }
+
+  .maple-panel-enter {
+    animation: maple-panel-in 180ms ease-out both;
+  }
+
+  .maple-backdrop-enter {
+    animation: maple-backdrop-in 160ms ease-out both;
+  }
+
+  .maple-list-enter {
+    animation: maple-list-in 180ms ease-out both;
+  }
+
+  .maple-interactive {
+    transition:
+      transform 160ms ease,
+      background-color 160ms ease,
+      border-color 160ms ease,
+      color 160ms ease,
+      box-shadow 160ms ease,
+      opacity 160ms ease;
+  }
+
+  .maple-interactive:hover {
+    transform: translateY(-1px);
+  }
+
+  .maple-interactive:active {
+    transform: translateY(0) scale(0.99);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+  }
+}
+
+#root {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Clases de apoyo */
+.titlebar {
+  -webkit-app-region: drag;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

@@ -1,0 +1,46 @@
+{
+  "name": "maplevault-local",
+  "version": "1.0.0",
+  "description": "Local desktop application for managing, discovering, and organizing anime series (MapleVault).",
+  "main": "dist/desktop/main.js",
+  "scripts": {
+    "postinstall": "npm run install:backend && npm run install:frontend",
+    "install:backend": "npm --prefix app/backend install --legacy-peer-deps",
+    "install:frontend": "npm --prefix app/frontend install --legacy-peer-deps",
+    "dev:backend": "npm --prefix app/backend run dev",
+    "dev:frontend": "npm --prefix app/frontend run dev",
+    "dev:electron": "tsc -p app/desktop && node scripts/copy-assets.js && electron .",
+    "dev": "concurrently --kill-others \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run dev:electron\"",
+    "build:frontend": "npm --prefix app/frontend run build",
+    "build:backend": "npm --prefix app/backend run build",
+    "build:desktop": "tsc -p app/desktop && node scripts/copy-assets.js",
+    "build": "npm run build:frontend && npm run build:backend && npm run build:desktop",
+    "package": "npm run build && electron-builder",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:linux": "electron-builder --linux",
+    "audit": "npm audit && npm --prefix app/backend audit && npm --prefix app/frontend audit",
+    "audit:fix": "npm audit fix && npm --prefix app/backend audit fix && npm --prefix app/frontend audit fix",
+    "typecheck": "tsc -p app/desktop --noEmit && tsc -p app/backend --noEmit",
+    "typecheck:frontend": "npm --prefix app/frontend run typecheck",
+    "lint:frontend": "npm --prefix app/frontend run lint",
+    "test:security": "npm --prefix app/backend run test:security",
+    "test:backend": "npm --prefix app/backend run test",
+    "test:chatbot": "npm --prefix app/backend run test:chatbot",
+    "test": "npm run test:backend",
+    "check": "npm run typecheck && npm run typecheck:frontend && npm run lint:frontend && npm run test:backend"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "@types/node": "^25.9.2",
+    "concurrently": "^8.2.2",
+    "electron": "^30.5.1",
+    "electron-builder": "^24.13.3",
+    "typescript": "^5.4.5"
+  },
+  "dependencies": {
+    "@ghostery/adblocker-electron": "^2.18.0",
+    "axios": "^1.17.0",
+    "cross-fetch": "^4.1.0"
+  }
+}

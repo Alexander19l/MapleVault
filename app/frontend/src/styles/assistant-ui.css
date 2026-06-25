@@ -1,0 +1,41 @@
+/* Custom styles for assistant-ui to match MapleVault */
+.assistant-ui-theme {
+  --aui-color-bg: transparent;
+  --aui-color-fg: var(--text-main);
+  
+  --aui-color-primary: var(--accent-primary);
+  --aui-color-primary-fg: #ffffff;
+  
+  --aui-color-muted: var(--bg-card);
+  --aui-color-muted-fg: var(--text-dim);
+  
+  --aui-color-border: var(--border-medium);
+  --aui-color-input: var(--border-medium);
+  
+  /* User Message Bubble */
+  --aui-user-message-bg: var(--accent-primary);
+  --aui-user-message-fg: #ffffff;
+  
+  /* Assistant Message Bubble */
+  --aui-assistant-message-bg: var(--bg-card);
+  --aui-assistant-message-fg: var(--text-main);
+
+  --aui-radius: 0.75rem;
+}
+
+/* Specific overrides for Thread component to remove its default white background */
+.assistant-ui-theme [data-radix-scroll-area-viewport] {
+  background-color: transparent !important;
+}
+
+/* Make text area match */
+.assistant-ui-theme textarea {
+  background-color: rgba(15, 23, 42, 0.6) !important;
+  color: white !important;
+  border-color: var(--border-medium) !important;
+  font-size: 0.75rem !important; /* text-xs */
+}
+
+.assistant-ui-theme textarea:focus {
+  border-color: var(--accent-primary) !important;
+}

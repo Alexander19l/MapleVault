@@ -1,0 +1,198 @@
+/**
+ * filterRules.ts — Reglas de filtrado para el bloqueador nativo de MapleVault
+ * Contiene blacklist de dominios, patrones de URL y tipos de recursos bloqueados
+ */
+
+// ====== BLACKLIST DE DOMINIOS PUBLICITARIOS ======
+export const AD_DOMAIN_BLACKLIST: string[] = [
+  // Google Ads
+  'doubleclick.net',
+  'googlesyndication.com',
+  'googleadservices.com',
+  'google-analytics.com',
+  'googletagmanager.com',
+  'googletagservices.com',
+  'pagead2.googlesyndication.com',
+  'adservice.google.com',
+  // Redes publicitarias mayores
+  'adcolony.com',
+  'adform.net',
+  'admob.com',
+  'adsrvr.org',
+  'adtechus.com',
+  'advertising.com',
+  'appnexus.com',
+  'bidswitch.net',
+  'casalemedia.com',
+  'criteo.com',
+  'criteo.net',
+  'demdex.net',
+  'exoclick.com',
+  'exponential.com',
+  'eyereturn.com',
+  'flashtalking.com',
+  'indexexchange.com',
+  'inmobi.com',
+  'mopub.com',
+  'openx.net',
+  'pubmatic.com',
+  'quantserve.com',
+  'revenuehits.com',
+  'richrelevance.com',
+  'rubiconproject.com',
+  'scorecardresearch.com',
+  'serving-sys.com',
+  'sharethrough.com',
+  'smaato.net',
+  'smartadserver.com',
+  'taboola.com',
+  'tapjoy.com',
+  'teads.tv',
+  'tribalfusion.com',
+  'turn.com',
+  'undertone.com',
+  'unrulymedia.com',
+  'yieldmo.com',
+  // Pop-ups y pop-unders
+  'popads.net',
+  'popcash.net',
+  'popmyads.com',
+  'propellerads.com',
+  'propellerclick.com',
+  'juicyads.com',
+  'trafficjunky.com',
+  'trafficfactory.biz',
+  'clickadu.com',
+  'hilltopads.net',
+  'adsterra.com',
+  'a-ads.com',
+  'pushground.com',
+  'evadav.com',
+  'pushwoosh.com',
+  // Trackers
+  'facebook.net',
+  'fbcdn.net',
+  'hotjar.com',
+  'mixpanel.com',
+  'segment.io',
+  'segment.com',
+  'amplitude.com',
+  'branch.io',
+  'adjust.com',
+  'appsflyer.com',
+  'chartbeat.com',
+  'comscore.com',
+  'crazyegg.com',
+  'heapanalytics.com',
+  'inspectlet.com',
+  'kissmetrics.com',
+  'mouseflow.com',
+  'newrelic.com',
+  'nr-data.net',
+  'optimizely.com',
+  'pardot.com',
+  'pingdom.net',
+  'sumologic.com',
+  'tealiumiq.com',
+  // Anime-specific ad networks
+  'exosrv.com',
+  'exdynsrv.com',
+  'realsrv.com',
+  'tsyndicate.com',
+  'syndication.realsrv.com',
+  'juicyads.com',
+  'tsyndicate.com',
+  'syndication.exdynsrv.com',
+  'a.magsrv.com',
+  'delivery.trafficjunky.net',
+  's.optad360.com',
+  'cdn.optad360.com',
+  'whos.amung.us',
+  'disqusads.com',
+  'pagead-googlehosted.l.google.com',
+  'static.adsafeprotected.com',
+];
+
+// ====== PATRONES DE URL BLOQUEADOS ======
+export const AD_URL_PATTERNS: RegExp[] = [
+  /\/ads\//i,
+  /\/adserver\//i,
+  /\/popunder\//i,
+  /\/popup[s]?\//i,
+  /\/tracker\//i,
+  /\/analytics\//i,
+  /\/advert[s]?\//i,
+  /\/sponsor\//i,
+  /\/clicktrack/i,
+  /\/ad[_-]?frame/i,
+  /\/ad[_-]?click/i,
+  /\/ad[_-]?view/i,
+  /\/pixel[s]?\//i,
+  /\/beacon\//i,
+  /\/tracking\//i,
+  /\/telemetry\//i,
+  /\/collect\?/i,
+  /\/impression/i,
+  /\/prebid/i,
+  /\/rtb/i,
+  /\/bidder/i,
+  /\/vast\.xml/i,
+  /\/vpaid/i,
+  /\/adm[_-]?/i,
+  /ad[_-]?unit/i,
+  /\.gif\?.*click/i,
+  /pop\.js/i,
+  /popunder/i,
+  /push[_-]?notification/i,
+];
+
+// ====== WHITELIST DE DOMINIOS AUTORIZADOS ======
+// Estos dominios NUNCA se bloquean (fuentes legítimas de video)
+export const DEFAULT_WHITELIST: string[] = [
+  'localhost',
+  's4.anilist.co',
+  'anilist.co',
+  'jkanime.net',
+  'animeflv.net',
+  'animeav1.com',
+  'tioanime.com',
+  // Servidores de video legítimos (reproductores de anime)
+  'ok.ru',
+  'mp4upload.com',
+  'streamtape.com',
+  'doodstream.com',
+  'filemoon.sx',
+  'vidguard.to',
+  'streamwish.to',
+  'vidhide.com',
+  'voe.sx',
+  'upstream.to',
+  'mixdrop.co',
+  'mixdrop.to',
+  'fembed.com',
+  'embedsito.com',
+  'yourupload.com',
+  'mega.nz',
+  '1fichier.com',
+  'mediafire.com',
+  // CDNs de contenido video
+  'cdn.plyr.io',
+  'cdn.jsdelivr.net',
+  'cdnjs.cloudflare.com',
+  'unpkg.com',
+];
+
+// ====== TIPOS DE RECURSOS BLOQUEADOS ======
+export const BLOCKED_RESOURCE_TYPES = new Set([
+  'subFrame',      // iframes publicitarios
+  'ping',          // beacons de tracking
+  'cspReport',     // reportes CSP
+  'object',        // Flash/Java embeds
+  'other',         // misc
+]);
+
+// Tipos de recursos que NUNCA se bloquean (esenciales para video)
+export const SAFE_RESOURCE_TYPES = new Set([
+  'mainFrame',
+  'media',        // archivos de video/audio
+]);

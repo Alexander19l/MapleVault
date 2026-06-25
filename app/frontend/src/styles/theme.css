@@ -1,0 +1,230 @@
+/* =====================================================
+   MapleVault — Design System Token File
+   Versión: 1.0-stable (Anti-AI Edition)
+   Paleta: Oscura, sobria, editorial, sin gradientes excesivos
+   ===================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* =====================================================
+   TOKENS — Variables globales del sistema de diseño
+   ===================================================== */
+:root {
+  /* Tipografía */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+
+  /* Fondo — Del más oscuro (base) al más claro (cards) */
+  --bg-main:     #0d0f14;   /* Fondo raíz */
+  --bg-elevated: #141821;   /* Paneles secundarios */
+  --bg-panel:    #191e29;   /* Sidebar, headers */
+  --bg-card:     #1e2430;   /* Tarjetas */
+
+  /* Bordes — Sutiles, no protagonistas */
+  --border-soft:   rgba(42, 49, 64, 0.5);
+  --border-medium: #2a3140;
+  --border-strong: #3a4255;
+  --border-glow:   rgba(139, 92, 246, 0.12);
+
+  /* Texto — Jerarquía clara de 4 niveles */
+  --text-main:  #f1f3f5;   /* Títulos, texto principal */
+  --text-muted: #a8b0bd;   /* Texto secundario */
+  --text-dim:   #6f7785;   /* Metadata, labels */
+  --text-faint: #46505e;   /* Separadores textuales, versiones */
+
+  /* Acento principal — violeta sobrio */
+  --accent-primary:      #8b5cf6;
+  --accent-primary-hover: #7c3aed;
+  --accent-soft:         rgba(139, 92, 246, 0.12);
+  --accent-soft-hover:   rgba(139, 92, 246, 0.18);
+
+  /* Acento secundario — azul frío */
+  --accent-secondary: #38bdf8;
+
+  /* Estados de visualización */
+  --status-watching:  #38bdf8;
+  --status-completed: #22c55e;
+  --status-pending:   #facc15;
+  --status-dropped:   #ef4444;
+
+  /* Semánticos de UI */
+  --color-success: #22c55e;
+  --color-warning: #facc15;
+  --color-danger:  #ef4444;
+  --color-info:    #38bdf8;
+
+  /* Sombras — profundidad real, sin glow artificial */
+  --shadow-sm:  0 1px 3px rgba(0,0,0,0.4);
+  --shadow-md:  0 4px 12px rgba(0,0,0,0.5);
+  --shadow-lg:  0 10px 30px rgba(0,0,0,0.6);
+  --shadow-xl:  0 20px 50px rgba(0,0,0,0.7);
+
+  /* Glassmorphism — usado con moderación */
+  --glass-bg:   rgba(20, 24, 33, 0.8);
+  --glass-blur: blur(14px);
+
+  /* Radios */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+
+  /* Transiciones */
+  --transition-fast:   150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow:   400ms cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Aliases para compatibilidad hacia atrás */
+  --bg-primary:   var(--bg-main);
+  --bg-secondary: var(--bg-elevated);
+  --border-light: var(--border-soft);
+  --text-dim:     var(--text-dim);
+  --accent-warm:  #f97316;
+  --shadow-premium: var(--shadow-xl);
+  --shadow-glow: 0 0 20px rgba(139, 92, 246, 0.06);
+}
+
+/* =====================================================
+   BASE — Reset mínimo y estilos fundamentales
+   ===================================================== */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* Transición global solo para propiedades visuales — no transforms (performance) */
+* {
+  transition-property: color, background-color, border-color, opacity;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+/* =====================================================
+   SCROLLBAR — Estilo editorial discreto
+   ===================================================== */
+
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-medium);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+}
+
+/* =====================================================
+   UTILIDADES DE COMPONENTES
+   ===================================================== */
+
+/* Panel con fondo de vidrio — usar con criterio */
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border-soft);
+}
+
+/* Clase para scrollbars ocultos */
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Tarjeta estándar — elevación sutil */
+.av-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  transition: border-color var(--transition-slow), box-shadow var(--transition-slow), transform var(--transition-slow);
+}
+
+.av-card:hover {
+  border-color: rgba(139, 92, 246, 0.25);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+/* Título editorial — letras ajustadas, sin exceso */
+.text-editorial {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: var(--text-main);
+}
+
+/* Badge de estado */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Skeleton loader */
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.skeleton {
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  animation: skeleton-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  100% { transform: translateX(100%); }
+}
+
+.shimmer-bg {
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-card);
+}
+
+.shimmer-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255,255,255,0.03) 30%,
+    rgba(255,255,255,0.06) 60%,
+    transparent 100%
+  );
+  animation: shimmer 2s infinite;
+}
+
+/* Drag region para titlebar de Electron */
+.titlebar { -webkit-app-region: drag; }
+.no-drag   { -webkit-app-region: no-drag; }
+
+/* Gradient de texto solo para el logo */
+.text-gradient {
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Foco visible — accesibilidad */
+:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
