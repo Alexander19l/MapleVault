@@ -8,6 +8,7 @@ import { getLocalRecommendations } from './recommendations/recommender';
 import { handleChatMessage, executeChatbotAction, isAllowedChatbotAction } from './chatbot/chatbot';
 import { getMapleAssistantCapabilities } from './chatbot/capabilities';
 import { createRateLimitMiddleware } from './security/rateLimiter';
+import { createSessionAuthMiddleware } from './security/sessionAuth';
 import { validateAnimeInput, validateUserListInput, validateSearchFilters, validateId, validateLocalServiceUrl, validatePayloadSize } from './security/validators';
 import { sanitizeChatInput, sanitizeExternalAnime } from './security/sanitize';
 import { createBackup, listBackups, restoreBackup, deleteBackup } from './database/backup';
@@ -55,6 +56,9 @@ app.use((_req: any, res: any, next: any) => {
   res.removeHeader('X-Powered-By');
   next();
 });
+
+// En producción Electron configura un token aleatorio por sesión.
+app.use(createSessionAuthMiddleware());
 
 // Rate limiting general
 app.use(createRateLimitMiddleware('general'));

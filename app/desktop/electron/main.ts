@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell, dialog, Tray, Menu, nativeImage, type MessageBoxOptions } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { spawn, ChildProcess } from 'child_process';
 import { 
   showSplash, 
@@ -26,6 +27,9 @@ const PORT = Number.isInteger(parsedBackendPort) && parsedBackendPort > 0 && par
   : 5000;
 const BACKEND_HOST = process.env.MAPLEVAULT_BACKEND_HOST || '127.0.0.1';
 const RENDERER_URL = process.env.MAPLEVAULT_RENDERER_URL || 'http://127.0.0.1:5173';
+const BACKEND_SESSION_TOKEN = isDev
+  ? process.env.MAPLEVAULT_API_TOKEN || ''
+  : crypto.randomBytes(32).toString('hex');
 
 type CloseBehavior = 'ask' | 'minimize' | 'quit';
 
@@ -101,6 +105,7 @@ function startBackendProcess() {
         ELECTRON_RUN_AS_NODE: '1',
         PORT: String(PORT),
         MAPLEVAULT_HOST: BACKEND_HOST,
+        MAPLEVAULT_API_TOKEN: BACKEND_SESSION_TOKEN,
         DATABASE_PATH: dbPath
       },
       stdio: 'inherit',
@@ -304,6 +309,11 @@ function killBackend() {
 }
 
 app.whenReady().then(async () => {
+  ipcMain.handle('app-get-api-config', () => ({
+    baseUrl: `http://localhost:${PORT}`,
+    token: BACKEND_SESSION_TOKEN
+  }));
+
   // Inicializar el sistema completo de protección del reproductor
   // Esto activa: Ghostery, interceptores de red, protección CSS/JS, logging
   try {

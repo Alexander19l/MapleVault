@@ -55,6 +55,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'adblock-toggle',
   'adblock-reset-stats',
   'show-confirm',
+  'app-get-api-config',
   'app-get-startup-settings',
   'app-set-startup-settings'
 ]);
@@ -85,6 +86,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     set: (enabled: boolean): Promise<{ supported: boolean; enabled: boolean; reason?: string }> => {
       return ipcRenderer.invoke('app-set-startup-settings', Boolean(enabled));
+    }
+  },
+
+  backend: {
+    getConfig: (): Promise<{ baseUrl: string; token: string }> => {
+      return ipcRenderer.invoke('app-get-api-config');
     }
   },
 

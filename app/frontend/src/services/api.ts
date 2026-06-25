@@ -11,6 +11,33 @@ const client = axios.create({
   },
 });
 
+type DesktopApiConfig = {
+  baseUrl?: string;
+  token?: string;
+};
+
+const desktopApiConfigPromise: Promise<DesktopApiConfig | null> = (
+  window as Window & {
+    electronAPI?: {
+      backend?: {
+        getConfig?: () => Promise<DesktopApiConfig>;
+      };
+    };
+  }
+).electronAPI?.backend?.getConfig?.()
+  .catch(() => null) || Promise.resolve(null);
+
+client.interceptors.request.use(async config => {
+  const desktopConfig = await desktopApiConfigPromise;
+  if (desktopConfig?.baseUrl) {
+    config.baseURL = desktopConfig.baseUrl;
+  }
+  if (desktopConfig?.token) {
+    config.headers.set('X-MapleVault-Token', desktopConfig.token);
+  }
+  return config;
+});
+
 export const api = {
   // Animes (Catálogo)
   getAnimeList: async (filters: {
