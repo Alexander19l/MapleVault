@@ -22,6 +22,8 @@ El sistema está orientado a privacidad local: la base de datos vive en el equip
 - `app/backend/src/server.ts`: API HTTP local.
 - `app/backend/src/database/db.ts`: conexion SQLite, tablas y migraciones simples.
 - `app/backend/src/database/backup.ts`: backups con `VACUUM INTO`.
+- `app/backend/src/routes/backupRoutes.ts`: contrato HTTP de creación, listado,
+  restauración y eliminación de respaldos.
 - `app/backend/src/security`: validadores, sanitizacion y rate limiting.
 - `app/backend/src/chatbot`: NLP, memoria, confirmaciones, capacidades y acciones del asistente.
 - `app/backend/src/scraping`: AniList y fuentes externas.

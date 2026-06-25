@@ -11,13 +11,13 @@ import { createRateLimitMiddleware } from './security/rateLimiter';
 import { createSessionAuthMiddleware } from './security/sessionAuth';
 import { validateAnimeInput, validateUserListInput, validateSearchFilters, validateId, validateLocalServiceUrl, validatePayloadSize } from './security/validators';
 import { sanitizeChatInput, sanitizeExternalAnime } from './security/sanitize';
-import { createBackup, listBackups, restoreBackup, deleteBackup } from './database/backup';
+import { createBackup, listBackups } from './database/backup';
 import { getAISettings, setAISettings, resetAISettings } from './chatbot/aiSettings';
 import { buildUserSoulProfile, clearAllMemory, getUserSoulData, seedInitialMemory } from './chatbot/memory';
 import { decorateAnimeListWithSpanishTranslation, decorateAnimeWithSpanishTranslation } from './translation/translationService';
 import { ensureLibreTranslateRunning, getLibreTranslateRuntimeStatus, stopLibreTranslateRuntime } from './translation/translationRuntime';
 import { enforceSupportedAppearance } from './settings/settingsPolicy';
-import { clearPendingActions } from './chatbot/actionConfirmation';
+import { createBackupRouter } from './routes/backupRoutes';
 import axios from 'axios';
 
 const app = express();
@@ -66,7 +66,6 @@ app.use(createRateLimitMiddleware('general'));
 
 const DATA_DIR = path.dirname(DB_PATH);
 const SETTINGS_PATH = path.join(DATA_DIR, 'settings.json');
-const BACKUPS_DIR = path.join(DATA_DIR, 'backups');
 const DASHBOARD_SUMMARY_CACHE_KEY = 'dashboard:summary';
 const SEASON_SUMMARY_CACHE_KEY = 'seasons:summary';
 const RECOMMENDATIONS_CACHE_KEY = 'recommendations:local';
@@ -76,7 +75,6 @@ const responseCache = new Map<string, { expiresAt: number; value: any }>();
 
 // Asegurar directorios
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-if (!fs.existsSync(BACKUPS_DIR)) fs.mkdirSync(BACKUPS_DIR, { recursive: true });
 
 function getCachedResponse<T>(key: string): T | null {
   const cached = responseCache.get(key);
@@ -100,6 +98,8 @@ function invalidateLibraryReadCaches() {
   responseCache.delete(SEASON_SUMMARY_CACHE_KEY);
   responseCache.delete(RECOMMENDATIONS_CACHE_KEY);
 }
+
+app.use(createBackupRouter({ invalidateLibraryReadCaches }));
 
 function defaultAppSettings() {
   return {
@@ -1401,24 +1401,6 @@ app.post('/settings/import', async (req, res) => {
   }
 });
 
-// POST /settings/backup - Crear copia de seguridad de la base de datos
-app.post('/settings/backup', async (req, res) => {
-  try {
-    const result = await createBackup();
-    if (result.success) {
-      res.json({
-        message: 'Copia de seguridad creada.',
-        path: result.path,
-        filename: result.path ? path.basename(result.path) : null
-      });
-    } else {
-      res.status(500).json({ error: result.error || 'No se pudo crear la copia de seguridad.' });
-    }
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // GET /genres - Obtener gneros en catlogo local
 app.get('/genres', async (req, res) => {
   try {
@@ -1753,81 +1735,6 @@ app.post('/anime/import', async (req, res) => {
     const localId = await saveNormalizedAnimeToLocal(validation.data as any);
     invalidateLibraryReadCaches();
     res.json({ id: localId, message: 'Anime importado con éxito' });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ==========================================
-// 9. ENDPOINTS DE BACKUP DE BASE DE DATOS
-// ==========================================
-
-// GET /backup/list - Listar backups disponibles
-app.get('/backup/list', async (_req, res) => {
-  try {
-    const backups = listBackups();
-    res.json(backups);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST /backup/create - Crear backup manual
-app.post('/backup/create', async (_req, res) => {
-  try {
-    const result = await createBackup();
-    if (result.success) {
-      res.json({
-        message: 'Copia de seguridad creada con éxito.',
-        path: result.path,
-        filename: result.path ? path.basename(result.path) : null
-      });
-    } else {
-      res.status(500).json({ error: result.error || 'No se pudo crear la copia de seguridad.' });
-    }
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST /backup/restore - Restaurar desde backup
-app.post('/backup/restore', async (req, res) => {
-  try {
-    const { backupPath } = req.body;
-    if (!backupPath || typeof backupPath !== 'string') {
-      return res.status(400).json({ error: 'Se requiere el campo backupPath.' });
-    }
-    const result = await restoreBackup(backupPath);
-    if (result.success) {
-      invalidateLibraryReadCaches();
-      clearPendingActions();
-      res.json({ message: 'Base de datos restaurada correctamente. Los cambios ya están disponibles.' });
-    } else {
-      res.status(400).json({ error: result.error });
-    }
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// DELETE /backup/:name - Eliminar un backup especfico
-app.delete('/backup/:name', async (req, res) => {
-  try {
-    const name = req.params.name;
-    // Validar que el nombre no contenga path traversal
-    if (!name || name.includes('/') || name.includes('\\') || name.includes('..')) {
-      return res.status(400).json({ error: 'Nombre de copia de seguridad no válido.' });
-    }
-
-    const backupDir = path.join(path.dirname(DB_PATH), 'backups');
-    const fullPath = path.join(backupDir, name);
-
-    const result = deleteBackup(fullPath);
-    if (result.success) {
-      res.json({ message: 'Copia de seguridad eliminada.' });
-    } else {
-      res.status(400).json({ error: result.error });
-    }
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
