@@ -1,4 +1,5 @@
-import { MarkdownText } from "@/components/markdown-text";
+import { lazy, Suspense, type FC } from "react";
+import { LazyMarkdownText } from "@/components/lazy-markdown-text";
 import {
   Reasoning,
   ReasoningContent,
@@ -11,8 +12,7 @@ import {
   ToolGroupRoot,
   ToolGroupTrigger,
 } from "@/components/tool-group";
-import { MapleToolCall } from "@/components/chatbot/MapleToolCall";
-import { ToolFallback } from "@/components/tool-fallback";
+import type { MapleToolCallProps } from "@/components/chatbot/MapleToolCall";
 import { TooltipIconButton } from "@/components/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -42,7 +42,20 @@ import {
   RefreshCwIcon,
   SquareIcon,
 } from "lucide-react";
-import type { FC } from "react";
+const MapleToolCall = lazy(() => import("@/components/chatbot/MapleToolCall").then(module => ({
+  default: module.MapleToolCall
+})));
+const ToolFallback = lazy(() => import("@/components/tool-fallback").then(module => ({
+  default: module.ToolFallback
+})));
+
+const ToolLoadingFallback: FC = () => (
+  <div
+    role="status"
+    className="my-2 min-h-14 animate-pulse rounded-lg border border-slate-700/50 bg-slate-900/40"
+    aria-label="Cargando contenido del asistente"
+  />
+);
 
 export const Thread: FC = () => {
   return (
@@ -225,20 +238,26 @@ const AssistantMessage: FC = () => {
                   </ToolGroupRoot>
                 );
               case "text":
-                return <MarkdownText />;
+                return <LazyMarkdownText />;
               case "reasoning":
                 return <Reasoning {...part} />;
               case "tool-call":
                 if ((part as any).toolName === "maple_action" || (part as any).toolName === "maple_visual") {
                   return (
-                    <MapleToolCall
-                      toolName={(part as any).toolName}
-                      args={(part as any).args}
-                      argsText={(part as any).argsText}
-                    />
+                    <Suspense fallback={<ToolLoadingFallback />}>
+                      <MapleToolCall
+                        toolName={(part as MapleToolCallProps).toolName}
+                        args={(part as MapleToolCallProps).args}
+                        argsText={(part as MapleToolCallProps).argsText}
+                      />
+                    </Suspense>
                   );
                 }
-                return part.toolUI ?? <ToolFallback {...part} />;
+                return part.toolUI ?? (
+                  <Suspense fallback={<ToolLoadingFallback />}>
+                    <ToolFallback {...part} />
+                  </Suspense>
+                );
               case "indicator":
                 return (
                   <span

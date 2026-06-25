@@ -1,62 +1,17 @@
-import React, { useCallback, useMemo, useRef, useState, useEffect } from 'react';
+import React, { lazy, Suspense, useCallback, useRef, useState, useEffect } from 'react';
 import { Maximize2, Minimize2, MoveDiagonal2, Sparkles, Trash2, X } from 'lucide-react';
 import { api } from '../../services/api';
-import { 
-  AssistantRuntimeProvider, 
-  useLocalRuntime,
-  type ThreadMessageLike
-} from "@assistant-ui/react";
-import { Thread } from "@/components/thread";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { createMapleAssistantAdapter } from './AssistantAdapter';
 import type { ChatMessage } from '../../types';
 
+const ChatRuntime = lazy(() => import('./ChatRuntime').then(module => ({
+  default: module.ChatRuntime
+})));
 
 interface ChatPanelProps {
   isOpen: boolean;
   onClose: () => void;
 }
-
-type ThreadContentPart = Extract<ThreadMessageLike['content'], readonly unknown[]>[number];
-
-const toInitialMessages = (history: ChatMessage[]): ThreadMessageLike[] => {
-  return history
-    .filter((message) => Boolean(message.content?.trim()) || Boolean(message.visualData))
-    .map((message, index) => {
-      const contentParts: ThreadContentPart[] = [];
-
-      if (message.content?.trim()) {
-        contentParts.push({ type: 'text', text: message.content });
-      }
-
-      if (message.role === 'assistant' && message.visualData) {
-        contentParts.push({
-          type: 'tool-call',
-          toolName: 'maple_visual',
-          toolCallId: `history_visual_${message.id ?? index}`,
-          args: message.visualData
-        });
-      }
-
-      const createdAt = message.created_at ? new Date(message.created_at) : undefined;
-      const validCreatedAt = createdAt && !Number.isNaN(createdAt.getTime()) ? createdAt : undefined;
-
-      return {
-        id: `history_${message.id ?? index}`,
-        role: message.role,
-        content: contentParts,
-        createdAt: validCreatedAt,
-        ...(message.role === 'assistant'
-          ? { status: { type: 'complete' as const, reason: 'stop' as const } }
-          : {}),
-        metadata: {
-          custom: {
-            restoredFromHistory: true
-          }
-        }
-      };
-    });
-};
 
 interface PanelSize {
   width: number;
@@ -102,35 +57,13 @@ const getStoredPanelSize = (): PanelSize => {
   return clampPanelSize(DEFAULT_PANEL_SIZE);
 };
 
-const ChatRuntime: React.FC<{
-  initialMessages: ThreadMessageLike[];
-  featuredPrompts: string[];
-}> = ({ initialMessages, featuredPrompts }) => {
-  const adapter = useMemo(() => createMapleAssistantAdapter(), []);
-  const suggestionAdapter = useMemo(() => ({
-    generate: async () => featuredPrompts.map(prompt => ({ prompt }))
-  }), [featuredPrompts]);
-  const runtime = useLocalRuntime(adapter, {
-    initialMessages,
-    adapters: {
-      suggestion: suggestionAdapter
-    }
-  });
-
-  return (
-    <AssistantRuntimeProvider runtime={runtime}>
-      <Thread />
-    </AssistantRuntimeProvider>
-  );
-};
-
 export const ChatPanel: React.FC<ChatPanelProps> = ({ 
   isOpen, 
   onClose
 }) => {
   const [isAiEnabled, setIsAiEnabled] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
-  const [historyMessages, setHistoryMessages] = useState<ThreadMessageLike[]>([]);
+  const [historyMessages, setHistoryMessages] = useState<ChatMessage[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [historyVersion, setHistoryVersion] = useState(0);
   const [featuredPrompts, setFeaturedPrompts] = useState<string[]>([]);
@@ -186,7 +119,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         const history = await api.getChatHistory();
         if (cancelled) return;
 
-        setHistoryMessages(toInitialMessages(history || []));
+        setHistoryMessages(history || []);
       } catch (err) {
         console.error('Error al cargar historial del chat:', err);
         if (!cancelled) setHistoryMessages([]);
@@ -402,11 +335,19 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         {/* Zona de Mensajes y Caja de Texto provista por assistant-ui */}
         <div className="assistant-ui-theme flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {historyLoaded ? (
-            <ChatRuntime
-              key={historyVersion}
-              initialMessages={historyMessages}
-              featuredPrompts={featuredPrompts}
-            />
+            <Suspense
+              fallback={(
+                <div className="flex flex-1 items-center justify-center text-xs font-semibold text-[var(--text-dim)]">
+                  Preparando conversación...
+                </div>
+              )}
+            >
+              <ChatRuntime
+                key={historyVersion}
+                history={historyMessages}
+                featuredPrompts={featuredPrompts}
+              />
+            </Suspense>
           ) : (
             <div className="flex flex-1 items-center justify-center text-xs font-semibold text-[var(--text-dim)]">
               Cargando historial...

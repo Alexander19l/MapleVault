@@ -112,3 +112,18 @@ Antes de reemplazar la base activa, el backend:
 La retencion conserva las 10 copias manuales mas recientes y las 3 copias de
 emergencia mas recientes. Esto limita el crecimiento del almacenamiento sin
 eliminar el punto de recuperacion inmediato.
+
+## Carga Diferida De Maple Assistant
+
+El asistente se divide en capas para evitar descargar todo el renderer al abrir
+la aplicacion:
+
+- `ChatPanel` contiene el marco, controles de ventana y carga del historial.
+- `ChatRuntime` incorpora `assistant-ui`, el compositor y el hilo.
+- `markdown-text` se descarga solo cuando existe una respuesta textual.
+- `MapleToolCall` y `tool-fallback` se descargan solo cuando una respuesta
+  contiene tarjetas o herramientas.
+
+En el build de referencia de junio de 2026, el chunk inicial del panel paso de
+aproximadamente 576 KB a 9 KB minificados. El runtime, Markdown y las tarjetas
+quedan en chunks independientes de aproximadamente 154 KB, 162 KB y 17 KB.

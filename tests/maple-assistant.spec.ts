@@ -28,6 +28,10 @@ const mockDesktopApi = async (
       return route.fulfill({ json: chatHistory });
     }
 
+    if (method === 'GET' && url.pathname === '/chat/capabilities') {
+      return route.fulfill({ json: { categories: [], intents: [], featuredPrompts: [] } });
+    }
+
     if (method === 'DELETE' && url.pathname === '/chat/history') {
       chatHistory = [];
       return route.fulfill({ json: { success: true } });
@@ -39,6 +43,10 @@ const mockDesktopApi = async (
 
     if (method === 'GET' && url.pathname === '/genres') {
       return route.fulfill({ json: ['Action', 'Fantasy'] });
+    }
+
+    if (method === 'GET' && url.pathname === '/dashboard/summary') {
+      return route.fulfill({ json: { recent: [], airing: [], stats: {} } });
     }
 
     if (method === 'POST' && url.pathname === '/chat/message') {
@@ -133,6 +141,16 @@ const mockDesktopApi = async (
 test.describe('Maple Assistant', () => {
   test('abre el panel, envía una recomendación y muestra datos visuales', async ({ page }) => {
     await mockDesktopApi(page);
+    const deferredModuleRequests: string[] = [];
+    page.on('request', request => {
+      const pathname = new URL(request.url()).pathname;
+      if (
+        pathname.endsWith('/src/components/markdown-text.tsx')
+        || pathname.endsWith('/src/components/chatbot/MapleToolCall.tsx')
+      ) {
+        deferredModuleRequests.push(pathname);
+      }
+    });
 
     await page.goto('http://127.0.0.1:5173');
     await page.getByRole('button', { name: /Abrir Maple Assistant/i }).click();
@@ -141,11 +159,16 @@ test.describe('Maple Assistant', () => {
     await expect(page.getByText('Motor local activo')).toBeVisible();
 
     const input = page.getByPlaceholder('Escribe un mensaje...');
+    await expect(input).toBeVisible();
+    expect(deferredModuleRequests).toEqual([]);
+
     await input.fill('recomendame acción');
     await input.press('Enter');
 
     await expect(page.getByText(/Te podría gustar/i)).toBeVisible();
     await expect(page.getByText('Mock Action').first()).toBeVisible();
+    await expect.poll(() => deferredModuleRequests.some(path => path.endsWith('/markdown-text.tsx'))).toBe(true);
+    await expect.poll(() => deferredModuleRequests.some(path => path.endsWith('/MapleToolCall.tsx'))).toBe(true);
   });
 
   test('muestra confirmación para acciones protegidas y no ejecuta sin click explícito', async ({ page }) => {

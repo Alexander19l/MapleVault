@@ -33,6 +33,10 @@ test('online import does not leave a blocking dialog or locked inputs', async ({
       return route.fulfill({ json: [] });
     }
 
+    if (method === 'GET' && url.pathname === '/dashboard/summary') {
+      return route.fulfill({ json: { recent: [], airing: [], stats: {} } });
+    }
+
     if (method === 'GET' && url.pathname === '/genres') {
       return route.fulfill({ json: ['Action', 'Fantasy'] });
     }
