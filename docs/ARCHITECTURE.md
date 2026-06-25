@@ -93,3 +93,22 @@ Las pantallas Inicio, Catalogo y Temporadas usan respuestas acotadas:
 - Las recomendaciones agrupan generos en consultas SQL y evitan consultas N+1.
 - Los indices compuestos `year + season + popularity` y
   `status + popularity + score` aceleran las rutas mas usadas tras scraping masivo.
+
+## Respaldo Y Restauracion SQLite
+
+Las copias manuales se crean con `VACUUM INTO`, por lo que son consistentes
+incluso cuando SQLite usa WAL. Ajustes permite listar y restaurar estas copias
+sin reiniciar la aplicacion.
+
+Antes de reemplazar la base activa, el backend:
+
+- valida `PRAGMA integrity_check`;
+- verifica las tablas requeridas y las claves foraneas;
+- crea una copia de emergencia;
+- serializa y pausa las consultas sobre la conexion compartida;
+- cierra SQLite, reemplaza el archivo y vuelve a abrir la conexion;
+- restaura automaticamente el archivo anterior si la reapertura falla.
+
+La retencion conserva las 10 copias manuales mas recientes y las 3 copias de
+emergencia mas recientes. Esto limita el crecimiento del almacenamiento sin
+eliminar el punto de recuperacion inmediato.

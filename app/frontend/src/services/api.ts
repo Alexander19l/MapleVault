@@ -1,6 +1,6 @@
 ﻿import axios from 'axios';
 
-import type { ChatActionHistoryItem, ChatCapabilities, ChatMessage } from '../types';
+import type { ChatActionHistoryItem, ChatCapabilities, ChatMessage, DatabaseBackup } from '../types';
 
 export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -309,6 +309,16 @@ export const api = {
 
   createBackup: async () => {
     const response = await client.post('/settings/backup');
+    return response.data;
+  },
+
+  listDatabaseBackups: async (): Promise<DatabaseBackup[]> => {
+    const response = await client.get('/backup/list');
+    return response.data;
+  },
+
+  restoreDatabaseBackup: async (backupPath: string) => {
+    const response = await client.post('/backup/restore', { backupPath });
     return response.data;
   },
 

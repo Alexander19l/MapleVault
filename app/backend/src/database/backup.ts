@@ -9,6 +9,7 @@ import { DB_PATH, query, replaceDatabaseFromStaging } from './db';
 
 const BACKUP_DIR = path.join(path.dirname(DB_PATH), 'backups');
 const MAX_BACKUPS = 10;
+const MAX_EMERGENCY_BACKUPS = 3;
 const REQUIRED_TABLES = [
   'anime',
   'genres',
@@ -209,6 +210,7 @@ export async function restoreBackup(backupPath: string): Promise<{ success: bool
     );
 
     console.log(`[Backup] Base de datos restaurada desde: ${canonicalBackup}`);
+    pruneOldBackups();
 
     return { success: true };
   } catch (err: any) {
@@ -226,24 +228,29 @@ export async function restoreBackup(backupPath: string): Promise<{ success: bool
  */
 function pruneOldBackups(): void {
   try {
-    const files = fs.readdirSync(BACKUP_DIR)
-      .filter(f => f.endsWith('.sqlite') && f.startsWith('maplevault_backup_'))
-      .map(f => ({
-        name: f,
-        path: path.join(BACKUP_DIR, f),
-        mtime: fs.statSync(path.join(BACKUP_DIR, f)).mtime.getTime()
-      }))
-      .sort((a, b) => b.mtime - a.mtime);
-
-    if (files.length > MAX_BACKUPS) {
-      const toDelete = files.slice(MAX_BACKUPS);
-      toDelete.forEach(f => {
-        fs.unlinkSync(f.path);
-        console.log(`[Backup] Backup antiguo eliminado: ${f.name}`);
-      });
-    }
+    pruneBackupGroup('maplevault_backup_', MAX_BACKUPS);
+    pruneBackupGroup('emergency_before_restore_', MAX_EMERGENCY_BACKUPS);
   } catch (err) {
     console.error('[Backup] Error al limpiar backups antiguos:', err);
+  }
+}
+
+function pruneBackupGroup(prefix: string, maxFiles: number): void {
+  const files = fs.readdirSync(BACKUP_DIR)
+    .filter(file => file.endsWith('.sqlite') && file.startsWith(prefix))
+    .map(file => {
+      const backupPath = path.join(BACKUP_DIR, file);
+      return {
+        name: file,
+        path: backupPath,
+        mtime: fs.statSync(backupPath).mtime.getTime()
+      };
+    })
+    .sort((a, b) => b.mtime - a.mtime);
+
+  for (const backup of files.slice(maxFiles)) {
+    fs.unlinkSync(backup.path);
+    console.log(`[Backup] Backup antiguo eliminado: ${backup.name}`);
   }
 }
 

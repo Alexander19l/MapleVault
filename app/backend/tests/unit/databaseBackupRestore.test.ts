@@ -111,4 +111,19 @@ describe('SQLite backup restore', () => {
     const integrity = await query.get('PRAGMA integrity_check');
     expect(String(Object.values(integrity)[0]).toLowerCase()).toBe('ok');
   });
+
+  it('conserva solo las tres copias de emergencia más recientes', async () => {
+    const backup = await createBackup();
+    expect(backup.success).toBe(true);
+    expect(backup.path).toBeTruthy();
+
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const result = await restoreBackup(backup.path!);
+      expect(result.success).toBe(true);
+      await new Promise(resolve => setTimeout(resolve, 2));
+    }
+
+    const emergencyBackups = listBackups().filter(item => item.name.startsWith('emergency_before_restore_'));
+    expect(emergencyBackups).toHaveLength(3);
+  });
 });
