@@ -1,6 +1,7 @@
 import sqlite3 from 'sqlite3';
 import path from 'path';
 import fs from 'fs';
+import { AsyncLocalStorage } from 'async_hooks';
 
 export const DB_PATH = process.env.DATABASE_PATH || path.join(path.resolve(__dirname, '../../../data'), 'database.sqlite');
 const DB_DIR = path.dirname(DB_PATH);
@@ -19,48 +20,84 @@ db.serialize(() => {
   db.run("PRAGMA foreign_keys = ON;");
 });
 
+const transactionScope = new AsyncLocalStorage<boolean>();
+let operationQueue: Promise<void> = Promise.resolve();
+
+function rawRun(sql: string, params: any[] = []): Promise<{ lastID: number; changes: number }> {
+  return new Promise((resolve, reject) => {
+    db.run(sql, params, function (err) {
+      if (err) reject(err);
+      else resolve({ lastID: this.lastID, changes: this.changes });
+    });
+  });
+}
+
+function rawGet(sql: string, params: any[] = []): Promise<any> {
+  return new Promise((resolve, reject) => {
+    db.get(sql, params, (err, row) => {
+      if (err) reject(err);
+      else resolve(row);
+    });
+  });
+}
+
+function rawAll(sql: string, params: any[] = []): Promise<any[]> {
+  return new Promise((resolve, reject) => {
+    db.all(sql, params, (err, rows) => {
+      if (err) reject(err);
+      else resolve(rows);
+    });
+  });
+}
+
+function enqueueDbOperation<T>(operation: () => Promise<T>): Promise<T> {
+  if (transactionScope.getStore()) {
+    return operation();
+  }
+
+  const result = operationQueue.then(operation, operation);
+  operationQueue = result.then(() => undefined, () => undefined);
+  return result;
+}
+
 // Helper para envolver sqlite3 en promesas
 export const query = {
   run(sql: string, params: any[] = []): Promise<{ lastID: number; changes: number }> {
-    return new Promise((resolve, reject) => {
-      db.run(sql, params, function (err) {
-        if (err) reject(err);
-        else resolve({ lastID: this.lastID, changes: this.changes });
-      });
-    });
+    return enqueueDbOperation(() => rawRun(sql, params));
   },
   get(sql: string, params: any[] = []): Promise<any> {
-    return new Promise((resolve, reject) => {
-      db.get(sql, params, (err, row) => {
-        if (err) reject(err);
-        else resolve(row);
-      });
-    });
+    return enqueueDbOperation(() => rawGet(sql, params));
   },
   all(sql: string, params: any[] = []): Promise<any[]> {
-    return new Promise((resolve, reject) => {
-      db.all(sql, params, (err, rows) => {
-        if (err) reject(err);
-        else resolve(rows);
-      });
-    });
+    return enqueueDbOperation(() => rawAll(sql, params));
   }
 };
+
+export function withTransaction<T>(operation: () => Promise<T>): Promise<T> {
+  return enqueueDbOperation(() => transactionScope.run(true, async () => {
+    await rawRun('BEGIN IMMEDIATE');
+    try {
+      const result = await operation();
+      await rawRun('COMMIT');
+      return result;
+    } catch (error) {
+      await rawRun('ROLLBACK');
+      throw error;
+    }
+  }));
+}
 
 export function closeDb(): Promise<void> {
   if (isDbClosed) return Promise.resolve();
 
-  return new Promise((resolve, reject) => {
+  return enqueueDbOperation(() => new Promise((resolve, reject) => {
     db.close((error) => {
-      if (error) {
-        reject(error);
-        return;
-      }
+      if (error) return reject(error);
 
       isDbClosed = true;
       resolve();
     });
-  });
+  }));
 }
 
 export async function initDb() {

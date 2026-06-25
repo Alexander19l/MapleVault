@@ -1,4 +1,4 @@
-import { query } from '../database/db';
+import { query, withTransaction } from '../database/db';
 import { logBotAction } from './actionAudit';
 import type { ActionComplete } from './actionExecutionTypes';
 import type {
@@ -27,8 +27,7 @@ export async function executeBatchUpdateStatusAction(actionData: BatchUpdateStat
   const completedAt = watchStatus === 'completed' ? new Date().toISOString().split('T')[0] : null;
   let updated = 0;
 
-  await query.run('BEGIN IMMEDIATE');
-  try {
+  await withTransaction(async () => {
     for (const animeId of animeIds) {
       const anime = await query.get('SELECT id, title, COALESCE(episodes, 0) as episodes FROM anime WHERE id = ?', [animeId]);
       if (!anime) throw new Error(`Anime inexistente: ${animeId}`);
@@ -52,12 +51,7 @@ export async function executeBatchUpdateStatusAction(actionData: BatchUpdateStat
 
       updated++;
     }
-
-    await query.run('COMMIT');
-  } catch (err) {
-    await query.run('ROLLBACK');
-    throw err;
-  }
+  });
 
   await logBotAction('batch_update_status', { updated, watchStatus }, 'SUCCESS');
   return complete('SUCCESS', `Listo. Actualicé ${updated} serie(s) a estado "${watchStatus}" en una operación atómica.`, { updated, watchStatus });
