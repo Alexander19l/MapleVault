@@ -25,7 +25,7 @@ Fortalezas:
 Limitaciones:
 
 - Muchas intenciones existen en el parser pero no todas tienen handler completo.
-- `SYNC_EPISODES`, `CANCEL_SYNC`, `SYNC_SUMMARY`, ordenamiento y apertura de episodios requieren handlers
+- `SYNC_EPISODES`, ordenamiento y apertura de episodios requieren handlers
   completos antes de considerarlas capacidades habilitadas o cambiar su precedencia.
 - El scoring ya está separado, pero todavía puede evolucionar con estudios, formatos, duración y feedback conversacional.
 - Falta completar Kitsu como proveedor normalizado adicional.

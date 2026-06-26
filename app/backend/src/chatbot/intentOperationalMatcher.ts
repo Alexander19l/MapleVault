@@ -2,15 +2,15 @@ import type { NLPResult } from './types';
 import { cleanReference } from './intentReferenceUtils';
 
 export function matchSynchronizationIntent(normalizedMessage: string): string | undefined {
-  if (normalizedMessage.match(/sincroniza|actualiza( mis)? listas|sincronizacion|reintenta.*sincroniz/)) {
-    return 'SYNC_LIBRARY';
-  }
-  if (normalizedMessage.match(/actualiza.*metadatos/)) return 'SYNC_METADATA';
+  if (normalizedMessage.match(/cancela.*sincronizac/)) return 'CANCEL_SYNC';
+  if (normalizedMessage.match(/resumen.*sincronizac/)) return 'SYNC_SUMMARY';
   if (normalizedMessage.match(/actualiza.*capitulos|busca.*capitulos nuevos|verifica.*capitulos/)) {
     return 'SYNC_EPISODES';
   }
-  if (normalizedMessage.match(/cancela.*sincronizac/)) return 'CANCEL_SYNC';
-  if (normalizedMessage.match(/resumen.*sincronizac/)) return 'SYNC_SUMMARY';
+  if (normalizedMessage.match(/actualiza.*metadatos/)) return 'SYNC_METADATA';
+  if (normalizedMessage.match(/sincroniza|actualiza( mis)? listas|sincronizacion|reintenta.*sincroniz/)) {
+    return 'SYNC_LIBRARY';
+  }
   return undefined;
 }
 

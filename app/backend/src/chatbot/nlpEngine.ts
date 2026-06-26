@@ -194,6 +194,30 @@ export const INTENTS = [
     protected: false
   },
   {
+    id: 'sincronizar_biblioteca',
+    internalIntent: 'SYNC_LIBRARY',
+    description: 'Prepara una sincronizacion de metadatos con AniList y requiere confirmacion.',
+    example: 'sincroniza mi biblioteca',
+    entities: [],
+    protected: true
+  },
+  {
+    id: 'cancelar_sincronizacion',
+    internalIntent: 'CANCEL_SYNC',
+    description: 'Solicita detener la sincronizacion activa al terminar el elemento actual.',
+    example: 'cancela la sincronizacion',
+    entities: [],
+    protected: false
+  },
+  {
+    id: 'resumen_sincronizacion',
+    internalIntent: 'SYNC_SUMMARY',
+    description: 'Muestra progreso, actualizaciones y errores de la sincronizacion actual.',
+    example: 'resumen de sincronizacion',
+    entities: [],
+    protected: false
+  },
+  {
     id: 'ayuda',
     internalIntent: 'HELP',
     description: 'Muestra comandos disponibles generados desde capabilities.',

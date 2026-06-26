@@ -87,6 +87,8 @@ El sistema está orientado a privacidad local: la base de datos vive en el equip
   consultas generales y campos concretos de informacion de una serie.
 - `app/backend/src/chatbot/intentOperationalMatcher.ts`: deteccion pura de
   comandos de sincronizacion y operaciones sobre episodios.
+- `app/backend/src/chatbot/syncJobManager.ts`: estado y cancelacion cooperativa
+  del trabajo de sincronizacion de metadatos en segundo plano.
 - `app/backend/src/scraping`: AniList y fuentes externas.
 - `app/frontend/src/services/api.ts`: cliente HTTP centralizado.
 

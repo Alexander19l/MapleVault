@@ -527,6 +527,18 @@ describe('2. Pruebas de Integración - Comandos del Chatbot', async () => {
     expect(response.action?.type).toBe('sync_all');
   });
 
+  it('Informa cuando no hay sincronizacion activa para cancelar', async () => {
+    const response = await handleLocalIntent({ intent: 'CANCEL_SYNC', entities: {} });
+    expect(response.text).toContain('No hay una sincronización activa');
+    expect(response.action).toBeUndefined();
+  });
+
+  it('Muestra el estado de sincronizacion sin iniciar otro trabajo', async () => {
+    const response = await handleLocalIntent({ intent: 'SYNC_SUMMARY', entities: {} });
+    expect(response.text).toContain('Todavía no se ejecutó');
+    expect(response.action).toBeUndefined();
+  });
+
   it('Genera perfil de memoria, gustos y rastro del usuario desde SQLite', async () => {
     (db.query.get as any)
       .mockResolvedValueOnce({ count: 120 })

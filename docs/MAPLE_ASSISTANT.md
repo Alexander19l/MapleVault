@@ -40,6 +40,9 @@ El catálogo funcional vive en `app/backend/src/chatbot/nlpEngine.ts` como `INTE
 - `recomendar_series`: recomienda por género, historial y preferencias.
 - `marcar_episodio_visto`: prepara el cambio de progreso de un episodio y requiere confirmación.
 - `siguiente_episodio_pendiente`: consulta el siguiente episodio de las series en progreso.
+- `sincronizar_biblioteca`: actualiza metadatos en un trabajo controlado y requiere confirmación.
+- `cancelar_sincronizacion`: solicita detener el trabajo al finalizar el elemento actual.
+- `resumen_sincronizacion`: muestra progreso, actualizaciones y errores del trabajo.
 - `ayuda`: genera ayuda desde capabilities.
 
 ## Memoria
@@ -161,6 +164,9 @@ no me recomiendes el 2
 que recuerdas de mis gustos
 marca el episodio 3 de Naruto como visto
 siguiente capitulo pendiente
+sincroniza mi biblioteca
+resumen de sincronizacion
+cancela la sincronizacion
 ```
 
 ## Evaluacion De Prompts

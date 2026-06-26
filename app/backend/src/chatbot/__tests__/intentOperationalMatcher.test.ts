@@ -11,9 +11,16 @@ describe('chatbot/intentOperationalMatcher', () => {
     ['sincroniza mi biblioteca', 'SYNC_LIBRARY'],
     ['actualiza mis listas', 'SYNC_LIBRARY'],
     ['actualiza metadatos', 'SYNC_METADATA'],
-    ['busca capitulos nuevos', 'SYNC_EPISODES']
+    ['busca capitulos nuevos', 'SYNC_EPISODES'],
+    ['cancela la sincronizacion', 'CANCEL_SYNC'],
+    ['resumen de sincronizacion', 'SYNC_SUMMARY']
   ])('detecta operacion de sincronizacion: %s', (input, intent) => {
     expect(matchSynchronizationIntent(normalizeEntityText(input))).toBe(intent);
+  });
+
+  it('prioriza cancelar y resumir sobre la regla generica de sincronizacion', () => {
+    expect(matchSynchronizationIntent('cancela la sincronizacion')).toBe('CANCEL_SYNC');
+    expect(matchSynchronizationIntent('resumen de sincronizacion')).toBe('SYNC_SUMMARY');
   });
 
   it.each([

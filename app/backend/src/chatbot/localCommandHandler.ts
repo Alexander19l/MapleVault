@@ -54,6 +54,7 @@ import {
   showPagedAnimeResultsPage
 } from './resultPagination';
 import { handleSearchAnime } from './searchCommandHandler';
+import { handleCancelSync, handleSyncSummary } from './syncCommandHandler';
 
 export type { ChatResponse } from './chatResponse';
 
@@ -209,6 +210,14 @@ async function handleLocalIntentInternal(nlp: NLPResult): Promise<ChatResponse> 
       case 'SYNC_LIBRARY':
       case 'SYNC_METADATA': {
         return handleSyncMetadata();
+      }
+
+      case 'CANCEL_SYNC': {
+        return handleCancelSync();
+      }
+
+      case 'SYNC_SUMMARY': {
+        return handleSyncSummary();
       }
 
       case 'FIND_DUPLICATES': {
