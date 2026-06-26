@@ -1,25 +1,21 @@
 import express from 'express';
 import cors from 'cors';
-import fs from 'fs';
-import path from 'path';
-import { initDb, query, DB_PATH } from './database/db';
+import { initDb, query } from './database/db';
 import { searchAniList, getAniListAnimeById, syncSeasonFromAniList, saveNormalizedAnimeToLocal, getAnimeAV1Slug, getAnimeAV1Episodes, getAnimeAV1Embeds, getTioAnimeSlug, getTioAnimeEpisodes, getTioAnimeServers, getAnimeFLVSlug, getAnimeFLVEpisodes, getAnimeFLVServers, getJKAnimeSlug, getJKAnimeEpisodes, getJKAnimeServers, logScraping } from './scraping/scraper';
 import { getLocalRecommendations } from './recommendations/recommender';
 import { handleChatMessage, executeChatbotAction, isAllowedChatbotAction } from './chatbot/chatbot';
 import { getMapleAssistantCapabilities } from './chatbot/capabilities';
 import { createRateLimitMiddleware } from './security/rateLimiter';
 import { createSessionAuthMiddleware } from './security/sessionAuth';
-import { validateAnimeInput, validateUserListInput, validateSearchFilters, validateId, validateLocalServiceUrl, validatePayloadSize } from './security/validators';
+import { validateAnimeInput, validateUserListInput, validateSearchFilters, validateId, validatePayloadSize } from './security/validators';
 import { sanitizeChatInput, sanitizeExternalAnime } from './security/sanitize';
 import { createBackup, listBackups } from './database/backup';
-import { getAISettings, setAISettings, resetAISettings } from './chatbot/aiSettings';
-import { buildUserSoulProfile, clearAllMemory, getUserSoulData, seedInitialMemory } from './chatbot/memory';
+import { buildUserSoulProfile, clearAllMemory, getUserSoulData } from './chatbot/memory';
 import { decorateAnimeListWithSpanishTranslation, decorateAnimeWithSpanishTranslation } from './translation/translationService';
-import { ensureLibreTranslateRunning, getLibreTranslateRuntimeStatus, stopLibreTranslateRuntime } from './translation/translationRuntime';
-import { enforceSupportedAppearance } from './settings/settingsPolicy';
+import { ensureLibreTranslateRunning, stopLibreTranslateRuntime } from './translation/translationRuntime';
 import { createBackupRouter } from './routes/backupRoutes';
+import { createSettingsRouter } from './routes/settingsRoutes';
 import { createSystemRouter } from './routes/systemRoutes';
-import axios from 'axios';
 
 const app = express();
 const parsedPort = Number.parseInt(process.env.PORT || '5000', 10);
@@ -65,17 +61,12 @@ app.use(createSessionAuthMiddleware());
 // Rate limiting general
 app.use(createRateLimitMiddleware('general'));
 
-const DATA_DIR = path.dirname(DB_PATH);
-const SETTINGS_PATH = path.join(DATA_DIR, 'settings.json');
 const DASHBOARD_SUMMARY_CACHE_KEY = 'dashboard:summary';
 const SEASON_SUMMARY_CACHE_KEY = 'seasons:summary';
 const RECOMMENDATIONS_CACHE_KEY = 'recommendations:local';
 const SUMMARY_CACHE_TTL_MS = Number(process.env.MAPLEVAULT_SUMMARY_CACHE_TTL_MS || 30_000);
 
 const responseCache = new Map<string, { expiresAt: number; value: any }>();
-
-// Asegurar directorios
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 function getCachedResponse<T>(key: string): T | null {
   const cached = responseCache.get(key);
@@ -101,73 +92,8 @@ function invalidateLibraryReadCaches() {
 }
 
 app.use(createBackupRouter({ invalidateLibraryReadCaches }));
+app.use(createSettingsRouter());
 app.use(createSystemRouter());
-
-function defaultAppSettings() {
-  return {
-    theme: 'dark',
-    language: 'es',
-    closeBehavior: 'ask',
-    translation: {
-      enabled: process.env.NODE_ENV !== 'test' && process.env.VITEST !== 'true',
-      autoStart: process.env.NODE_ENV !== 'test' && process.env.VITEST !== 'true',
-      provider: 'libretranslate',
-      url: process.env.LIBRETRANSLATE_URL || 'http://localhost:5001',
-      apiKey: process.env.LIBRETRANSLATE_API_KEY || '',
-      timeoutMs: Number(process.env.LIBRETRANSLATE_TIMEOUT_MS || 5000),
-      cacheEnabled: true,
-      translateSynopsis: true,
-      translateGenres: true,
-      translateStatuses: true
-    }
-  };
-}
-
-function normalizeTranslationSettingsForStorage(raw: any, fallback: any) {
-  const candidateUrl = String(raw?.url || fallback?.url || 'http://localhost:5001').trim();
-  const validatedUrl = validateLocalServiceUrl(candidateUrl);
-  const fallbackUrl = validateLocalServiceUrl(fallback?.url || 'http://localhost:5001');
-  const url = validatedUrl.valid ? validatedUrl.url : fallbackUrl.url || 'http://localhost:5001';
-
-  return {
-    enabled: typeof raw?.enabled === 'boolean' ? raw.enabled : fallback?.enabled ?? true,
-    autoStart: typeof raw?.autoStart === 'boolean' ? raw.autoStart : fallback?.autoStart ?? true,
-    provider: 'libretranslate',
-    url,
-    apiKey: typeof raw?.apiKey === 'string' ? raw.apiKey.slice(0, 500) : fallback?.apiKey || '',
-    timeoutMs: Number.isFinite(Number(raw?.timeoutMs))
-      ? Math.min(Math.max(Number(raw.timeoutMs), 3000), 15000)
-      : fallback?.timeoutMs || 5000,
-    cacheEnabled: typeof raw?.cacheEnabled === 'boolean' ? raw.cacheEnabled : fallback?.cacheEnabled ?? true,
-    translateSynopsis: typeof raw?.translateSynopsis === 'boolean' ? raw.translateSynopsis : fallback?.translateSynopsis ?? true,
-    translateGenres: typeof raw?.translateGenres === 'boolean' ? raw.translateGenres : fallback?.translateGenres ?? true,
-    translateStatuses: typeof raw?.translateStatuses === 'boolean' ? raw.translateStatuses : fallback?.translateStatuses ?? true
-  };
-}
-
-// Cargar o crear configuracin por defecto
-function loadSettings() {
-  const defaults = defaultAppSettings();
-  if (!fs.existsSync(SETTINGS_PATH)) {
-    fs.writeFileSync(SETTINGS_PATH, JSON.stringify(defaults, null, 2), 'utf8');
-    return defaults;
-  }
-  try {
-    const stored = JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'));
-    const normalized = enforceSupportedAppearance({
-      ...defaults,
-      ...stored,
-      translation: normalizeTranslationSettingsForStorage(stored.translation, defaults.translation)
-    });
-    if (stored.theme !== 'dark' || stored.language !== 'es') {
-      fs.writeFileSync(SETTINGS_PATH, JSON.stringify(normalized, null, 2), 'utf8');
-    }
-    return normalized;
-  } catch (err) {
-    fs.writeFileSync(SETTINGS_PATH, JSON.stringify(defaults, null, 2), 'utf8');
-    return defaults;
-  }
-}
 
 function validateBodySize(res: express.Response, body: unknown): boolean {
   if (!validatePayloadSize(body)) {
@@ -1176,129 +1102,9 @@ app.post('/chat/memory/profile', async (_req, res) => {
   }
 });
 
-// GET /settings/ai - Obtener configuracin de IA
-app.get('/settings/ai', async (req, res) => {
-  try {
-    const settings = await getAISettings();
-    res.json(settings);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST /settings/ai - Guardar configuracin de IA
-app.post('/settings/ai', async (req, res) => {
-  try {
-    const validatedUrl = validateLocalServiceUrl(req.body?.url);
-    if (!validatedUrl.valid) {
-      return res.status(400).json({ error: validatedUrl.reason });
-    }
-    await setAISettings(req.body);
-    res.json({ success: true });
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
-  }
-});
-
-// DELETE /settings/ai - Restablecer configuracin de IA
-app.delete('/settings/ai', async (req, res) => {
-  try {
-    await resetAISettings();
-    res.json({ success: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST /settings/ai/seed - Generar memoria inicial
-app.post('/settings/ai/seed', async (req, res) => {
-  try {
-    await seedInitialMemory();
-    const profile = await buildUserSoulProfile();
-    res.json({ message: 'Memoria inicial y perfil de gustos generados con éxito.', profile });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST /settings/ai/test - Probar conexión con Ollama
-app.post('/settings/ai/test', async (req, res) => {
-  try {
-    const { url, provider, model } = req.body;
-    const validatedUrl = validateLocalServiceUrl(url);
-    if (!validatedUrl.valid) {
-      return res.status(400).json({ success: false, message: validatedUrl.reason });
-    }
-
-    let endpoint = `${validatedUrl.url}/api/tags`;
-    if (provider !== 'ollama') {
-       // Si es llama.cpp o LM Studio normalmente responden en /v1/models o solo queremos ver si levanta HTTP
-       endpoint = `${validatedUrl.url}/v1/models`;
-    }
-    
-    // Test simple de red
-    const result = await axios.get(endpoint, { timeout: 3000, maxRedirects: 0 });
-
-    // Si es Ollama, validar si el modelo solicitado está instalado
-    if (provider === 'ollama' && model) {
-      const models = result.data.models || [];
-      const modelExists = models.some((m: any) => m.name === model || m.name.startsWith(model + ':'));
-      if (!modelExists) {
-        return res.status(400).json({ 
-          success: false, 
-          message: `Ollama está conectado, pero no se encontró el modelo "${model}".\nAbre tu terminal e instala el modelo ejecutando:\nollama run ${model}` 
-        });
-      }
-    }
-
-    res.json({ success: true, message: 'Conexin establecida correctamente.' });
-  } catch (err: any) {
-    res.status(400).json({ success: false, message: 'Error de conexión: ' + err.message });
-  }
-});
-
 // ==========================================
 // 6. AJUSTES, EXPORTACIN E IMPORTACIN
 // ==========================================
-
-// GET /settings - Ver ajustes
-app.get('/settings', (req, res) => {
-  const settings = loadSettings();
-  res.json(settings);
-});
-
-// POST /settings - Guardar ajustes
-app.post('/settings', (req, res) => {
-  try {
-    if (!validateBodySize(res, req.body)) return;
-    if (req.body?.translation?.url !== undefined) {
-      const validatedUrl = validateLocalServiceUrl(req.body.translation.url);
-      if (!validatedUrl.valid) {
-        return res.status(400).json({ error: validatedUrl.reason });
-      }
-    }
-    const current = loadSettings();
-    const allowedCloseBehaviors = new Set(['ask', 'minimize', 'quit']);
-    const newSettings = enforceSupportedAppearance({
-      ...current,
-      closeBehavior: allowedCloseBehaviors.has(req.body?.closeBehavior) ? req.body.closeBehavior : current.closeBehavior || 'ask',
-      translation: normalizeTranslationSettingsForStorage(req.body?.translation, current.translation)
-    });
-    fs.writeFileSync(SETTINGS_PATH, JSON.stringify(newSettings, null, 2), 'utf8');
-    res.json({ message: 'Ajustes guardados con éxito' });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// GET /translation/status - Estado del servicio de traduccion local
-app.get('/translation/status', async (_req, res) => {
-  try {
-    res.json(await getLibreTranslateRuntimeStatus());
-  } catch (err: any) {
-    res.status(500).json({ state: 'error', error: err.message });
-  }
-});
 
 // POST /settings/export - Exportar catlogo completo a JSON
 app.post('/settings/export', async (req, res) => {
