@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { initDb, query } from './database/db';
-import { searchAniList, getAniListAnimeById, syncSeasonFromAniList, saveNormalizedAnimeToLocal, getAnimeAV1Slug, getAnimeAV1Episodes, getAnimeAV1Embeds, getTioAnimeSlug, getTioAnimeEpisodes, getTioAnimeServers, getAnimeFLVSlug, getAnimeFLVEpisodes, getAnimeFLVServers, getJKAnimeSlug, getJKAnimeEpisodes, getJKAnimeServers, logScraping } from './scraping/scraper';
+import { searchAniList, getAniListAnimeById, saveNormalizedAnimeToLocal, getAnimeAV1Slug, getAnimeAV1Episodes, getAnimeAV1Embeds, getTioAnimeSlug, getTioAnimeEpisodes, getTioAnimeServers, getAnimeFLVSlug, getAnimeFLVEpisodes, getAnimeFLVServers, getJKAnimeSlug, getJKAnimeEpisodes, getJKAnimeServers } from './scraping/scraper';
 import { getLocalRecommendations } from './recommendations/recommender';
 import { handleChatMessage, executeChatbotAction, isAllowedChatbotAction } from './chatbot/chatbot';
 import { getMapleAssistantCapabilities } from './chatbot/capabilities';
@@ -18,6 +18,7 @@ import { validateAnimePayload } from './anime/animePayload';
 import { createBackupRouter } from './routes/backupRoutes';
 import { createDataTransferRouter } from './routes/dataTransferRoutes';
 import { createSettingsRouter } from './routes/settingsRoutes';
+import { createScrapingRouter } from './routes/scrapingRoutes';
 import { createSystemRouter } from './routes/systemRoutes';
 
 const app = express();
@@ -97,6 +98,7 @@ function invalidateLibraryReadCaches() {
 app.use(createBackupRouter({ invalidateLibraryReadCaches }));
 app.use(createDataTransferRouter({ invalidateLibraryReadCaches }));
 app.use(createSettingsRouter());
+app.use(createScrapingRouter({ invalidateLibraryReadCaches }));
 app.use(createSystemRouter());
 
 function validateBodySize(res: express.Response, body: unknown): boolean {
@@ -852,118 +854,6 @@ app.get('/search', async (req, res) => {
     const externals = await searchAniList(String(q));
     const translatedExternals = await decorateAnimeListWithSpanishTranslation(externals, { maxRowsToTranslate: 10 });
     res.json(translatedExternals);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST /scraping/sync-season - Sincronizar toda una temporada
-app.post('/scraping/sync-season', async (req, res) => {
-  try {
-    const { year, season } = req.body;
-    if (!year || !season) {
-      return res.status(400).json({ error: 'year y season son requeridos' });
-    }
-
-    const list = await syncSeasonFromAniList(parseInt(year), season);
-    let savedCount = 0;
-    
-    for (const anime of list) {
-      await saveNormalizedAnimeToLocal(anime);
-      savedCount++;
-    }
-
-    invalidateLibraryReadCaches();
-    res.json({ message: `Sincronización completada. Se añadieron o actualizaron ${savedCount} animes.`, count: savedCount });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST /scraping/sync-years - Scraping masivo desde año X hasta año actual
-app.post('/scraping/sync-years', async (req, res) => {
-  try {
-    const { startYear } = req.body;
-    if (!startYear) {
-      return res.status(400).json({ error: 'El año de inicio (startYear) es requerido.' });
-    }
-    const parsedStart = parseInt(startYear, 10);
-    const currentYear = new Date().getFullYear();
-    if (isNaN(parsedStart) || parsedStart < 1970 || parsedStart > currentYear) {
-      return res.status(400).json({ error: 'Año de inicio no válido.' });
-    }
-
-    // Ejecución asíncrona en segundo plano para no bloquear
-    (async () => {
-      await logScraping('Massive Scraping', `Sincronización masiva desde ${parsedStart}`, 'started', `Iniciando importación desde el año ${parsedStart} hasta ${currentYear}`);
-      const seasons = ['winter', 'spring', 'summer', 'fall'];
-      let totalImported = 0;
-      
-      for (let y = parsedStart; y <= currentYear; y++) {
-        for (const s of seasons) {
-          try {
-            console.log(`[Massive Scraping] Sincronizando ${y} ${s}...`);
-            const list = await syncSeasonFromAniList(y, s);
-            let saved = 0;
-            for (const anime of list) {
-              await saveNormalizedAnimeToLocal(anime);
-              saved++;
-            }
-            if (saved > 0) invalidateLibraryReadCaches();
-            totalImported += saved;
-            await logScraping('Massive Scraping', `Sincronización masiva: ${y} ${s}`, 'success', `Sincronizados ${saved} animes.`);
-          } catch (err: any) {
-            console.error(`Error en scraping masivo para ${y} ${s}:`, err.message);
-            await logScraping('Massive Scraping', `Sincronización masiva: ${y} ${s}`, 'error', `Fallo: ${err.message}`);
-          }
-        }
-      }
-      invalidateLibraryReadCaches();
-      await logScraping('Massive Scraping', `Sincronización masiva terminada`, 'success', `Sincronización masiva completada. Total de animes importados/actualizados: ${totalImported}`);
-    })();
-
-    res.json({ message: `Scraping masivo iniciado en segundo plano desde el año ${parsedStart} hasta ${currentYear}. Puedes ver el progreso en los logs de scraping.` });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// GET /scraping/logs - Obtener logs de scraping
-app.get('/scraping/logs', async (req, res) => {
-  try {
-    const logs = await query.all('SELECT * FROM scraping_logs ORDER BY id DESC LIMIT 50');
-    res.json(logs);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// GET /scraping/sources - Obtener fuentes
-app.get('/scraping/sources', async (req, res) => {
-  try {
-    const sources = await query.all('SELECT * FROM sources');
-    res.json(sources);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// PUT /scraping/sources/:id - Modificar fuente
-app.put('/scraping/sources/:id', async (req, res) => {
-  try {
-    const id = getValidatedId(req.params.id, res);
-    if (!id) return;
-    const { enabled, rate_limit } = req.body;
-    const safeRateLimit = Number(rate_limit);
-    if (!Number.isInteger(safeRateLimit) || safeRateLimit < 250 || safeRateLimit > 60000) {
-      return res.status(400).json({ error: 'rate_limit debe ser un entero entre 250 y 60000 ms.' });
-    }
-    await query.run(`
-      UPDATE sources
-      SET enabled = ?, rate_limit = ?, last_sync = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `, [enabled ? 1 : 0, safeRateLimit, id]);
-    res.json({ message: 'Fuente actualizada con éxito' });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

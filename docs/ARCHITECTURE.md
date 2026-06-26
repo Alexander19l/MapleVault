@@ -32,6 +32,8 @@ El sistema está orientado a privacidad local: la base de datos vive en el equip
   IA, memoria inicial y estado de traduccion.
 - `app/backend/src/routes/dataTransferRoutes.ts`: exportacion e importacion de
   catalogo manteniendo las rutas publicas `/settings/export` y `/settings/import`.
+- `app/backend/src/routes/scrapingRoutes.ts`: sincronizacion de temporadas,
+  scraping masivo, logs y configuracion de fuentes.
 - `app/backend/src/anime`: helpers compartidos de payloads y filas de anime.
 - `app/backend/src/settings/appSettings.ts`: lectura, normalizacion y escritura
   de `settings.json`.
@@ -92,7 +94,7 @@ minutos para reducir latencia y solicitudes repetidas.
 
 ## Deuda Tecnica Restante
 
-- `server.ts` aun concentra rutas de catalogo, scraping y asistente;
+- `server.ts` aun concentra rutas de catalogo, busqueda externa, episodios y asistente;
   debe seguir separandose en routes/services/repositories.
 - Las fuentes de scraping dependen de HTML externo y deben aislarse tras una interfaz de provider.
 - Conviene migrar validacion a esquemas compartidos con frontend si el proyecto crece.

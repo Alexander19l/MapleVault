@@ -155,7 +155,7 @@ test.describe('Maple Assistant', () => {
     await page.goto('http://127.0.0.1:5173');
     await page.getByRole('button', { name: /Abrir Maple Assistant/i }).click();
 
-    await expect(page.getByText('Maple Assistant')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Maple Assistant' })).toBeVisible();
     await expect(page.getByText('Motor local activo')).toBeVisible();
 
     const input = page.getByPlaceholder('Escribe un mensaje...');

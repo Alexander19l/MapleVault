@@ -84,7 +84,7 @@ test('settings creates and restores SQLite backups without submitting the settin
   await page.goto('http://127.0.0.1:5173');
   await page.getByRole('button', { name: /Ajustes/i }).click();
 
-  await expect(page.getByText('Copias SQLite disponibles')).toBeVisible();
+  await expect(page.getByText('Copias SQLite disponibles', { exact: true })).toBeVisible();
   await expect(page.getByText(backups[0].name)).toBeVisible();
 
   await page.getByRole('button', { name: 'Respaldar DB SQLite' }).click();
@@ -100,7 +100,7 @@ test('settings creates and restores SQLite backups without submitting the settin
   expect(settingsSaveCount).toBe(0);
 
   await page.setViewportSize({ width: 720, height: 800 });
-  await expect(page.getByText('Copias SQLite disponibles')).toBeVisible();
+  await expect(page.getByText('Copias SQLite disponibles', { exact: true })).toBeVisible();
   const hasHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth
   );
