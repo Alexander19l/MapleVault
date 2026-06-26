@@ -20,7 +20,7 @@
   "includeSubNodeModules": true,
   "win": {
     "target": ["nsis"],
-    "icon": "app/desktop/assets/icon.png"
+    "icon": "app/desktop/assets/icon.ico"
   },
   "linux": {
     "target": ["AppImage", "deb"],

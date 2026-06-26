@@ -7,13 +7,16 @@ import { handleChatMessage, executeChatbotAction, isAllowedChatbotAction } from 
 import { getMapleAssistantCapabilities } from './chatbot/capabilities';
 import { createRateLimitMiddleware } from './security/rateLimiter';
 import { createSessionAuthMiddleware } from './security/sessionAuth';
-import { validateAnimeInput, validateUserListInput, validateSearchFilters, validateId, validatePayloadSize } from './security/validators';
-import { sanitizeChatInput, sanitizeExternalAnime } from './security/sanitize';
+import { validateUserListInput, validateSearchFilters, validateId, validatePayloadSize } from './security/validators';
+import { sanitizeChatInput } from './security/sanitize';
 import { createBackup, listBackups } from './database/backup';
 import { buildUserSoulProfile, clearAllMemory, getUserSoulData } from './chatbot/memory';
 import { decorateAnimeListWithSpanishTranslation, decorateAnimeWithSpanishTranslation } from './translation/translationService';
 import { ensureLibreTranslateRunning, stopLibreTranslateRuntime } from './translation/translationRuntime';
+import { attachJoinedGenres } from './anime/animeRows';
+import { validateAnimePayload } from './anime/animePayload';
 import { createBackupRouter } from './routes/backupRoutes';
+import { createDataTransferRouter } from './routes/dataTransferRoutes';
 import { createSettingsRouter } from './routes/settingsRoutes';
 import { createSystemRouter } from './routes/systemRoutes';
 
@@ -92,6 +95,7 @@ function invalidateLibraryReadCaches() {
 }
 
 app.use(createBackupRouter({ invalidateLibraryReadCaches }));
+app.use(createDataTransferRouter({ invalidateLibraryReadCaches }));
 app.use(createSettingsRouter());
 app.use(createSystemRouter());
 
@@ -110,33 +114,6 @@ function getValidatedId(rawId: unknown, res: express.Response): number | null {
     return null;
   }
   return id;
-}
-
-function validateAnimePayload(raw: any, requireTitle = true): { valid: boolean; errors: string[]; data: any } {
-  const externalSafe = sanitizeExternalAnime(raw || {});
-  const validation = validateAnimeInput(externalSafe);
-  const errors = [...validation.errors];
-
-  if (requireTitle && !externalSafe.title) {
-    errors.push('El título es requerido.');
-  }
-
-  return {
-    valid: errors.length === 0,
-    errors,
-    data: { ...externalSafe, ...validation.sanitized }
-  };
-}
-
-function attachJoinedGenres(rows: any[]): any[] {
-  return rows.map(row => {
-    const genres = String(row.genres_joined || '')
-      .split(',')
-      .map(genre => genre.trim())
-      .filter(Boolean);
-    const { genres_joined: _genresJoined, ...rest } = row;
-    return { ...rest, genres };
-  });
 }
 
 function buildAnimeFilterClause(filters: Record<string, any>, adult: 'only' | 'include' | undefined) {
@@ -1097,113 +1074,6 @@ app.post('/chat/memory/profile', async (_req, res) => {
   try {
     const profile = await buildUserSoulProfile();
     res.json({ message: 'Perfil de memoria, gustos y alma generado con éxito.', profile });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ==========================================
-// 6. AJUSTES, EXPORTACIN E IMPORTACIN
-// ==========================================
-
-// POST /settings/export - Exportar catlogo completo a JSON
-app.post('/settings/export', async (req, res) => {
-  try {
-    const animes = attachJoinedGenres(await query.all(`
-      SELECT a.*, GROUP_CONCAT(DISTINCT g.name) as genres_joined
-      FROM anime a
-      LEFT JOIN anime_genres ag ON a.id = ag.anime_id
-      LEFT JOIN genres g ON ag.genre_id = g.id
-      GROUP BY a.id
-      ORDER BY a.id ASC
-    `));
-    const userList = await query.all('SELECT * FROM user_list');
-
-    const exportData = {
-      version: '1.0.0',
-      exportedAt: new Date().toISOString(),
-      animes,
-      userList
-    };
-
-    res.json(exportData);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST /settings/import - Importar catlogo desde JSON
-app.post('/settings/import', async (req, res) => {
-  try {
-    if (!validateBodySize(res, req.body)) return;
-    const { animes, userList } = req.body;
-    
-    if (!animes || !Array.isArray(animes)) {
-      return res.status(400).json({ error: 'Formato de importacin invlido' });
-    }
-
-    let importedAnimes = 0;
-    let importedUserItems = 0;
-
-    for (const a of animes) {
-      const validation = validateAnimePayload(a);
-      if (!validation.valid) {
-        continue;
-      }
-      const safeAnime = validation.data;
-      // 1. Guardar o actualizar anime
-      const animeId = await saveNormalizedAnimeToLocal({
-        external_id: safeAnime.external_id || safeAnime.id || null,
-        source: safeAnime.source || 'Import',
-        title: safeAnime.title,
-        title_romaji: safeAnime.title_romaji,
-        title_english: safeAnime.title_english,
-        title_japanese: safeAnime.title_japanese,
-        synopsis: safeAnime.synopsis,
-        year: safeAnime.year,
-        season: safeAnime.season,
-        status: safeAnime.status,
-        type: safeAnime.type,
-        episodes: safeAnime.episodes,
-        duration: safeAnime.duration,
-        score: safeAnime.score,
-        popularity: safeAnime.popularity,
-        cover_image: safeAnime.cover_image,
-        banner_image: safeAnime.banner_image,
-        studio: safeAnime.studio,
-        source_material: safeAnime.source_material,
-        start_date: safeAnime.start_date,
-        end_date: safeAnime.end_date,
-        genres: safeAnime.genres || []
-      });
-      importedAnimes++;
-
-      // 2. Si el anime estaba en el userList importado, agregarlo
-      const userItem = userList?.find((u: any) => u.anime_id === a.id);
-      if (userItem) {
-        const userValidation = validateUserListInput({ ...userItem, anime_id: animeId });
-        if (!userValidation.valid) continue;
-        await query.run(`
-          INSERT INTO user_list (anime_id, watch_status, favorite, user_score, episodes_watched, notes, started_at, completed_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT(anime_id) DO UPDATE SET
-            watch_status = excluded.watch_status,
-            favorite = excluded.favorite,
-            user_score = excluded.user_score,
-            episodes_watched = excluded.episodes_watched,
-            notes = excluded.notes,
-            started_at = excluded.started_at,
-            completed_at = excluded.completed_at,
-            updated_at = CURRENT_TIMESTAMP
-        `, [
-          animeId, userItem.watch_status, userItem.favorite, userItem.user_score,
-          userItem.episodes_watched, userItem.notes, userItem.started_at, userItem.completed_at
-        ]);
-        importedUserItems++;
-      }
-    }
-
-    res.json({ message: `Importación completada. Se importaron ${importedAnimes} animes y ${importedUserItems} elementos de lista.` });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

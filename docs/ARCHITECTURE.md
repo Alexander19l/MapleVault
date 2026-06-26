@@ -18,6 +18,8 @@ El sistema está orientado a privacidad local: la base de datos vive en el equip
 ## Componentes
 
 - `app/desktop/electron/main.ts`: ciclo de vida de Electron, backend embebido, IPC y ventanas.
+- `app/desktop/electron/desktopAssets.ts`: resolucion de assets de escritorio
+  usados por ventanas, bandeja del sistema e instalador.
 - `app/desktop/electron/preload.ts`: API segura expuesta al renderer por `contextBridge`.
 - `app/backend/src/server.ts`: API HTTP local.
 - `app/backend/src/database/db.ts`: conexion SQLite, tablas y migraciones simples.
@@ -28,6 +30,9 @@ El sistema está orientado a privacidad local: la base de datos vive en el equip
   diagnostico con dependencias inyectables para pruebas unitarias.
 - `app/backend/src/routes/settingsRoutes.ts`: contrato HTTP de ajustes de app,
   IA, memoria inicial y estado de traduccion.
+- `app/backend/src/routes/dataTransferRoutes.ts`: exportacion e importacion de
+  catalogo manteniendo las rutas publicas `/settings/export` y `/settings/import`.
+- `app/backend/src/anime`: helpers compartidos de payloads y filas de anime.
 - `app/backend/src/settings/appSettings.ts`: lectura, normalizacion y escritura
   de `settings.json`.
 - `app/backend/src/security`: validadores, sanitizacion y rate limiting.
@@ -87,7 +92,7 @@ minutos para reducir latencia y solicitudes repetidas.
 
 ## Deuda Tecnica Restante
 
-- `server.ts` aun concentra rutas de catalogo, scraping, transferencia de datos y asistente;
+- `server.ts` aun concentra rutas de catalogo, scraping y asistente;
   debe seguir separandose en routes/services/repositories.
 - Las fuentes de scraping dependen de HTML externo y deben aislarse tras una interfaz de provider.
 - Conviene migrar validacion a esquemas compartidos con frontend si el proyecto crece.

@@ -13,6 +13,7 @@ import {
   getDatabasePaths
 } from './launcher';
 import { initPlayerProtection, setPlayerProtectionMainWindow } from './adblock/playerProtection';
+import { resolveDesktopAssetPath, resolveWindowIconPath } from './desktopAssets';
 
 let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcess | null = null;
@@ -125,13 +126,7 @@ function startBackendProcess() {
 }
 
 function resolveTrayIconPath(): string {
-  const candidates = [
-    path.join(__dirname, '../../app/desktop/assets/icon.png'),
-    path.join(process.resourcesPath || '', 'app/desktop/assets/icon.png'),
-    path.join(process.cwd(), 'app/desktop/assets/icon.png')
-  ];
-
-  return candidates.find(candidate => fs.existsSync(candidate)) || candidates[0];
+  return resolveDesktopAssetPath('icon.png');
 }
 
 function restoreMainWindow() {
@@ -216,6 +211,7 @@ function createMainWindow() {
     minWidth: 1000,
     minHeight: 700,
     title: 'MapleVault',
+    icon: resolveWindowIconPath(),
     backgroundColor: '#0D0F14',
     show: false,
     frame: false,

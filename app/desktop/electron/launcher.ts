@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import axios from 'axios';
+import { resolveWindowIconPath } from './desktopAssets';
 
 let splashWindow: BrowserWindow | null = null;
 let errorWindow: BrowserWindow | null = null;
@@ -14,6 +15,7 @@ export function showSplash() {
     transparent: true,
     alwaysOnTop: true,
     resizable: false,
+    icon: resolveWindowIconPath(),
     backgroundColor: '#0D0F14',
     webPreferences: {
       preload: path.join(__dirname, 'launcherPreload.js'),
@@ -109,6 +111,7 @@ export function showErrorDiagnostics(errorMessage: string, onRetry: () => void) 
     height: 380,
     frame: false,
     resizable: false,
+    icon: resolveWindowIconPath(),
     backgroundColor: '#0D0F14',
     webPreferences: {
       preload: path.join(__dirname, 'launcherPreload.js'),
