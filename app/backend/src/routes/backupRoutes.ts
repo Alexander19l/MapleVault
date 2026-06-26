@@ -9,6 +9,7 @@ import {
   restoreBackup
 } from '../database/backup';
 import { DB_PATH } from '../database/db';
+import { getErrorMessage as getSharedErrorMessage } from './routeUtils';
 
 export interface BackupService {
   createBackup: typeof createBackup;
@@ -32,7 +33,7 @@ const defaultBackupService: BackupService = {
 };
 
 function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : 'Error interno al procesar la copia de seguridad.';
+  return getSharedErrorMessage(error, 'Error interno al procesar la copia de seguridad.');
 }
 
 export function createBackupRouter({

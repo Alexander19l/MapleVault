@@ -6,6 +6,7 @@ import {
   syncSeasonFromAniList
 } from '../scraping/scraper';
 import { validateId } from '../security/validators';
+import { getErrorMessage as getSharedErrorMessage } from './routeUtils';
 
 type QueryClient = Pick<typeof query, 'all' | 'run'>;
 
@@ -19,7 +20,7 @@ interface ScrapingRouterDependencies {
 }
 
 function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : 'Error interno en scraping.';
+  return getSharedErrorMessage(error, 'Error interno en scraping.');
 }
 
 export function createScrapingRouter({

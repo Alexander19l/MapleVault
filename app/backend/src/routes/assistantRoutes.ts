@@ -14,6 +14,7 @@ import {
 import { query } from '../database/db';
 import { createRateLimitMiddleware } from '../security/rateLimiter';
 import { sanitizeChatInput } from '../security/sanitize';
+import { getErrorMessage as getSharedErrorMessage } from './routeUtils';
 
 type QueryClient = Pick<typeof query, 'all' | 'run'>;
 
@@ -51,7 +52,7 @@ const defaultMemoryService: AssistantMemoryService = {
 };
 
 function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : 'Error interno en Maple Assistant.';
+  return getSharedErrorMessage(error, 'Error interno en Maple Assistant.');
 }
 
 function parseJsonField(value: unknown) {

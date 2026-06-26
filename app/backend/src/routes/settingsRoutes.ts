@@ -1,9 +1,8 @@
 import axios from 'axios';
 import { Router } from 'express';
-import type { Response } from 'express';
 import { getAISettings, resetAISettings, setAISettings } from '../chatbot/aiSettings';
 import { buildUserSoulProfile, seedInitialMemory } from '../chatbot/memory';
-import { validateLocalServiceUrl, validatePayloadSize } from '../security/validators';
+import { validateLocalServiceUrl } from '../security/validators';
 import {
   loadSettings,
   normalizeTranslationSettingsForStorage,
@@ -11,6 +10,10 @@ import {
 } from '../settings/appSettings';
 import { enforceSupportedAppearance } from '../settings/settingsPolicy';
 import { getLibreTranslateRuntimeStatus } from '../translation/translationRuntime';
+import {
+  getErrorMessage as getSharedErrorMessage,
+  validateBodySize
+} from './routeUtils';
 
 interface AISettingsService {
   getAISettings: typeof getAISettings;
@@ -65,15 +68,7 @@ const defaultTranslationRuntimeService: TranslationRuntimeService = {
 const allowedCloseBehaviors = new Set(['ask', 'minimize', 'quit']);
 
 function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : 'Error interno al guardar ajustes.';
-}
-
-function validateBodySize(res: Response, body: unknown): boolean {
-  if (!validatePayloadSize(body)) {
-    res.status(413).json({ error: 'Payload demasiado grande.' });
-    return false;
-  }
-  return true;
+  return getSharedErrorMessage(error, 'Error interno al guardar ajustes.');
 }
 
 export function createSettingsRouter({

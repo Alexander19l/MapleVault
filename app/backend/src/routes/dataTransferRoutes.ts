@@ -1,10 +1,13 @@
 import { Router } from 'express';
-import type { Response } from 'express';
 import { attachJoinedGenres } from '../anime/animeRows';
 import { validateAnimePayload } from '../anime/animePayload';
 import { query } from '../database/db';
 import { saveNormalizedAnimeToLocal } from '../scraping/scraper';
-import { validatePayloadSize, validateUserListInput } from '../security/validators';
+import { validateUserListInput } from '../security/validators';
+import {
+  getErrorMessage as getSharedErrorMessage,
+  validateBodySize
+} from './routeUtils';
 
 type QueryClient = Pick<typeof query, 'all' | 'run'>;
 
@@ -15,15 +18,7 @@ interface DataTransferDependencies {
 }
 
 function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : 'Error interno al transferir datos.';
-}
-
-function validateBodySize(res: Response, body: unknown): boolean {
-  if (!validatePayloadSize(body)) {
-    res.status(413).json({ error: 'Payload demasiado grande.' });
-    return false;
-  }
-  return true;
+  return getSharedErrorMessage(error, 'Error interno al transferir datos.');
 }
 
 export function createDataTransferRouter({

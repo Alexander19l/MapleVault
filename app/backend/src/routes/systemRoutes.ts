@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { listBackups } from '../database/backup';
 import { DB_PATH, query } from '../database/db';
 import { getAISettings } from '../chatbot/aiSettings';
+import { getErrorMessage as getSharedErrorMessage } from './routeUtils';
 
 type QueryClient = Pick<typeof query, 'get' | 'all'>;
 
@@ -18,7 +19,7 @@ interface SystemRouterDependencies {
 }
 
 const getErrorMessage = (error: unknown): string =>
-  error instanceof Error ? error.message : 'Error interno al consultar el sistema.';
+  getSharedErrorMessage(error, 'Error interno al consultar el sistema.');
 
 const getLatestBackupDate = (backups: BackupSummary[]) => backups[0]?.createdAt || null;
 

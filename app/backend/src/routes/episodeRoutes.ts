@@ -22,6 +22,7 @@ import {
   saveAnimeSlug,
   setEpisodeWatchedState
 } from './episodeRepository';
+import { getErrorMessage as getSharedErrorMessage } from './routeUtils';
 
 type QueryClient = Pick<typeof query, 'get' | 'all' | 'run'>;
 
@@ -71,7 +72,7 @@ const defaultScraperService: EpisodeScraperService = {
 };
 
 function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : 'Error interno en episodios.';
+  return getSharedErrorMessage(error, 'Error interno en episodios.');
 }
 
 export function prioritizeServers(servers: any): any {
