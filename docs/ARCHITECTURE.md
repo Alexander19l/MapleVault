@@ -38,6 +38,8 @@ El sistema está orientado a privacidad local: la base de datos vive en el equip
   mensajes, acciones, historial, memoria y auditoria.
 - `app/backend/src/routes/episodeRoutes.ts`: contrato HTTP de episodios,
   progreso visto y servidores de AnimeAV1, TioAnime, JKAnime y AnimeFLV.
+- `app/backend/src/routes/episodeRepository.ts`: lecturas/escrituras SQL de
+  episodios, slugs de proveedores y progreso visto.
 - `app/backend/src/routes/libraryRoutes.ts`: contrato HTTP de catalogo,
   lista personal, busqueda externa, recomendaciones, importacion y duplicados.
 - `app/backend/src/routes/libraryCache.ts`: cache breve compartida para lecturas

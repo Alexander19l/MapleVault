@@ -15,6 +15,13 @@ import {
   getTioAnimeSlug
 } from '../scraping/scraper';
 import { validateId } from '../security/validators';
+import {
+  getAnimeForSlugLookup,
+  getAnimeSlug,
+  getWatchedEpisodeNumbers,
+  saveAnimeSlug,
+  setEpisodeWatchedState
+} from './episodeRepository';
 
 type QueryClient = Pick<typeof query, 'get' | 'all' | 'run'>;
 
@@ -97,10 +104,7 @@ function registerProviderRoutes(
   router.get(`/${config.routePrefix}/:id/episodes`, async (req, res) => {
     try {
       const id = parseInt(req.params.id, 10);
-      const anime = await queryClient.get(
-        `SELECT id, title, title_romaji, title_english, ${config.slugColumn} FROM anime WHERE id = ?`,
-        [id]
-      );
+      const anime = await getAnimeForSlugLookup(queryClient, id, config.slugColumn);
 
       if (!anime) {
         return res.status(404).json({ error: 'Anime no encontrado' });
@@ -111,7 +115,7 @@ function registerProviderRoutes(
         slug = await config.getSlug(anime.title, anime.title_romaji, anime.title_english);
         if (slug) {
           try {
-            await queryClient.run(`UPDATE anime SET ${config.slugColumn} = ? WHERE id = ?`, [slug, id]);
+            await saveAnimeSlug(queryClient, id, config.slugColumn, slug);
           } catch (_) {}
         }
       }
@@ -131,10 +135,7 @@ function registerProviderRoutes(
     try {
       const id = parseInt(req.params.id, 10);
       const number = parseInt(req.params.number, 10);
-      const anime = await queryClient.get(
-        `SELECT id, ${config.slugColumn} FROM anime WHERE id = ?`,
-        [id]
-      );
+      const anime = await getAnimeSlug(queryClient, id, config.slugColumn);
 
       if (!anime || !anime[config.slugColumn]) {
         return res.status(404).json({
@@ -160,10 +161,7 @@ export function createEpisodeRouter({
   router.get('/anime/:id/episodes', async (req, res) => {
     try {
       const id = parseInt(req.params.id, 10);
-      const anime = await queryClient.get(
-        'SELECT id, title, title_romaji, title_english, animeav1_slug FROM anime WHERE id = ?',
-        [id]
-      );
+      const anime = await getAnimeForSlugLookup(queryClient, id, 'animeav1_slug');
 
       if (!anime) {
         return res.status(404).json({ error: 'Anime no encontrado' });
@@ -173,7 +171,7 @@ export function createEpisodeRouter({
       if (!slug) {
         slug = await scraperService.getAnimeAV1Slug(anime.title, anime.title_romaji, anime.title_english);
         if (slug) {
-          await queryClient.run('UPDATE anime SET animeav1_slug = ? WHERE id = ?', [slug, id]);
+          await saveAnimeSlug(queryClient, id, 'animeav1_slug', slug);
         }
       }
 
@@ -195,8 +193,7 @@ export function createEpisodeRouter({
         return res.status(400).json({ error: 'ID invalido.' });
       }
 
-      const rows = await queryClient.all('SELECT episode_number FROM watched_episodes WHERE anime_id = ?', [id]);
-      res.json(rows.map((row: any) => row.episode_number));
+      res.json(await getWatchedEpisodeNumbers(queryClient, id));
     } catch (error: unknown) {
       res.status(500).json({ error: getErrorMessage(error) });
     }
@@ -212,24 +209,7 @@ export function createEpisodeRouter({
         return res.status(400).json({ error: 'Parametros invalidos.' });
       }
 
-      if (watched) {
-        await queryClient.run(
-          'INSERT OR IGNORE INTO watched_episodes (anime_id, episode_number) VALUES (?, ?)',
-          [id, episodeNumber]
-        );
-      } else {
-        await queryClient.run(
-          'DELETE FROM watched_episodes WHERE anime_id = ? AND episode_number = ?',
-          [id, episodeNumber]
-        );
-      }
-
-      const countRow = await queryClient.get('SELECT COUNT(*) as cnt FROM watched_episodes WHERE anime_id = ?', [id]);
-      const watchedCount = countRow ? countRow.cnt : 0;
-      await queryClient.run(
-        'UPDATE user_list SET episodes_watched = ?, updated_at = CURRENT_TIMESTAMP WHERE anime_id = ?',
-        [watchedCount, id]
-      );
+      const watchedCount = await setEpisodeWatchedState(queryClient, id, episodeNumber, Boolean(watched));
 
       res.json({ success: true, watched, watchedCount });
     } catch (error: unknown) {
@@ -241,10 +221,7 @@ export function createEpisodeRouter({
     try {
       const id = parseInt(req.params.id, 10);
       const number = parseInt(req.params.number, 10);
-      const anime = await queryClient.get(
-        'SELECT id, animeav1_slug FROM anime WHERE id = ?',
-        [id]
-      );
+      const anime = await getAnimeSlug(queryClient, id, 'animeav1_slug');
 
       if (!anime) {
         return res.status(404).json({ error: 'Anime no encontrado' });
