@@ -77,6 +77,8 @@ El sistema está orientado a privacidad local: la base de datos vive en el equip
   tags y aliases usados por el extractor local del asistente.
 - `app/backend/src/chatbot/searchQueryHelpers.ts`: normalizacion pura de
   busquedas del asistente, criterios de filtro y ordenamiento permitido.
+- `app/backend/src/chatbot/intentReferenceUtils.ts`: limpieza y resolucion
+  de referencias textuales usadas por intents de info, agregar, borrar y feedback.
 - `app/backend/src/scraping`: AniList y fuentes externas.
 - `app/frontend/src/services/api.ts`: cliente HTTP centralizado.
 
