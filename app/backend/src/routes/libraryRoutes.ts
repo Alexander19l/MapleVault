@@ -38,6 +38,16 @@ import {
   getSeasonsSummaryData
 } from './librarySummaryRepository';
 import {
+  clearCatalogData,
+  createAnimeWithGenres,
+  deleteAnimeById,
+  deleteUserListEntry,
+  getUserListEntryForUpdate,
+  updateAnimeWithGenres,
+  updateUserListEntry,
+  upsertUserListEntry
+} from './libraryWriteRepository';
+import {
   getErrorMessage as getSharedErrorMessage,
   getValidatedId,
   validateBodySize
@@ -187,34 +197,8 @@ export function createLibraryRouter({
       if (!validation.valid) {
         return res.status(400).json({ error: 'Datos de anime invalidos.', details: validation.errors });
       }
-      const a = validation.data;
 
-      const result = await queryClient.run(`
-        INSERT INTO anime (
-          title, title_romaji, title_english, title_japanese, synopsis, year, season,
-          status, type, episodes, duration, score, popularity, cover_image, banner_image,
-          studio, source_material, age_rating, start_date, end_date, official_url
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [
-        a.title, a.title_romaji || '', a.title_english || '', a.title_japanese || '',
-        a.synopsis || '', a.year || null, a.season || '', a.status || 'unknown',
-        a.type || 'tv', a.episodes || null, a.duration || null, a.score || null,
-        a.popularity || 0, a.cover_image || '', a.banner_image || '', a.studio || '',
-        a.source_material || '', a.age_rating || '', a.start_date || '', a.end_date || '',
-        a.official_url || ''
-      ]);
-
-      const newId = result.lastID;
-      if (a.genres && Array.isArray(a.genres)) {
-        for (const genreName of a.genres) {
-          await queryClient.run('INSERT OR IGNORE INTO genres (name) VALUES (?)', [genreName]);
-          const genreRow = await queryClient.get('SELECT id FROM genres WHERE name = ?', [genreName]);
-          if (genreRow) {
-            await queryClient.run('INSERT OR IGNORE INTO anime_genres (anime_id, genre_id) VALUES (?, ?)', [newId, genreRow.id]);
-          }
-        }
-      }
-
+      const newId = await createAnimeWithGenres(queryClient, validation.data);
       invalidateReadCaches();
       res.status(201).json({ id: newId, message: 'Anime creado con exito' });
     } catch (error: unknown) {
@@ -232,39 +216,10 @@ export function createLibraryRouter({
       if (!validation.valid) {
         return res.status(400).json({ error: 'Datos de anime invalidos.', details: validation.errors });
       }
-      const a = validation.data;
 
-      const existing = await queryClient.get('SELECT id FROM anime WHERE id = ?', [id]);
-      if (!existing) {
+      const updated = await updateAnimeWithGenres(queryClient, id, validation.data);
+      if (!updated) {
         return res.status(404).json({ error: 'Anime no encontrado' });
-      }
-
-      await queryClient.run(`
-        UPDATE anime
-        SET title = ?, title_romaji = ?, title_english = ?, title_japanese = ?,
-            synopsis = ?, year = ?, season = ?, status = ?, type = ?, episodes = ?,
-            duration = ?, score = ?, popularity = ?, cover_image = ?, banner_image = ?,
-            studio = ?, source_material = ?, age_rating = ?, start_date = ?, end_date = ?,
-            official_url = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `, [
-        a.title, a.title_romaji || '', a.title_english || '', a.title_japanese || '',
-        a.synopsis || '', a.year || null, a.season || '', a.status || 'unknown',
-        a.type || 'tv', a.episodes || null, a.duration || null, a.score || null,
-        a.popularity || 0, a.cover_image || '', a.banner_image || '', a.studio || '',
-        a.source_material || '', a.age_rating || '', a.start_date || '', a.end_date || '',
-        a.official_url || '', id
-      ]);
-
-      await queryClient.run('DELETE FROM anime_genres WHERE anime_id = ?', [id]);
-      if (a.genres && Array.isArray(a.genres)) {
-        for (const genreName of a.genres) {
-          await queryClient.run('INSERT OR IGNORE INTO genres (name) VALUES (?)', [genreName]);
-          const genreRow = await queryClient.get('SELECT id FROM genres WHERE name = ?', [genreName]);
-          if (genreRow) {
-            await queryClient.run('INSERT OR IGNORE INTO anime_genres (anime_id, genre_id) VALUES (?, ?)', [id, genreRow.id]);
-          }
-        }
       }
 
       invalidateReadCaches();
@@ -278,7 +233,7 @@ export function createLibraryRouter({
     try {
       const id = getValidatedId(req.params.id, res);
       if (!id) return;
-      await queryClient.run('DELETE FROM anime WHERE id = ?', [id]);
+      await deleteAnimeById(queryClient, id);
       invalidateReadCaches();
       res.json({ message: 'Anime eliminado del catalogo local' });
     } catch (error: unknown) {
@@ -289,33 +244,16 @@ export function createLibraryRouter({
   router.post('/anime/clear', async (req, res) => {
     try {
       const { keepUserList } = req.body;
+      const result = await clearCatalogData(queryClient, keepUserList);
 
-      if (keepUserList === false) {
-        await queryClient.run('DELETE FROM anime');
-        await queryClient.run('DELETE FROM user_list');
-        await queryClient.run('DELETE FROM watched_episodes');
-        await queryClient.run('DELETE FROM anime_genres');
-        await queryClient.run('DELETE FROM anime_relations');
-        await queryClient.run('DELETE FROM genres');
+      if (result.clearedAll) {
         invalidateReadCaches();
         res.json({ message: 'Se ha eliminado por completo todo el catalogo y tus listas personales.' });
       } else {
-        const result = await queryClient.run(`
-          DELETE FROM anime
-          WHERE id NOT IN (SELECT anime_id FROM user_list)
-        `);
-        await queryClient.run(`
-          DELETE FROM genres
-          WHERE id NOT IN (SELECT genre_id FROM anime_genres)
-        `);
-        await queryClient.run(`
-          DELETE FROM anime_relations
-          WHERE anime_id NOT IN (SELECT id FROM anime)
-        `);
         invalidateReadCaches();
         res.json({
-          message: `Catalogo sincronizado limpiado. Se eliminaron ${result.changes} animes que no estaban en tu lista personal.`,
-          deletedCount: result.changes
+          message: `Catalogo sincronizado limpiado. Se eliminaron ${result.deletedCount} animes que no estaban en tu lista personal.`,
+          deletedCount: result.deletedCount
         });
       }
     } catch (error: unknown) {
@@ -385,20 +323,14 @@ export function createLibraryRouter({
       }
       const { anime_id, watch_status, favorite, user_score, episodes_watched, notes } = req.body;
 
-      await queryClient.run(`
-        INSERT INTO user_list (anime_id, watch_status, favorite, user_score, episodes_watched, notes, started_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(anime_id) DO UPDATE SET
-          watch_status = excluded.watch_status,
-          favorite = excluded.favorite,
-          user_score = excluded.user_score,
-          episodes_watched = excluded.episodes_watched,
-          notes = excluded.notes,
-          updated_at = CURRENT_TIMESTAMP
-      `, [
-        anime_id, watch_status, favorite || 0, user_score || 0, episodes_watched || 0, notes || '',
-        watch_status === 'watching' ? getCurrentDate().toISOString().split('T')[0] : null
-      ]);
+      await upsertUserListEntry(queryClient, {
+        anime_id,
+        watch_status,
+        favorite,
+        user_score,
+        episodes_watched,
+        notes
+      }, watch_status === 'watching' ? getCurrentDate().toISOString().split('T')[0] : null);
 
       invalidateReadCaches();
       res.status(201).json({ message: 'Anime agregado/actualizado en la lista personal' });
@@ -419,7 +351,7 @@ export function createLibraryRouter({
         return res.status(400).json({ error: 'Datos de lista invalidos.', details: validation.errors });
       }
 
-      const existing = await queryClient.get('SELECT id, watch_status FROM user_list WHERE id = ?', [id]);
+      const existing = await getUserListEntryForUpdate(queryClient, id);
       if (!existing) {
         return res.status(404).json({ error: 'Registro no encontrado en tu lista' });
       }
@@ -429,15 +361,13 @@ export function createLibraryRouter({
         endDate = getCurrentDate().toISOString().split('T')[0];
       }
 
-      await queryClient.run(`
-        UPDATE user_list
-        SET watch_status = ?, favorite = ?, user_score = ?, episodes_watched = ?,
-            notes = ?, completed_at = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `, [
-        watch_status, favorite || 0, user_score || 0, episodes_watched || 0,
-        notes || '', endDate || null, id
-      ]);
+      await updateUserListEntry(queryClient, id, {
+        watch_status,
+        favorite,
+        user_score,
+        episodes_watched,
+        notes
+      }, endDate || null);
 
       invalidateReadCaches();
       res.json({ message: 'Lista personal actualizada con exito' });
@@ -450,7 +380,7 @@ export function createLibraryRouter({
     try {
       const id = getValidatedId(req.params.id, res);
       if (!id) return;
-      await queryClient.run('DELETE FROM user_list WHERE id = ?', [id]);
+      await deleteUserListEntry(queryClient, id);
       invalidateReadCaches();
       res.json({ message: 'Anime quitado de la lista personal' });
     } catch (error: unknown) {
