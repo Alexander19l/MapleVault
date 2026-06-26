@@ -51,6 +51,10 @@ import {
   matchAnimeInfoFieldIntent,
   matchGeneralAnimeInfoIntent
 } from './intentAnimeInfoMatcher';
+import {
+  matchEpisodeOperationIntent,
+  matchSynchronizationIntent
+} from './intentOperationalMatcher';
 
 export function parseIntentRegex(message: string): NLPResult {
   const msg = message.toLowerCase().trim();
@@ -382,11 +386,8 @@ export function parseIntentRegex(message: string): NLPResult {
     return { ...result, intent: 'SEARCH_ANIME' };
   }
 
-  if (normalizedMsg.match(/sincroniza|actualiza( mis)? listas|sincronizacion|reintenta.*sincroniz/)) return { ...result, intent: 'SYNC_LIBRARY' };
-  if (normalizedMsg.match(/actualiza.*metadatos/)) return { ...result, intent: 'SYNC_METADATA' };
-  if (normalizedMsg.match(/actualiza.*capitulos|busca.*capitulos nuevos|verifica.*capitulos/)) return { ...result, intent: 'SYNC_EPISODES' };
-  if (normalizedMsg.match(/cancela.*sincronizac/)) return { ...result, intent: 'CANCEL_SYNC' };
-  if (normalizedMsg.match(/resumen.*sincronizac/)) return { ...result, intent: 'SYNC_SUMMARY' };
+  const synchronizationIntent = matchSynchronizationIntent(normalizedMsg);
+  if (synchronizationIntent) return { ...result, intent: synchronizationIntent };
 
   if (normalizedMsg.match(/analiza mi biblioteca|cuantos animes tengo guardados|cuantos animes he completado|cuantos.*pendientes|generos favoritos|estudios veo|anos.*mas|temporada.*mas|anime.*mas avanzado/)) return { ...result, intent: 'LIBRARY_STATS' };
 
@@ -403,20 +404,8 @@ export function parseIntentRegex(message: string): NLPResult {
     return { ...result, intent: 'RECOMMEND_GENERAL' };
   }
 
-  if (normalizedMsg.match(/muestrame.*capitulos/)) return { ...result, intent: 'SHOW_EPISODES' };
-  if (normalizedMsg.match(/marca.*visto/)) {
-    if (normalizedMsg.includes('todos') || normalizedMsg.includes('anteriores')) return { ...result, intent: 'MARK_ALL_WATCHED' };
-    return { ...result, intent: 'MARK_EPISODE_WATCHED' };
-  }
-  if (normalizedMsg.match(/ultimos?\s+capitulos?\s+vistos?/)) return { ...result, intent: 'FILTER_EPISODES_WATCHED' };
-  if (normalizedMsg.match(/ultimo capitulo visto/)) return { ...result, intent: 'LAST_WATCHED_EPISODE' };
-  if (normalizedMsg.match(/siguiente.*pendiente/)) return { ...result, intent: 'NEXT_PENDING_EPISODE' };
-  if (normalizedMsg.match(/ordena.*menor a mayor/)) return { ...result, intent: 'SORT_EPISODES_ASC' };
-  if (normalizedMsg.match(/ordena.*mayor a menor/)) return { ...result, intent: 'SORT_EPISODES_DESC' };
-  if (normalizedMsg.match(/filtra.*vistos/)) return { ...result, intent: 'FILTER_EPISODES_WATCHED' };
-  if (normalizedMsg.match(/filtra.*pendientes|que capitulos.*pendientes/)) return { ...result, intent: 'FILTER_EPISODES_PENDING' };
-  if (normalizedMsg.match(/que\s+capitulos?\s+me\s+faltan/)) return { ...result, intent: 'FILTER_EPISODES_PENDING' };
-  if (normalizedMsg.match(/abre.*capitulo/)) return { ...result, intent: 'OPEN_EPISODE' };
+  const episodeOperationIntent = matchEpisodeOperationIntent(normalizedMsg);
+  if (episodeOperationIntent) return { ...result, intent: episodeOperationIntent };
 
   if (normalizedMsg.match(/anade.*biblioteca/)) return { ...result, intent: 'ADD_TO_LIBRARY' };
   if (normalizedMsg.match(/elimina.*biblioteca/)) return { ...result, intent: 'REMOVE_FROM_LIBRARY' };

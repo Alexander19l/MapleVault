@@ -85,6 +85,8 @@ El sistema está orientado a privacidad local: la base de datos vive en el equip
   altas, bajas, puntuaciones y estados; no ejecuta cambios ni omite confirmaciones.
 - `app/backend/src/chatbot/intentAnimeInfoMatcher.ts`: deteccion pura de
   consultas generales y campos concretos de informacion de una serie.
+- `app/backend/src/chatbot/intentOperationalMatcher.ts`: deteccion pura de
+  comandos de sincronizacion y operaciones sobre episodios.
 - `app/backend/src/scraping`: AniList y fuentes externas.
 - `app/frontend/src/services/api.ts`: cliente HTTP centralizado.
 

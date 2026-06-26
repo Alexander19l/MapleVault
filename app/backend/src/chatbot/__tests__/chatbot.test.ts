@@ -68,6 +68,11 @@ describe('1. Pruebas Unitarias de NLP Engine', async () => {
     expect(result.intent).toBe('SYNC_LIBRARY');
   });
 
+  it('Deberia distinguir el ultimo capitulo visto del historial reciente', async () => {
+    const result = await parseIntent('Ultimo capitulo visto');
+    expect(result.intent).toBe('LAST_WATCHED_EPISODE');
+  });
+
   it('Debería detectar memoria de género (REMEMBER_PREFERENCE)', async () => {
     const result = await parseIntent('Recuerda que me gusta el género mecha');
     expect(result.intent).toBe('REMEMBER_PREFERENCE');
