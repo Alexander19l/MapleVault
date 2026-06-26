@@ -1,3 +1,6 @@
+import type { NLPResult } from './types';
+import { cleanReference } from './intentReferenceUtils';
+
 export function matchSynchronizationIntent(normalizedMessage: string): string | undefined {
   if (normalizedMessage.match(/sincroniza|actualiza( mis)? listas|sincronizacion|reintenta.*sincroniz/)) {
     return 'SYNC_LIBRARY';
@@ -9,6 +12,25 @@ export function matchSynchronizationIntent(normalizedMessage: string): string | 
   if (normalizedMessage.match(/cancela.*sincronizac/)) return 'CANCEL_SYNC';
   if (normalizedMessage.match(/resumen.*sincronizac/)) return 'SYNC_SUMMARY';
   return undefined;
+}
+
+export function extractMarkedEpisodeEntities(
+  normalizedMessage: string
+): Partial<NLPResult['entities']> {
+  const match = normalizedMessage.match(
+    /\bmarca\s+(?:el\s+)?(?:capitulo|episodio)\s+(\d{1,4})(?:\s+(?:de|del)\s+(.+?))?\s+como\s+visto\b/
+  );
+  if (!match?.[1]) return {};
+
+  const entities: Partial<NLPResult['entities']> = {
+    episodeNumber: Number(match[1])
+  };
+  if (match[2]) {
+    const reference = cleanReference(match[2]);
+    entities.refIndexOrTitle = reference;
+    entities.animeTitle = reference;
+  }
+  return entities;
 }
 
 export function matchEpisodeOperationIntent(normalizedMessage: string): string | undefined {

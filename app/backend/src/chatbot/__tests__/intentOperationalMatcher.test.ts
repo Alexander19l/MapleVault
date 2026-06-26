@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  extractMarkedEpisodeEntities,
   matchEpisodeOperationIntent,
   matchSynchronizationIntent
 } from '../intentOperationalMatcher';
@@ -36,6 +37,16 @@ describe('chatbot/intentOperationalMatcher', () => {
   it('distingue el ultimo capitulo de un listado de capitulos recientes', () => {
     expect(matchEpisodeOperationIntent('ultimo capitulo visto')).toBe('LAST_WATCHED_EPISODE');
     expect(matchEpisodeOperationIntent('ultimos capitulos vistos')).toBe('FILTER_EPISODES_WATCHED');
+  });
+
+  it('extrae serie y numero para una actualizacion protegida', () => {
+    const input = 'marca el episodio 3 de naruto como visto';
+    expect(matchEpisodeOperationIntent(input)).toBe('MARK_EPISODE_WATCHED');
+    expect(extractMarkedEpisodeEntities(input)).toEqual({
+      episodeNumber: 3,
+      refIndexOrTitle: 'naruto',
+      animeTitle: 'naruto'
+    });
   });
 
   it('no interpreta consultas generales como operaciones', () => {

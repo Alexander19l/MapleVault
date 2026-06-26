@@ -17,6 +17,8 @@ import {
   handleFilterEpisodesWatched,
   handleLastWatchedEpisode,
   handleMarkAllWatched,
+  handleMarkEpisodeWatched,
+  handleNextPendingEpisode,
   handleShowEpisodes
 } from './episodeCommandHandler';
 import {
@@ -227,6 +229,14 @@ async function handleLocalIntentInternal(nlp: NLPResult): Promise<ChatResponse> 
 
       case 'MARK_ALL_WATCHED': {
         return handleMarkAllWatched();
+      }
+
+      case 'MARK_EPISODE_WATCHED': {
+        return handleMarkEpisodeWatched(entities);
+      }
+
+      case 'NEXT_PENDING_EPISODE': {
+        return handleNextPendingEpisode();
       }
 
       case 'FILTER_EPISODES_PENDING': {

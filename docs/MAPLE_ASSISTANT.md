@@ -38,6 +38,8 @@ El catálogo funcional vive en `app/backend/src/chatbot/nlpEngine.ts` como `INTE
 - `ver_catalogo`: lista catálogo local con filtros básicos.
 - `eliminar_serie`: prepara eliminación y requiere confirmación.
 - `recomendar_series`: recomienda por género, historial y preferencias.
+- `marcar_episodio_visto`: prepara el cambio de progreso de un episodio y requiere confirmación.
+- `siguiente_episodio_pendiente`: consulta el siguiente episodio de las series en progreso.
 - `ayuda`: genera ayuda desde capabilities.
 
 ## Memoria
@@ -157,6 +159,8 @@ me gustó death note
 no me interesa frieren
 no me recomiendes el 2
 que recuerdas de mis gustos
+marca el episodio 3 de Naruto como visto
+siguiente capitulo pendiente
 ```
 
 ## Evaluacion De Prompts

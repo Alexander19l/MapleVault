@@ -73,6 +73,13 @@ describe('1. Pruebas Unitarias de NLP Engine', async () => {
     expect(result.intent).toBe('LAST_WATCHED_EPISODE');
   });
 
+  it('Deberia extraer serie y numero al marcar un episodio', async () => {
+    const result = await parseIntent('Marca el episodio 3 de Naruto como visto');
+    expect(result.intent).toBe('MARK_EPISODE_WATCHED');
+    expect(result.entities.refIndexOrTitle).toBe('naruto');
+    expect(result.entities.episodeNumber).toBe(3);
+  });
+
   it('Debería detectar memoria de género (REMEMBER_PREFERENCE)', async () => {
     const result = await parseIntent('Recuerda que me gusta el género mecha');
     expect(result.intent).toBe('REMEMBER_PREFERENCE');
@@ -460,6 +467,47 @@ describe('2. Pruebas de Integración - Comandos del Chatbot', async () => {
     const response = await handleLocalIntent({ intent: 'MARK_ALL_WATCHED', entities: {} });
     expect(response.action).toBeDefined();
     expect(response.action?.type).toBe('mark_all_watched');
+  });
+
+  it('Prepara un episodio visto sin escribir antes de confirmar', async () => {
+    (db.query.get as any).mockResolvedValueOnce({
+      id: 31,
+      title: 'Naruto',
+      episodes: 220
+    });
+
+    const response = await handleLocalIntent({
+      intent: 'MARK_EPISODE_WATCHED',
+      entities: {
+        refIndexOrTitle: 'naruto',
+        animeTitle: 'naruto',
+        episodeNumber: 3
+      }
+    });
+
+    expect(response.action?.type).toBe('mark_watched');
+    expect(response.action?.data).toMatchObject({
+      animeId: 31,
+      episodeNumber: 3,
+      watched: true
+    });
+    expect(db.query.run).not.toHaveBeenCalled();
+  });
+
+  it('Muestra el siguiente episodio pendiente usando datos locales', async () => {
+    (db.query.get as any).mockResolvedValueOnce({
+      title: 'Naruto',
+      episodes: 220,
+      next_episode: 4
+    });
+
+    const response = await handleLocalIntent({
+      intent: 'NEXT_PENDING_EPISODE',
+      entities: {}
+    });
+
+    expect(response.text).toContain('Episodio 4');
+    expect(response.text).toContain('Naruto');
   });
 
   it('Busca animes de invierno 2025 - devuelve respuesta esperada', async () => {

@@ -52,6 +52,7 @@ import {
   matchGeneralAnimeInfoIntent
 } from './intentAnimeInfoMatcher';
 import {
+  extractMarkedEpisodeEntities,
   matchEpisodeOperationIntent,
   matchSynchronizationIntent
 } from './intentOperationalMatcher';
@@ -405,7 +406,12 @@ export function parseIntentRegex(message: string): NLPResult {
   }
 
   const episodeOperationIntent = matchEpisodeOperationIntent(normalizedMsg);
-  if (episodeOperationIntent) return { ...result, intent: episodeOperationIntent };
+  if (episodeOperationIntent) {
+    if (episodeOperationIntent === 'MARK_EPISODE_WATCHED') {
+      Object.assign(result.entities, extractMarkedEpisodeEntities(normalizedMsg));
+    }
+    return { ...result, intent: episodeOperationIntent };
+  }
 
   if (normalizedMsg.match(/anade.*biblioteca/)) return { ...result, intent: 'ADD_TO_LIBRARY' };
   if (normalizedMsg.match(/elimina.*biblioteca/)) return { ...result, intent: 'REMOVE_FROM_LIBRARY' };
