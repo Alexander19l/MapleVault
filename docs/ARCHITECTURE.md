@@ -24,6 +24,8 @@ El sistema está orientado a privacidad local: la base de datos vive en el equip
 - `app/backend/src/database/backup.ts`: backups con `VACUUM INTO`.
 - `app/backend/src/routes/backupRoutes.ts`: contrato HTTP de creación, listado,
   restauración y eliminación de respaldos.
+- `app/backend/src/routes/systemRoutes.ts`: endpoints locales de salud y
+  diagnostico con dependencias inyectables para pruebas unitarias.
 - `app/backend/src/security`: validadores, sanitizacion y rate limiting.
 - `app/backend/src/chatbot`: NLP, memoria, confirmaciones, capacidades y acciones del asistente.
 - `app/backend/src/scraping`: AniList y fuentes externas.
@@ -81,7 +83,8 @@ minutos para reducir latencia y solicitudes repetidas.
 
 ## Deuda Tecnica Restante
 
-- `server.ts` aun concentra demasiadas rutas; debe separarse en routes/services/repositories.
+- `server.ts` aun concentra rutas de catalogo, scraping, ajustes y asistente;
+  debe seguir separandose en routes/services/repositories.
 - Las fuentes de scraping dependen de HTML externo y deben aislarse tras una interfaz de provider.
 - Conviene migrar validacion a esquemas compartidos con frontend si el proyecto crece.
 

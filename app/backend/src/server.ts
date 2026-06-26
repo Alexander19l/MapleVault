@@ -18,6 +18,7 @@ import { decorateAnimeListWithSpanishTranslation, decorateAnimeWithSpanishTransl
 import { ensureLibreTranslateRunning, getLibreTranslateRuntimeStatus, stopLibreTranslateRuntime } from './translation/translationRuntime';
 import { enforceSupportedAppearance } from './settings/settingsPolicy';
 import { createBackupRouter } from './routes/backupRoutes';
+import { createSystemRouter } from './routes/systemRoutes';
 import axios from 'axios';
 
 const app = express();
@@ -100,6 +101,7 @@ function invalidateLibraryReadCaches() {
 }
 
 app.use(createBackupRouter({ invalidateLibraryReadCaches }));
+app.use(createSystemRouter());
 
 function defaultAppSettings() {
   return {
@@ -1777,72 +1779,6 @@ app.get('/chat/actions/history', async (_req, res) => {
     res.json(rows);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
-  }
-});
-
-// GET /system/health - Estado del sistema
-app.get('/system/health', async (_req, res) => {
-  try {
-    const animeCount = await query.get('SELECT COUNT(*) as c FROM anime');
-    const listCount = await query.get('SELECT COUNT(*) as c FROM user_list');
-    const backups = listBackups();
-
-    res.json({
-      status: 'ok',
-      database: {
-        connected: true,
-        animeCount: animeCount?.c || 0,
-        userListCount: listCount?.c || 0,
-        dbPath: DB_PATH
-      },
-      backup: {
-        count: backups.length,
-        latest: backups[0]?.createdAt || null
-      },
-      uptime: process.uptime()
-    });
-  } catch (err: any) {
-    res.status(500).json({ status: 'error', error: err.message });
-  }
-});
-
-// GET /system/diagnostics - Diagnostico ampliado local
-app.get('/system/diagnostics', async (_req, res) => {
-  try {
-    const [animeCount, listCount] = await Promise.all([
-      query.get('SELECT COUNT(*) as c FROM anime'),
-      query.get('SELECT COUNT(*) as c FROM user_list')
-    ]);
-    const settings = await getAISettings();
-    const sources = await query.all('SELECT name, enabled, rate_limit, last_sync FROM sources ORDER BY name ASC');
-    const backups = listBackups();
-
-    res.json({
-      app: 'MapleVault',
-      status: 'ok',
-      database: {
-        connected: true,
-        path: DB_PATH,
-        animeCount: animeCount?.c || 0,
-        userListCount: listCount?.c || 0
-      },
-      assistant: {
-        provider: settings.provider,
-        model: settings.model,
-        enabled: settings.enabled,
-        url: settings.url
-      },
-      scraping: {
-        sources
-      },
-      backup: {
-        count: backups.length,
-        latest: backups[0]?.createdAt || null
-      },
-      uptime: process.uptime()
-    });
-  } catch (err: any) {
-    res.status(500).json({ status: 'error', error: err.message });
   }
 });
 
