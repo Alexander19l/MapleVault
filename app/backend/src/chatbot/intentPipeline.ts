@@ -31,8 +31,7 @@ import { extractImplicitExclusions, extractSemanticQuery } from './semanticHints
 import {
   assignFeedbackReference,
   cleanReference,
-  extractFeedbackReference,
-  extractReferenceOrTitle
+  extractFeedbackReference
 } from './intentReferenceUtils';
 import {
   matchClearSearchFiltersIntent,
@@ -48,6 +47,10 @@ import {
   matchRemoveFromLibraryIntent,
   matchStatusActionIntent
 } from './intentLibraryActionMatcher';
+import {
+  matchAnimeInfoFieldIntent,
+  matchGeneralAnimeInfoIntent
+} from './intentAnimeInfoMatcher';
 
 export function parseIntentRegex(message: string): NLPResult {
   const msg = message.toLowerCase().trim();
@@ -340,18 +343,10 @@ export function parseIntentRegex(message: string): NLPResult {
     }
   }
 
-  const infoRef = extractReferenceOrTitle(normalizedMsg, [
-    /^info\s+(.+)/,
-    /^(?:dame|dime|muestra|mostrar|pasame)\s+(?:info|informacion|detalles?)\s+(?:de|del|sobre)\s+(.+)/,
-    /^(?:info|informacion|detalles?)\s+(?:de|del|sobre)\s+(.+)/,
-    /^(?:que sabes de|detalles de)\s+(.+)/,
-    /^ver\s+info\s+(.+)/,
-    /^show\s+(?:me\s+)?(?:info|information|details)\s+(?:about|of)\s+(.+)/
-  ]);
-  if (infoRef) {
-    result.entities.refIndexOrTitle = cleanReference(infoRef);
-    result.entities.animeTitle = result.entities.refIndexOrTitle;
-    return { ...result, intent: 'SHOW_ANIME_INFO' };
+  const generalInfoIntent = matchGeneralAnimeInfoIntent(normalizedMsg);
+  if (generalInfoIntent) {
+    Object.assign(result.entities, generalInfoIntent.entities);
+    return { ...result, intent: generalInfoIntent.intent };
   }
 
   const addAction = matchAddToLibraryIntent(normalizedMsg);
@@ -377,45 +372,10 @@ export function parseIntentRegex(message: string): NLPResult {
     return { ...result, intent: batchStatusAction.intent };
   }
 
-  const episodeFieldRef = normalizedMsg.match(/\bcuantos\s+(?:episodios|capitulos)\s+tiene\s+(.+)$/);
-  if (episodeFieldRef?.[1]) {
-    result.entities.refIndexOrTitle = cleanReference(episodeFieldRef[1]);
-    result.entities.animeTitle = result.entities.refIndexOrTitle;
-    result.entities.field = 'episodes';
-    return { ...result, intent: 'SHOW_ANIME_INFO' };
-  }
-
-  const startDateFieldRef = normalizedMsg.match(/\bcuando\s+(?:empezo|inicio|salio)\s+(.+)$/);
-  if (startDateFieldRef?.[1]) {
-    result.entities.refIndexOrTitle = cleanReference(startDateFieldRef[1]);
-    result.entities.animeTitle = result.entities.refIndexOrTitle;
-    result.entities.field = 'start_date';
-    return { ...result, intent: 'SHOW_ANIME_INFO' };
-  }
-
-  const synopsisFieldRef = normalizedMsg.match(/\b(?:de que trata|sinopsis de|resume)\s+(.+)$/);
-  if (synopsisFieldRef?.[1]) {
-    result.entities.refIndexOrTitle = cleanReference(synopsisFieldRef[1]);
-    result.entities.animeTitle = result.entities.refIndexOrTitle;
-    result.entities.field = 'synopsis';
-    return { ...result, intent: 'SHOW_ANIME_INFO' };
-  }
-
-  const genericFieldPatterns: Array<{ pattern: RegExp; field: NLPResult['entities']['field'] }> = [
-    { pattern: /\b(?:cual es la nota|mean score of|puntaje de)\s+(.+)$/, field: 'score' },
-    { pattern: /\b(?:que estudio.*hizo|estudio de animacion que hizo|what studio animated)\s+(.+)$/, field: 'studio' },
-    { pattern: /\b(?:ano de lanzamiento de|cuando se estreno)\s+(.+)$/, field: 'start_date' },
-    { pattern: /\b(?:cuando se estrena la proxima parte de|when does the next episode of)\s+(.+)$/, field: 'next_episode_date' },
-    { pattern: /\b(?:cuando.*proxima temporada de|when does the next season of)\s+(.+?)(?:\s+air)?$/, field: 'next_season_date' }
-  ];
-  for (const fieldPattern of genericFieldPatterns) {
-    const match = normalizedMsg.match(fieldPattern.pattern);
-    if (match?.[1]) {
-      result.entities.refIndexOrTitle = cleanReference(match[1]);
-      result.entities.animeTitle = result.entities.refIndexOrTitle;
-      result.entities.field = fieldPattern.field;
-      return { ...result, intent: 'SHOW_ANIME_INFO' };
-    }
+  const fieldInfoIntent = matchAnimeInfoFieldIntent(normalizedMsg);
+  if (fieldInfoIntent) {
+    Object.assign(result.entities, fieldInfoIntent.entities);
+    return { ...result, intent: fieldInfoIntent.intent };
   }
 
   if (isStructuredSearchRequest(msg, normalizedMsg, result.entities)) {
