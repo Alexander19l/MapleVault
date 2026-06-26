@@ -90,6 +90,10 @@ El sistema está orientado a privacidad local: la base de datos vive en el equip
 - `app/backend/src/chatbot/syncJobManager.ts`: estado y cancelacion cooperativa
   del trabajo de sincronizacion de metadatos en segundo plano.
 - `app/backend/src/scraping`: AniList y fuentes externas.
+- `app/backend/src/scraping/animeTypes.ts`: contratos normalizados compartidos
+  por proveedores, persistencia e importacion.
+- `app/backend/src/scraping/animeNormalization.ts`: normalizadores puros de
+  estados, formatos, fichas y relaciones de AniList.
 - `app/frontend/src/services/api.ts`: cliente HTTP centralizado.
 
 ## Flujo del Chatbot
