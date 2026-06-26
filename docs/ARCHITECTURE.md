@@ -73,6 +73,8 @@ El sistema está orientado a privacidad local: la base de datos vive en el equip
   incluyendo autoinicio de traduccion y backups automaticos/periodicos.
 - `app/backend/src/security`: validadores, sanitizacion y rate limiting.
 - `app/backend/src/chatbot`: NLP, memoria, confirmaciones, capacidades y acciones del asistente.
+- `app/backend/src/chatbot/entityDictionaries.ts`: diccionarios de generos,
+  tags y aliases usados por el extractor local del asistente.
 - `app/backend/src/scraping`: AniList y fuentes externas.
 - `app/frontend/src/services/api.ts`: cliente HTTP centralizado.
 
