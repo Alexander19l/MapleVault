@@ -3,18 +3,15 @@ import cors from 'cors';
 import { initDb, query } from './database/db';
 import { searchAniList, getAniListAnimeById, saveNormalizedAnimeToLocal, getAnimeAV1Slug, getAnimeAV1Episodes, getAnimeAV1Embeds, getTioAnimeSlug, getTioAnimeEpisodes, getTioAnimeServers, getAnimeFLVSlug, getAnimeFLVEpisodes, getAnimeFLVServers, getJKAnimeSlug, getJKAnimeEpisodes, getJKAnimeServers } from './scraping/scraper';
 import { getLocalRecommendations } from './recommendations/recommender';
-import { handleChatMessage, executeChatbotAction, isAllowedChatbotAction } from './chatbot/chatbot';
-import { getMapleAssistantCapabilities } from './chatbot/capabilities';
 import { createRateLimitMiddleware } from './security/rateLimiter';
 import { createSessionAuthMiddleware } from './security/sessionAuth';
 import { validateUserListInput, validateSearchFilters, validateId, validatePayloadSize } from './security/validators';
-import { sanitizeChatInput } from './security/sanitize';
 import { createBackup, listBackups } from './database/backup';
-import { buildUserSoulProfile, clearAllMemory, getUserSoulData } from './chatbot/memory';
 import { decorateAnimeListWithSpanishTranslation, decorateAnimeWithSpanishTranslation } from './translation/translationService';
 import { ensureLibreTranslateRunning, stopLibreTranslateRuntime } from './translation/translationRuntime';
 import { attachJoinedGenres } from './anime/animeRows';
 import { validateAnimePayload } from './anime/animePayload';
+import { createAssistantRouter } from './routes/assistantRoutes';
 import { createBackupRouter } from './routes/backupRoutes';
 import { createDataTransferRouter } from './routes/dataTransferRoutes';
 import { createSettingsRouter } from './routes/settingsRoutes';
@@ -99,6 +96,7 @@ app.use(createBackupRouter({ invalidateLibraryReadCaches }));
 app.use(createDataTransferRouter({ invalidateLibraryReadCaches }));
 app.use(createSettingsRouter());
 app.use(createScrapingRouter({ invalidateLibraryReadCaches }));
+app.use(createAssistantRouter());
 app.use(createSystemRouter());
 
 function validateBodySize(res: express.Response, body: unknown): boolean {
@@ -859,116 +857,6 @@ app.get('/search', async (req, res) => {
   }
 });
 
-// ==========================================
-// 5. ENDPOINTS DE MAPLE ASSISTANT
-// ==========================================
-
-// GET /chat/capabilities - Contrato publico de capacidades del asistente
-app.get('/chat/capabilities', (_req, res) => {
-  res.json(getMapleAssistantCapabilities());
-});
-
-// POST /chat/message - Enviar mensaje
-app.post('/chat/message', createRateLimitMiddleware('chat'), async (req, res) => {
-  try {
-    const { message } = req.body;
-    if (!message || typeof message !== 'string') {
-      return res.status(400).json({ error: 'El mensaje es requerido y debe ser texto.' });
-    }
-    const safeMessage = sanitizeChatInput(message);
-    if (safeMessage.length > 2000) {
-      return res.status(400).json({ error: 'El mensaje no puede superar los 2000 caracteres.' });
-    }
-    const chatbotResponse = await handleChatMessage(safeMessage);
-    res.json(chatbotResponse);
-  } catch (err: any) {
-    res.status(500).json({ error: 'Error al procesar el mensaje.' });
-  }
-});
-
-// POST /chat/execute-action - Ejecutar accin recomendada y confirmada por el usuario
-// Requiere el confirmToken generado por el chatbot para validar la accin
-app.post('/chat/execute-action', createRateLimitMiddleware('chat'), async (req, res) => {
-  try {
-    const { type, data, confirmToken } = req.body;
-    if (!type || typeof type !== 'string') {
-      return res.status(400).json({ error: '"type" es requerido.' });
-    }
-    if (!isAllowedChatbotAction(type)) {
-      return res.status(400).json({ error: 'Tipo de accin no permitido.' });
-    }
-    const msg = await executeChatbotAction(type, data || {}, confirmToken);
-    res.json({ text: msg });
-  } catch (err: any) {
-    res.status(500).json({ error: 'Error al ejecutar la accin.' });
-  }
-});
-
-// GET /chat/history - Ver historial de chat
-app.get('/chat/history', async (req, res) => {
-  try {
-    const rawHistory = await query.all('SELECT * FROM chat_messages ORDER BY id ASC');
-    const history = rawHistory.map((msg: any) => {
-      let visualData = undefined;
-      let action = undefined;
-      try { if (msg.visual_data) visualData = JSON.parse(msg.visual_data); } catch (e) {}
-      try { if (msg.action) action = JSON.parse(msg.action); } catch (e) {}
-      
-      return {
-        id: msg.id,
-        role: msg.role,
-        content: msg.content,
-        created_at: msg.created_at,
-        visualData,
-        action
-      };
-    });
-    res.json(history);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// DELETE /chat/history - Borrar historial de chat
-app.delete('/chat/history', async (req, res) => {
-  try {
-    await query.run('DELETE FROM chat_messages');
-    res.json({ message: 'Historial del chatbot borrado con éxito' });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// DELETE /chat/memory - Borrar memoria del chatbot
-app.delete('/chat/memory', async (req, res) => {
-  try {
-    await clearAllMemory();
-    res.json({ message: 'Memoria local del chatbot borrada con éxito' });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// GET /chat/memory/profile - Perfil de gustos y rastro de memoria del usuario
-app.get('/chat/memory/profile', async (_req, res) => {
-  try {
-    const profile = await getUserSoulData();
-    res.json(profile || { message: 'Perfil de usuario no generado todavía.' });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST /chat/memory/profile - Recalcular perfil de gustos desde SQLite
-app.post('/chat/memory/profile', async (_req, res) => {
-  try {
-    const profile = await buildUserSoulProfile();
-    res.json({ message: 'Perfil de memoria, gustos y alma generado con éxito.', profile });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // GET /genres - Obtener gneros en catlogo local
 app.get('/genres', async (req, res) => {
   try {
@@ -1327,22 +1215,6 @@ app.get('/maintenance/duplicates', async (_req, res) => {
       ids: String(group.ids || '').split(',').filter(Boolean).map(Number),
       sources: String(group.sources || '').split(',').filter(Boolean)
     })));
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// GET /chat/actions/history - Auditoria reciente de acciones del asistente
-app.get('/chat/actions/history', async (_req, res) => {
-  try {
-    const rows = await query.all(`
-      SELECT id, user_prompt, detected_intent, nlp_engine, selected_tool, requires_confirmation,
-             execution_status, latency_ms, error_message, created_at
-      FROM assistant_prompt_runs
-      ORDER BY id DESC
-      LIMIT 100
-    `);
-    res.json(rows);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
