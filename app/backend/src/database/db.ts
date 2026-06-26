@@ -82,6 +82,32 @@ function getIntegrityCheckResult(row: any): string {
   return String(value || '').toLowerCase();
 }
 
+function wait(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function isTransientFileLock(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const code = (error as NodeJS.ErrnoException).code;
+  return code === 'EPERM' || code === 'EBUSY';
+}
+
+async function removeSqliteSidecarFile(filePath: string): Promise<void> {
+  const retryDelays = [25, 50, 100, 200, 400];
+
+  for (let attempt = 0; attempt <= retryDelays.length; attempt += 1) {
+    try {
+      fs.rmSync(filePath, { force: true });
+      return;
+    } catch (error) {
+      if (!isTransientFileLock(error) || attempt === retryDelays.length) {
+        throw error;
+      }
+      await wait(retryDelays[attempt]);
+    }
+  }
+}
+
 function enqueueDbOperation<T>(operation: () => Promise<T>): Promise<T> {
   if (transactionScope.getStore()) {
     return operation();
@@ -154,8 +180,8 @@ export function replaceDatabaseFromStaging(
       await rawClose();
       swapStarted = true;
 
-      fs.rmSync(`${DB_PATH}-wal`, { force: true });
-      fs.rmSync(`${DB_PATH}-shm`, { force: true });
+      await removeSqliteSidecarFile(`${DB_PATH}-wal`);
+      await removeSqliteSidecarFile(`${DB_PATH}-shm`);
 
       if (fs.existsSync(DB_PATH)) {
         fs.renameSync(DB_PATH, rollbackPath);
@@ -183,8 +209,8 @@ export function replaceDatabaseFromStaging(
 
         if (replacementMoved) {
           fs.rmSync(DB_PATH, { force: true });
-          fs.rmSync(`${DB_PATH}-wal`, { force: true });
-          fs.rmSync(`${DB_PATH}-shm`, { force: true });
+          await removeSqliteSidecarFile(`${DB_PATH}-wal`);
+          await removeSqliteSidecarFile(`${DB_PATH}-shm`);
         }
 
         if (originalMoved && fs.existsSync(rollbackPath)) {

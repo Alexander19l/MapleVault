@@ -42,6 +42,10 @@ El sistema está orientado a privacidad local: la base de datos vive en el equip
   lista personal, busqueda externa, recomendaciones, importacion y duplicados.
 - `app/backend/src/routes/libraryCache.ts`: cache breve compartida para lecturas
   de Inicio, Temporadas y Recomendaciones con invalidacion centralizada.
+- `app/backend/src/routes/libraryFilters.ts`: filtros SQL puros del catalogo,
+  ordenamiento y condicion no adulta reutilizable.
+- `app/backend/src/routes/routeUtils.ts`: utilidades HTTP compartidas para
+  errores, payloads e IDs.
 - `app/backend/src/anime`: helpers compartidos de payloads y filas de anime.
 - `app/backend/src/settings/appSettings.ts`: lectura, normalizacion y escritura
   de `settings.json`.
@@ -103,8 +107,8 @@ minutos para reducir latencia y solicitudes repetidas.
 ## Deuda Tecnica Restante
 
 - `server.ts` ya funciona principalmente como composition root de middleware,
-  routers y arranque; la siguiente separacion debe enfocarse en servicios y
-  repositorios internos de catalogo.
+  routers y arranque; la siguiente separacion debe enfocarse en repositorios
+  internos para consultas SQL extensas de catalogo y lista personal.
 - Las fuentes de scraping dependen de HTML externo y deben aislarse tras una interfaz de provider.
 - Conviene migrar validacion a esquemas compartidos con frontend si el proyecto crece.
 
