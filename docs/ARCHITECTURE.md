@@ -36,6 +36,8 @@ El sistema está orientado a privacidad local: la base de datos vive en el equip
   scraping masivo, logs y configuracion de fuentes.
 - `app/backend/src/routes/assistantRoutes.ts`: contrato HTTP de Maple Assistant,
   mensajes, acciones, historial, memoria y auditoria.
+- `app/backend/src/routes/episodeRoutes.ts`: contrato HTTP de episodios,
+  progreso visto y servidores de AnimeAV1, TioAnime, JKAnime y AnimeFLV.
 - `app/backend/src/anime`: helpers compartidos de payloads y filas de anime.
 - `app/backend/src/settings/appSettings.ts`: lectura, normalizacion y escritura
   de `settings.json`.
@@ -96,7 +98,7 @@ minutos para reducir latencia y solicitudes repetidas.
 
 ## Deuda Tecnica Restante
 
-- `server.ts` aun concentra rutas de catalogo, busqueda externa y episodios;
+- `server.ts` aun concentra rutas de catalogo, busqueda externa y mantenimiento;
   debe seguir separandose en routes/services/repositories.
 - Las fuentes de scraping dependen de HTML externo y deben aislarse tras una interfaz de provider.
 - Conviene migrar validacion a esquemas compartidos con frontend si el proyecto crece.
