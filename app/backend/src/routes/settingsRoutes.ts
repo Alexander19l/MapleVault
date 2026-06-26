@@ -8,12 +8,16 @@ import {
   normalizeTranslationSettingsForStorage,
   saveSettings
 } from '../settings/appSettings';
-import { enforceSupportedAppearance } from '../settings/settingsPolicy';
 import { getLibreTranslateRuntimeStatus } from '../translation/translationRuntime';
 import {
   getErrorMessage as getSharedErrorMessage,
   validateBodySize
 } from './routeUtils';
+import {
+  buildSavedAppSettings,
+  getAIConnectivityEndpoint,
+  hasOllamaModel
+} from './settingsRouteService';
 
 interface AISettingsService {
   getAISettings: typeof getAISettings;
@@ -64,8 +68,6 @@ const defaultAppSettingsStore: AppSettingsStore = {
 const defaultTranslationRuntimeService: TranslationRuntimeService = {
   getLibreTranslateRuntimeStatus
 };
-
-const allowedCloseBehaviors = new Set(['ask', 'minimize', 'quit']);
 
 function getErrorMessage(error: unknown): string {
   return getSharedErrorMessage(error, 'Error interno al guardar ajustes.');
@@ -129,18 +131,12 @@ export function createSettingsRouter({
         return res.status(400).json({ success: false, message: validatedUrl.reason });
       }
 
-      let endpoint = `${validatedUrl.url}/api/tags`;
-      if (provider !== 'ollama') {
-        endpoint = `${validatedUrl.url}/v1/models`;
-      }
+      const endpoint = getAIConnectivityEndpoint(validatedUrl.url, provider);
 
       const result = await httpClient.get(endpoint, { timeout: 3000, maxRedirects: 0 });
 
       if (provider === 'ollama' && model) {
-        const models = Array.isArray(result.data?.models) ? result.data.models : [];
-        const modelExists = models.some((item: { name?: string }) =>
-          item.name === model || item.name?.startsWith(`${model}:`)
-        );
+        const modelExists = hasOllamaModel(result.data, model);
         if (!modelExists) {
           return res.status(400).json({
             success: false,
@@ -171,16 +167,11 @@ export function createSettingsRouter({
       }
 
       const current = appSettingsStore.loadSettings();
-      const newSettings = enforceSupportedAppearance({
-        ...current,
-        closeBehavior: allowedCloseBehaviors.has(req.body?.closeBehavior)
-          ? req.body.closeBehavior
-          : current.closeBehavior || 'ask',
-        translation: appSettingsStore.normalizeTranslationSettingsForStorage(
-          req.body?.translation,
-          current.translation
-        )
-      });
+      const newSettings = buildSavedAppSettings(
+        current,
+        req.body,
+        appSettingsStore.normalizeTranslationSettingsForStorage
+      );
 
       appSettingsStore.saveSettings(newSettings);
       res.json({ message: 'Ajustes guardados con éxito' });

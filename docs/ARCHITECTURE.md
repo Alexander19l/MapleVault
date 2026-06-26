@@ -30,6 +30,8 @@ El sistema está orientado a privacidad local: la base de datos vive en el equip
   diagnostico con dependencias inyectables para pruebas unitarias.
 - `app/backend/src/routes/settingsRoutes.ts`: contrato HTTP de ajustes de app,
   IA, memoria inicial y estado de traduccion.
+- `app/backend/src/routes/settingsRouteService.ts`: reglas puras de ajustes,
+  normalizacion de cierre y prueba de conectividad de proveedores IA.
 - `app/backend/src/routes/dataTransferRoutes.ts`: exportacion e importacion de
   catalogo manteniendo las rutas publicas `/settings/export` y `/settings/import`.
 - `app/backend/src/routes/scrapingRoutes.ts`: sincronizacion de temporadas,
