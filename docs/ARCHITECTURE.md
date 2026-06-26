@@ -40,6 +40,8 @@ El sistema está orientado a privacidad local: la base de datos vive en el equip
   por temporada y scraping masivo en segundo plano.
 - `app/backend/src/routes/assistantRoutes.ts`: contrato HTTP de Maple Assistant,
   mensajes, acciones, historial, memoria y auditoria.
+- `app/backend/src/routes/assistantRepository.ts`: lecturas/escrituras SQL
+  del historial del chat y auditoria reciente del asistente.
 - `app/backend/src/routes/episodeRoutes.ts`: contrato HTTP de episodios,
   progreso visto y servidores de AnimeAV1, TioAnime, JKAnime y AnimeFLV.
 - `app/backend/src/routes/episodeRepository.ts`: lecturas/escrituras SQL de

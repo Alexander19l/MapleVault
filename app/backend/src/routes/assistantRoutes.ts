@@ -14,6 +14,11 @@ import {
 import { query } from '../database/db';
 import { createRateLimitMiddleware } from '../security/rateLimiter';
 import { sanitizeChatInput } from '../security/sanitize';
+import {
+  clearChatHistory,
+  getAssistantActionHistory,
+  getChatHistory
+} from './assistantRepository';
 import { getErrorMessage as getSharedErrorMessage } from './routeUtils';
 
 type QueryClient = Pick<typeof query, 'all' | 'run'>;
@@ -53,15 +58,6 @@ const defaultMemoryService: AssistantMemoryService = {
 
 function getErrorMessage(error: unknown): string {
   return getSharedErrorMessage(error, 'Error interno en Maple Assistant.');
-}
-
-function parseJsonField(value: unknown) {
-  if (!value) return undefined;
-  try {
-    return JSON.parse(String(value));
-  } catch (_) {
-    return undefined;
-  }
 }
 
 export function createAssistantRouter({
@@ -116,16 +112,7 @@ export function createAssistantRouter({
 
   router.get('/chat/history', async (_req, res) => {
     try {
-      const rawHistory = await queryClient.all('SELECT * FROM chat_messages ORDER BY id ASC');
-      const history = rawHistory.map((message: any) => ({
-        id: message.id,
-        role: message.role,
-        content: message.content,
-        created_at: message.created_at,
-        visualData: parseJsonField(message.visual_data),
-        action: parseJsonField(message.action)
-      }));
-      res.json(history);
+      res.json(await getChatHistory(queryClient));
     } catch (error: unknown) {
       res.status(500).json({ error: getErrorMessage(error) });
     }
@@ -133,7 +120,7 @@ export function createAssistantRouter({
 
   router.delete('/chat/history', async (_req, res) => {
     try {
-      await queryClient.run('DELETE FROM chat_messages');
+      await clearChatHistory(queryClient);
       res.json({ message: 'Historial del chatbot borrado con exito' });
     } catch (error: unknown) {
       res.status(500).json({ error: getErrorMessage(error) });
@@ -169,14 +156,7 @@ export function createAssistantRouter({
 
   router.get('/chat/actions/history', async (_req, res) => {
     try {
-      const rows = await queryClient.all(`
-        SELECT id, user_prompt, detected_intent, nlp_engine, selected_tool, requires_confirmation,
-               execution_status, latency_ms, error_message, created_at
-        FROM assistant_prompt_runs
-        ORDER BY id DESC
-        LIMIT 100
-      `);
-      res.json(rows);
+      res.json(await getAssistantActionHistory(queryClient));
     } catch (error: unknown) {
       res.status(500).json({ error: getErrorMessage(error) });
     }
