@@ -44,6 +44,8 @@ El sistema está orientado a privacidad local: la base de datos vive en el equip
   de Inicio, Temporadas y Recomendaciones con invalidacion centralizada.
 - `app/backend/src/routes/libraryFilters.ts`: filtros SQL puros del catalogo,
   ordenamiento y condicion no adulta reutilizable.
+- `app/backend/src/routes/libraryReadRepository.ts`: lecturas reutilizables de
+  ficha, relaciones, lista personal, generos y duplicados.
 - `app/backend/src/routes/librarySummaryRepository.ts`: consultas agregadas
   para Inicio y Temporadas, separadas del handler HTTP.
 - `app/backend/src/routes/routeUtils.ts`: utilidades HTTP compartidas para
@@ -110,7 +112,7 @@ minutos para reducir latencia y solicitudes repetidas.
 
 - `server.ts` ya funciona principalmente como composition root de middleware,
   routers y arranque; la siguiente separacion debe continuar con repositorios
-  internos para consultas SQL extensas de catalogo, ficha y lista personal.
+  internos para escrituras de catalogo y lista personal.
 - Las fuentes de scraping dependen de HTML externo y deben aislarse tras una interfaz de provider.
 - Conviene migrar validacion a esquemas compartidos con frontend si el proyecto crece.
 

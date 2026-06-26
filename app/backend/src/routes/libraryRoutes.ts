@@ -27,6 +27,14 @@ import {
   buildAnimeOrderClause
 } from './libraryFilters';
 import {
+  getAnimeRelations,
+  getAnimeWithUserStateAndGenres,
+  getDuplicateAnimeGroups,
+  getGenreNames,
+  getLocalAnimeRowsByExternalIds,
+  getUserListRows
+} from './libraryReadRepository';
+import {
   getDashboardSummaryData,
   getSeasonsSummaryData
 } from './librarySummaryRepository';
@@ -193,23 +201,11 @@ export function createLibraryRouter({
       const id = getValidatedId(req.params.id, res);
       if (!id) return;
 
-      const anime = await queryClient.get(`
-        SELECT a.*, ul.watch_status, ul.favorite, ul.user_score, ul.episodes_watched, ul.notes, ul.started_at, ul.completed_at
-        FROM anime a
-        LEFT JOIN user_list ul ON a.id = ul.anime_id
-        WHERE a.id = ?
-      `, [id]);
+      const anime = await getAnimeWithUserStateAndGenres(queryClient, id);
 
       if (!anime) {
         return res.status(404).json({ error: 'Anime no encontrado' });
       }
-
-      const genres = await queryClient.all(`
-        SELECT g.name FROM anime_genres ag
-        JOIN genres g ON ag.genre_id = g.id
-        WHERE ag.anime_id = ?
-      `, [id]);
-      anime.genres = genres.map((genre: any) => genre.name);
 
       const translatedAnime = await translationService.decorateAnimeWithSpanishTranslation(anime);
       res.json(translatedAnime);
@@ -365,15 +361,7 @@ export function createLibraryRouter({
     try {
       const id = getValidatedId(req.params.id, res);
       if (!id) return;
-      const rows = await queryClient.all(`
-        SELECT r.*, a.id as local_anime_id
-        FROM anime_relations r
-        LEFT JOIN anime a ON r.related_external_id = a.external_id AND a.source = 'AniList'
-        WHERE r.anime_id = ?
-          AND UPPER(COALESCE(r.relation_type, '')) IN ('PREQUEL', 'SEQUEL')
-          AND UPPER(COALESCE(r.type, '')) = 'ANIME'
-        ORDER BY CASE UPPER(r.relation_type) WHEN 'PREQUEL' THEN 0 ELSE 1 END, r.title
-      `, [id]);
+      const rows = await getAnimeRelations(queryClient, id);
       res.json(rows);
     } catch (error: unknown) {
       res.status(500).json({ error: getErrorMessage(error) });
@@ -383,32 +371,7 @@ export function createLibraryRouter({
   router.get('/user-list', async (req, res) => {
     try {
       const { status, favorite } = req.query;
-      let sql = `
-        SELECT ul.*, a.title, a.title_romaji, a.title_english, a.title_japanese,
-               a.synopsis, a.status, a.type, a.duration, a.cover_image, a.banner_image,
-               a.studio, a.year, a.season, a.episodes, a.score as mal_score,
-               GROUP_CONCAT(DISTINCT g.name) as genres_joined
-        FROM user_list ul
-        JOIN anime a ON ul.anime_id = a.id
-        LEFT JOIN anime_genres ag ON a.id = ag.anime_id
-        LEFT JOIN genres g ON ag.genre_id = g.id
-        WHERE 1=1
-      `;
-      const params: any[] = [];
-
-      if (status) {
-        sql += ` AND ul.watch_status = ? `;
-        params.push(status);
-      }
-      if (favorite) {
-        sql += ` AND ul.favorite = ? `;
-        params.push(parseInt(favorite as string, 10));
-      }
-
-      sql += ` GROUP BY ul.id `;
-      sql += ` ORDER BY ul.updated_at DESC `;
-
-      const rows = attachGenres(await queryClient.all(sql, params));
+      const rows = attachGenres(await getUserListRows(queryClient, { status, favorite }));
       const translatedRows = await translationService.decorateAnimeListWithSpanishTranslation(rows);
       res.json(translatedRows);
     } catch (error: unknown) {
@@ -429,15 +392,7 @@ export function createLibraryRouter({
       const relatedIds = (anime.relations || [])
         .map((relation: any) => Number(relation.related_external_id))
         .filter(Number.isInteger);
-      const localRelations = relatedIds.length > 0
-        ? await queryClient.all(
-            `SELECT id, external_id
-             FROM anime
-             WHERE source = 'AniList'
-               AND external_id IN (${relatedIds.map(() => '?').join(', ')})`,
-            relatedIds
-          )
-        : [];
+      const localRelations = await getLocalAnimeRowsByExternalIds(queryClient, relatedIds);
       const localIdByExternalId = new Map(
         localRelations.map((row: any) => [Number(row.external_id), Number(row.id)])
       );
@@ -575,8 +530,7 @@ export function createLibraryRouter({
 
   router.get('/genres', async (_req, res) => {
     try {
-      const genres = await queryClient.all('SELECT name FROM genres ORDER BY name ASC');
-      res.json(genres.map((genre: any) => genre.name));
+      res.json(await getGenreNames(queryClient));
     } catch (error: unknown) {
       res.status(500).json({ error: getErrorMessage(error) });
     }
@@ -600,22 +554,7 @@ export function createLibraryRouter({
 
   router.get('/maintenance/duplicates', async (_req, res) => {
     try {
-      const groups = await queryClient.all(`
-        SELECT LOWER(title) as normalized_title,
-               COALESCE(year, 0) as year,
-               COUNT(*) as count,
-               GROUP_CONCAT(id) as ids,
-               GROUP_CONCAT(source) as sources
-        FROM anime
-        GROUP BY normalized_title, year
-        HAVING COUNT(*) > 1
-        ORDER BY count DESC, normalized_title ASC
-      `);
-      res.json(groups.map((group: any) => ({
-        ...group,
-        ids: String(group.ids || '').split(',').filter(Boolean).map(Number),
-        sources: String(group.sources || '').split(',').filter(Boolean)
-      })));
+      res.json(await getDuplicateAnimeGroups(queryClient));
     } catch (error: unknown) {
       res.status(500).json({ error: getErrorMessage(error) });
     }
