@@ -42,6 +42,8 @@ El sistema está orientado a privacidad local: la base de datos vive en el equip
   lista personal, busqueda externa, recomendaciones, importacion y duplicados.
 - `app/backend/src/routes/libraryCache.ts`: cache breve compartida para lecturas
   de Inicio, Temporadas y Recomendaciones con invalidacion centralizada.
+- `app/backend/src/routes/libraryCatalogRepository.ts`: consulta principal del
+  catalogo con filtros, ordenamiento, paginacion y total opcional.
 - `app/backend/src/routes/libraryFilters.ts`: filtros SQL puros del catalogo,
   ordenamiento y condicion no adulta reutilizable.
 - `app/backend/src/routes/libraryReadRepository.ts`: lecturas reutilizables de

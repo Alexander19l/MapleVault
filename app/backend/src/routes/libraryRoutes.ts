@@ -23,9 +23,8 @@ import {
   invalidateLibraryReadCaches
 } from './libraryCache';
 import {
-  buildAnimeFilterClause,
-  buildAnimeOrderClause
-} from './libraryFilters';
+  getCatalogAnimeRows
+} from './libraryCatalogRepository';
 import {
   getAnimeRelations,
   getAnimeWithUserStateAndGenres,
@@ -96,53 +95,20 @@ export function createLibraryRouter({
   router.get('/anime', async (req, res) => {
     try {
       const filters = validateSearchFilters(req.query as Record<string, any>);
-      const { sort, limit, offset, withTotal, translateSynopsis, includeSynopsis } = filters;
+      const { translateSynopsis, withTotal } = filters;
       const adult = req.query.adult === 'only' ? 'only' : req.query.adult === 'include' ? 'include' : undefined;
-      const { whereSql, params } = buildAnimeFilterClause(filters, adult);
-      const animeSelect = includeSynopsis || translateSynopsis
-        ? 'a.*'
-        : `
-          a.id, a.external_id, a.source, a.title, a.title_romaji, a.title_english, a.title_japanese,
-          a.year, a.season, a.status, a.type, a.episodes, a.duration, a.score, a.popularity,
-          a.cover_image, a.banner_image, a.studio, a.source_material, a.age_rating,
-          a.start_date, a.end_date, a.created_at, a.updated_at, a.is_adult
-        `;
-
-      let sql = `
-        SELECT ${animeSelect}, ul.watch_status, ul.favorite, ul.user_score, ul.episodes_watched, ul.notes,
-               GROUP_CONCAT(DISTINCT g.name) as genres_joined
-        FROM anime a
-        LEFT JOIN user_list ul ON a.id = ul.anime_id
-        LEFT JOIN anime_genres ag ON a.id = ag.anime_id
-        LEFT JOIN genres g ON ag.genre_id = g.id
-        ${whereSql}
-      `;
-
-      sql += ` GROUP BY a.id `;
-      sql += buildAnimeOrderClause(sort);
-
-      const listParams = [...params];
-      if (limit) {
-        sql += ` LIMIT ? OFFSET ? `;
-        listParams.push(limit, offset || 0);
-      }
-
-      const rows = attachGenres(await queryClient.all(sql, listParams));
+      const catalogResult = await getCatalogAnimeRows(queryClient, filters, adult);
+      const rows = attachGenres(catalogResult.rows);
       const translatedRows = await translationService.decorateAnimeListWithSpanishTranslation(rows, {
         maxRowsToTranslate: translateSynopsis ? Math.min(rows.length, 24) : 0
       });
 
       if (withTotal) {
-        const countRow = await queryClient.get(`
-          SELECT COUNT(DISTINCT a.id) as total
-          FROM anime a
-          ${whereSql}
-        `, params);
         return res.json({
           items: translatedRows,
-          total: Number(countRow?.total) || 0,
-          limit: limit || translatedRows.length,
-          offset: offset || 0
+          total: catalogResult.total || 0,
+          limit: catalogResult.limit,
+          offset: catalogResult.offset
         });
       }
 
