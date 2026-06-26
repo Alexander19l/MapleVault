@@ -7,6 +7,15 @@ import {
 } from '../scraping/scraper';
 import { validateId } from '../security/validators';
 import { getErrorMessage as getSharedErrorMessage } from './routeUtils';
+import {
+  getScrapingLogs,
+  getScrapingSources,
+  updateScrapingSource
+} from './scrapingRepository';
+import {
+  runMassiveYearSync,
+  syncSeasonAndPersist
+} from './scrapingSyncService';
 
 type QueryClient = Pick<typeof query, 'all' | 'run'>;
 
@@ -40,13 +49,12 @@ export function createScrapingRouter({
         return res.status(400).json({ error: 'year y season son requeridos' });
       }
 
-      const list = await syncSeason(parseInt(year, 10), season);
-      let savedCount = 0;
-
-      for (const anime of list) {
-        await saveAnimeToLocal(anime);
-        savedCount++;
-      }
+      const savedCount = await syncSeasonAndPersist({
+        year: parseInt(year, 10),
+        season,
+        syncSeason,
+        saveAnimeToLocal
+      });
 
       invalidateLibraryReadCaches();
       res.json({
@@ -71,56 +79,14 @@ export function createScrapingRouter({
         return res.status(400).json({ error: 'Año de inicio no válido.' });
       }
 
-      (async () => {
-        await writeScrapingLog(
-          'Massive Scraping',
-          `Sincronización masiva desde ${parsedStart}`,
-          'started',
-          `Iniciando importación desde el año ${parsedStart} hasta ${currentYear}`
-        );
-
-        const seasons = ['winter', 'spring', 'summer', 'fall'];
-        let totalImported = 0;
-
-        for (let year = parsedStart; year <= currentYear; year++) {
-          for (const season of seasons) {
-            try {
-              console.log(`[Massive Scraping] Sincronizando ${year} ${season}...`);
-              const list = await syncSeason(year, season);
-              let saved = 0;
-              for (const anime of list) {
-                await saveAnimeToLocal(anime);
-                saved++;
-              }
-              if (saved > 0) invalidateLibraryReadCaches();
-              totalImported += saved;
-              await writeScrapingLog(
-                'Massive Scraping',
-                `Sincronización masiva: ${year} ${season}`,
-                'success',
-                `Sincronizados ${saved} animes.`
-              );
-            } catch (error: unknown) {
-              const message = getErrorMessage(error);
-              console.error(`Error en scraping masivo para ${year} ${season}:`, message);
-              await writeScrapingLog(
-                'Massive Scraping',
-                `Sincronización masiva: ${year} ${season}`,
-                'error',
-                `Fallo: ${message}`
-              );
-            }
-          }
-        }
-
-        invalidateLibraryReadCaches();
-        await writeScrapingLog(
-          'Massive Scraping',
-          'Sincronización masiva terminada',
-          'success',
-          `Sincronización masiva completada. Total de animes importados/actualizados: ${totalImported}`
-        );
-      })();
+      void runMassiveYearSync({
+        startYear: parsedStart,
+        currentYear,
+        syncSeason,
+        saveAnimeToLocal,
+        writeScrapingLog,
+        invalidateLibraryReadCaches
+      });
 
       res.json({
         message: `Scraping masivo iniciado en segundo plano desde el año ${parsedStart} hasta ${currentYear}. Puedes ver el progreso en los logs de scraping.`
@@ -132,8 +98,7 @@ export function createScrapingRouter({
 
   router.get('/scraping/logs', async (_req, res) => {
     try {
-      const logs = await queryClient.all('SELECT * FROM scraping_logs ORDER BY id DESC LIMIT 50');
-      res.json(logs);
+      res.json(await getScrapingLogs(queryClient));
     } catch (error: unknown) {
       res.status(500).json({ error: getErrorMessage(error) });
     }
@@ -141,8 +106,7 @@ export function createScrapingRouter({
 
   router.get('/scraping/sources', async (_req, res) => {
     try {
-      const sources = await queryClient.all('SELECT * FROM sources');
-      res.json(sources);
+      res.json(await getScrapingSources(queryClient));
     } catch (error: unknown) {
       res.status(500).json({ error: getErrorMessage(error) });
     }
@@ -161,11 +125,7 @@ export function createScrapingRouter({
         return res.status(400).json({ error: 'rate_limit debe ser un entero entre 250 y 60000 ms.' });
       }
 
-      await queryClient.run(`
-        UPDATE sources
-        SET enabled = ?, rate_limit = ?, last_sync = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `, [enabled ? 1 : 0, safeRateLimit, id]);
+      await updateScrapingSource(queryClient, id, enabled, safeRateLimit);
       res.json({ message: 'Fuente actualizada con éxito' });
     } catch (error: unknown) {
       res.status(500).json({ error: getErrorMessage(error) });

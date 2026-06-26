@@ -34,6 +34,10 @@ El sistema está orientado a privacidad local: la base de datos vive en el equip
   catalogo manteniendo las rutas publicas `/settings/export` y `/settings/import`.
 - `app/backend/src/routes/scrapingRoutes.ts`: sincronizacion de temporadas,
   scraping masivo, logs y configuracion de fuentes.
+- `app/backend/src/routes/scrapingRepository.ts`: lecturas y actualizaciones
+  SQL de logs y fuentes de scraping.
+- `app/backend/src/routes/scrapingSyncService.ts`: orquestacion de scraping
+  por temporada y scraping masivo en segundo plano.
 - `app/backend/src/routes/assistantRoutes.ts`: contrato HTTP de Maple Assistant,
   mensajes, acciones, historial, memoria y auditoria.
 - `app/backend/src/routes/episodeRoutes.ts`: contrato HTTP de episodios,
