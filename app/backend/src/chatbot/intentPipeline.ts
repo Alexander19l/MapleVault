@@ -34,6 +34,12 @@ import {
   extractFeedbackReference,
   extractReferenceOrTitle
 } from './intentReferenceUtils';
+import {
+  matchClearSearchFiltersIntent,
+  matchHelpIntent,
+  matchNavigationIntent,
+  matchViewCatalogIntent
+} from './intentNavigationMatcher';
 
 export function parseIntentRegex(message: string): NLPResult {
   const msg = message.toLowerCase().trim();
@@ -112,13 +118,7 @@ export function parseIntentRegex(message: string): NLPResult {
     return { ...result, intent: 'UNSUPPORTED_DOWNLOAD' };
   }
 
-  if (
-    normalizedMsg.match(/^\/?(ayuda|help|comandos|commands|opciones|capacidades)$/)
-    || normalizedMsg.match(/^(muestrame|mostrar|ver)\s+(la\s+)?(ayuda|lista de comandos|capacidades)$/)
-    || normalizedMsg.match(/^que\s+(puedes|sabes)\s+hacer/)
-    || normalizedMsg.match(/^como\s+(te\s+)?(uso|utilizo)/)
-    || normalizedMsg.match(/\b(what can you do|show help|what tools or features do you have)\b/)
-  ) {
+  if (matchHelpIntent(normalizedMsg)) {
     return { ...result, intent: 'HELP' };
   }
 
@@ -133,7 +133,7 @@ export function parseIntentRegex(message: string): NLPResult {
     return { ...result, intent: 'RECALL_PREFERENCE' };
   }
 
-  if (normalizedMsg.match(/\b(?:quita todos los filtros|clear all search filters)\b/)) {
+  if (matchClearSearchFiltersIntent(normalizedMsg)) {
     return { ...result, intent: 'CLEAR_SEARCH_FILTERS' };
   }
 
@@ -145,59 +145,14 @@ export function parseIntentRegex(message: string): NLPResult {
     return { ...result, intent: 'WATCH_ORDER' };
   }
 
-  if (
-    normalizedMsg.match(/^(mi\s+)?catalogo$/)
-    || normalizedMsg.match(/^(muestrame|mostrar|ver)\s+(mi\s+|el\s+)?catalogo$/)
-    || normalizedMsg.match(/^mi\s+lista$/)
-    || normalizedMsg.match(/^que\s+tengo/)
-  ) {
+  if (matchViewCatalogIntent(normalizedMsg)) {
     return { ...result, intent: 'VIEW_CATALOG' };
   }
 
-  if (
-    normalizedMsg.match(/^pagina\s+anterior$/)
-    || normalizedMsg.match(/^(?:volver|regresar|ir)\s+(?:a\s+)?(?:la\s+)?pagina\s+anterior$/)
-    || normalizedMsg.match(/^(?:previous|back)\s+page$/)
-  ) {
-    result.entities.context_continuation = true;
-    return { ...result, intent: 'PREVIOUS_ACTIVE_PAGE' };
-  }
-
-  const directPageMatch = normalizedMsg.match(
-    /^(?:(?:ir|ve|mostrar|muestrame|mostrame|abre|cargar)\s+(?:a\s+)?(?:la\s+)?pagina|pagina|go\s+to\s+page|show\s+page)\s+([1-9]\d{0,2})$/
-  );
-  if (directPageMatch) {
-    result.entities.page = Number(directPageMatch[1]);
-    result.entities.context_continuation = true;
-    return { ...result, intent: 'NAVIGATE_ACTIVE_PAGE' };
-  }
-
-  if (
-    normalizedMsg.match(/^(?:ver|mostrar|muestrame|mostrame|dame|cargar)\s+mas\s+(?:resultados|opciones|recomendaciones|pendientes|completados|completadas)$/)
-    || normalizedMsg.match(/^(?:siguiente|proxima)\s+pagina\s+(?:de\s+)?(?:resultados|recomendaciones|pendientes|completados)$/)
-    || normalizedMsg.match(/^(?:show|load)\s+more\s+(?:results|recommendations|pending|completed)$/)
-  ) {
-    result.entities.context_continuation = true;
-    return { ...result, intent: 'CONTINUE_RESULTS' };
-  }
-
-  if (
-    normalizedMsg.match(/^(?:ver|mostrar|muestrame|mostrame|dame|cargar)\s+mas\s+(?:series|animes)\s+de\s+mi\s+catalogo$/)
-    || normalizedMsg.match(/^(?:siguiente|proxima)\s+pagina\s+del\s+catalogo$/)
-    || normalizedMsg.match(/^continua(?:r)?\s+(?:con\s+)?(?:mi\s+)?catalogo$/)
-    || normalizedMsg.match(/^(?:show|load)\s+more\s+(?:anime|series)\s+from\s+my\s+catalog$/)
-  ) {
-    result.entities.context_continuation = true;
-    return { ...result, intent: 'CONTINUE_CATALOG' };
-  }
-
-  if (
-    normalizedMsg.match(/^(?:ver|mostrar|muestrame|mostrame|dame|cargar)\s+mas\s+(?:series|animes)$/)
-    || normalizedMsg.match(/^(?:siguiente|proxima)\s+pagina$/)
-    || normalizedMsg.match(/^(?:show|load)\s+more\s+(?:anime|series)$/)
-  ) {
-    result.entities.context_continuation = true;
-    return { ...result, intent: 'CONTINUE_ACTIVE' };
+  const navigationMatch = matchNavigationIntent(normalizedMsg);
+  if (navigationMatch) {
+    Object.assign(result.entities, navigationMatch.entities);
+    return { ...result, intent: navigationMatch.intent };
   }
 
   const yearMatch = normalizedMsg.match(/\b(19\d{2}|20\d{2})\b/);
