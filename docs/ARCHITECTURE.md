@@ -57,6 +57,8 @@ El sistema está orientado a privacidad local: la base de datos vive en el equip
 - `app/backend/src/anime`: helpers compartidos de payloads y filas de anime.
 - `app/backend/src/settings/appSettings.ts`: lectura, normalizacion y escritura
   de `settings.json`.
+- `app/backend/src/serverStartup.ts`: tareas de arranque del backend,
+  incluyendo autoinicio de traduccion y backups automaticos/periodicos.
 - `app/backend/src/security`: validadores, sanitizacion y rate limiting.
 - `app/backend/src/chatbot`: NLP, memoria, confirmaciones, capacidades y acciones del asistente.
 - `app/backend/src/scraping`: AniList y fuentes externas.
