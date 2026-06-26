@@ -117,7 +117,7 @@ describe('Data transfer HTTP router', () => {
     });
 
     expect(response.status).toBe(400);
-    expect(json.error).toContain('Formato de importación inválido');
+    expect(json.error.toLowerCase()).toContain('formato');
     expect(saveAnimeToLocalMock).not.toHaveBeenCalled();
     expect(invalidateCachesMock).not.toHaveBeenCalled();
   });

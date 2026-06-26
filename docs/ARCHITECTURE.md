@@ -34,6 +34,8 @@ El sistema está orientado a privacidad local: la base de datos vive en el equip
   normalizacion de cierre y prueba de conectividad de proveedores IA.
 - `app/backend/src/routes/dataTransferRoutes.ts`: exportacion e importacion de
   catalogo manteniendo las rutas publicas `/settings/export` y `/settings/import`.
+- `app/backend/src/routes/dataTransferService.ts`: construccion del payload de
+  exportacion e importacion validada de anime/lista personal.
 - `app/backend/src/routes/scrapingRoutes.ts`: sincronizacion de temporadas,
   scraping masivo, logs y configuracion de fuentes.
 - `app/backend/src/routes/scrapingRepository.ts`: lecturas y actualizaciones
