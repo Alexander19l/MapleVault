@@ -40,6 +40,14 @@ import {
   matchNavigationIntent,
   matchViewCatalogIntent
 } from './intentNavigationMatcher';
+import {
+  matchAddToLibraryIntent,
+  matchBatchStatusActionIntent,
+  matchClearUserListIntent,
+  matchRatingActionIntent,
+  matchRemoveFromLibraryIntent,
+  matchStatusActionIntent
+} from './intentLibraryActionMatcher';
 
 export function parseIntentRegex(message: string): NLPResult {
   const msg = message.toLowerCase().trim();
@@ -188,24 +196,16 @@ export function parseIntentRegex(message: string): NLPResult {
     return { ...result, intent: 'REMEMBER_DISLIKE' };
   }
 
-  const absoluteTenMatch = normalizedMsg.match(/\bponle\s+un\s+diez\s+absoluto\s+a\s+(.+)$/);
-  const numericRatingMatch = normalizedMsg.match(/\b(?:ponle|le doy|le pongo|califica|rate)\s+(?:un\s+)?(?:nota\s+)?(\d+(?:\.\d+)?)\s*(?:de\s+10|\/10|de\s+nota)?\s+(?:a\s+)?(.+)$/);
-  if (absoluteTenMatch?.[1] || numericRatingMatch?.[2]) {
-    const score = absoluteTenMatch ? 10 : Number(numericRatingMatch?.[1]);
-    const title = absoluteTenMatch?.[1] || numericRatingMatch?.[2];
-    if (Number.isFinite(score) && score >= 0 && score <= 10 && title) {
-      result.entities.score = score;
-      result.entities.refIndexOrTitle = cleanReference(title);
-      result.entities.animeTitle = result.entities.refIndexOrTitle;
-      return { ...result, intent: 'RATE_ANIME' };
-    }
+  const ratingAction = matchRatingActionIntent(normalizedMsg);
+  if (ratingAction) {
+    Object.assign(result.entities, ratingAction.entities);
+    return { ...result, intent: ratingAction.intent };
   }
 
-  const updateStatusMatch = normalizedMsg.match(/\b(?:marcar|marca|cambiar estado de|change status of)\s+(.+?)\s+(?:como|a|to)\s+(viendo|en progreso|pendiente|completado|completada|abandonado|abandonada|pausado|pausada|watching|completed|dropped|on hold)\b/);
-  if (updateStatusMatch?.[1] && status) {
-    result.entities.refIndexOrTitle = cleanReference(updateStatusMatch[1]);
-    result.entities.animeTitle = result.entities.refIndexOrTitle;
-    return { ...result, intent: 'UPDATE_STATUS' };
+  const statusAction = matchStatusActionIntent(normalizedMsg, status);
+  if (statusAction) {
+    Object.assign(result.entities, statusAction.entities);
+    return { ...result, intent: statusAction.intent };
   }
 
   if (
@@ -354,44 +354,27 @@ export function parseIntentRegex(message: string): NLPResult {
     return { ...result, intent: 'SHOW_ANIME_INFO' };
   }
 
-  const addRef = extractReferenceOrTitle(normalizedMsg, [
-    /^agrega(?:r)?\s+(?:el\s+)?(.+)/,
-    /^anade\s+(?:el\s+)?(.+)/,
-    /^importa\s+(?:el\s+)?(.+)/,
-    /^add\s+(.+)/
-  ]);
-  if (addRef && !normalizedMsg.match(/\bbusqueda anterior\b/)) {
-    result.entities.refIndexOrTitle = cleanReference(addRef);
-    result.entities.animeTitle = result.entities.refIndexOrTitle;
-    return { ...result, intent: 'ADD_TO_LIBRARY' };
+  const addAction = matchAddToLibraryIntent(normalizedMsg);
+  if (addAction) {
+    Object.assign(result.entities, addAction.entities);
+    return { ...result, intent: addAction.intent };
   }
 
-  if (normalizedMsg.match(/^borra mi watchlist(?:\s+--(?:force|yes|confirm))*$/)) {
-    return { ...result, intent: 'CLEAR_USER_LIST' };
+  const clearUserListAction = matchClearUserListIntent(normalizedMsg);
+  if (clearUserListAction) {
+    return { ...result, intent: clearUserListAction.intent };
   }
 
-  const removeRef = extractReferenceOrTitle(normalizedMsg, [
-    /^elimina(?:r)?\s+(?:el\s+)?(.+)/,
-    /^borra(?:r)?\s+(?:el\s+)?(.+)/,
-    /^quita(?:r)?\s+(?:el\s+)?(.+)/,
-    /^remove\s+(.+)/
-  ]);
-  if (removeRef && !normalizedMsg.match(/\b(busqueda|filtro|historial)\b/)) {
-    result.entities.refIndexOrTitle = cleanReference(removeRef);
-    result.entities.animeTitle = result.entities.refIndexOrTitle;
-    if (normalizedMsg.match(/\bfrom\s+(?:my\s+)?(?:watching|completed|dropped|plan to watch)(?:\s+list)?\b/)) {
-      result.entities.list = status || normalizedMsg.match(/\b(watching|completed|dropped|plan to watch)\b/)?.[1];
-      return { ...result, intent: 'REMOVE_FROM_LIST' };
-    }
-    return { ...result, intent: 'REMOVE_FROM_LIBRARY' };
+  const removeAction = matchRemoveFromLibraryIntent(normalizedMsg, status);
+  if (removeAction) {
+    Object.assign(result.entities, removeAction.entities);
+    return { ...result, intent: removeAction.intent };
   }
 
-  const batchMatch = normalizedMsg.match(/\bmarca\s+(?:toda\s+)?(?:la\s+)?temporada(?:s)?\s+[0-9y,\s]+\s+de\s+(.+?)\s+como\s+vistas?\b/);
-  if (batchMatch?.[1] && result.entities.seasons?.length) {
-    result.entities.refIndexOrTitle = cleanReference(batchMatch[1]);
-    result.entities.animeTitle = result.entities.refIndexOrTitle;
-    result.entities.status = 'completed';
-    return { ...result, intent: 'BATCH_UPDATE_STATUS' };
+  const batchStatusAction = matchBatchStatusActionIntent(normalizedMsg, result.entities.seasons);
+  if (batchStatusAction) {
+    Object.assign(result.entities, batchStatusAction.entities);
+    return { ...result, intent: batchStatusAction.intent };
   }
 
   const episodeFieldRef = normalizedMsg.match(/\bcuantos\s+(?:episodios|capitulos)\s+tiene\s+(.+)$/);

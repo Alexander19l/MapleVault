@@ -81,6 +81,8 @@ El sistema está orientado a privacidad local: la base de datos vive en el equip
   de referencias textuales usadas por intents de info, agregar, borrar y feedback.
 - `app/backend/src/chatbot/intentNavigationMatcher.ts`: deteccion pura de
   ayuda, catalogo, filtros y paginacion contextual del asistente.
+- `app/backend/src/chatbot/intentLibraryActionMatcher.ts`: deteccion pura de
+  altas, bajas, puntuaciones y estados; no ejecuta cambios ni omite confirmaciones.
 - `app/backend/src/scraping`: AniList y fuentes externas.
 - `app/frontend/src/services/api.ts`: cliente HTTP centralizado.
 
