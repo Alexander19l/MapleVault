@@ -26,6 +26,14 @@ if errorlevel 1 (
   exit /b 1
 )
 
+node -e "const [major, minor] = process.versions.node.split('.').map(Number); process.exit(major > 22 || (major === 22 && minor >= 12) ? 0 : 1)"
+if errorlevel 1 (
+  echo [ERROR] MapleVault requiere Node.js 22.12 o superior.
+  echo Instala una version LTS compatible y vuelve a ejecutar este launcher.
+  pause
+  exit /b 1
+)
+
 if not exist "node_modules" goto install_dependencies
 if not exist "app\backend\node_modules" goto install_dependencies
 if not exist "app\frontend\node_modules" goto install_dependencies

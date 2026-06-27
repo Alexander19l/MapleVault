@@ -80,7 +80,7 @@ export function checkDatabase(): { ok: boolean; error?: string } {
 
 export async function waitForBackend(
   port: number = 5000,
-  retries: number = 8,
+  retries: number = 40,
   host: string = '127.0.0.1'
 ): Promise<boolean> {
   const url = `http://${host}:${port}/health`;

@@ -50,6 +50,12 @@ maplevault-local/
 
 ## Desarrollo
 
+Requisitos:
+
+- Node.js `22.12` o superior.
+- npm `10` o superior.
+- Windows 10/11 para generar el instalador NSIS.
+
 ```bash
 npm install
 npm run dev

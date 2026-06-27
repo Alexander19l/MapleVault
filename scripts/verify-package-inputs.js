@@ -11,9 +11,10 @@ const requiredFiles = [
   'dist/desktop/error.html',
   'dist/desktop/assets/icon.ico',
   'dist/desktop/assets/icon.png',
+  'dist/backend-runtime/dist/server.js',
+  'dist/backend-runtime/node_modules/sqlite3/package.json',
   'app/frontend/dist/index.html',
-  'app/backend/dist/server.js',
-  'app/backend/node_modules/sqlite3/package.json'
+  'app/backend/dist/server.js'
 ];
 
 const missing = requiredFiles.filter(relativePath => {

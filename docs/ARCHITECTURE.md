@@ -184,6 +184,13 @@ La retencion conserva las 10 copias manuales mas recientes y las 3 copias de
 emergencia mas recientes. Esto limita el crecimiento del almacenamiento sin
 eliminar el punto de recuperacion inmediato.
 
+## Runtime Del Instalador
+
+Antes de ejecutar Electron Builder, `prepare-backend-runtime.js` crea
+`dist/backend-runtime` con el backend compilado y solo las dependencias de
+produccion reportadas por npm. El entorno de desarrollo no se modifica y
+herramientas como TypeScript, Vitest, ts-node o nodemon no entran al instalador.
+
 ## Carga Diferida De Maple Assistant
 
 El asistente se divide en capas para evitar descargar todo el renderer al abrir

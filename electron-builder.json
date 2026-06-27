@@ -7,14 +7,12 @@
   "files": [
     "app/frontend/dist/**/*",
     "dist/desktop/**/*",
-    "app/backend/dist/**/*",
-    "app/backend/node_modules/**/*",
+    "dist/backend-runtime/**/*",
     "package.json"
   ],
   "asarUnpack": [
-    "app/backend/**/*"
+    "dist/backend-runtime/**/*"
   ],
-  "includeSubNodeModules": true,
   "win": {
     "target": ["nsis"],
     "icon": "app/desktop/assets/icon.ico",

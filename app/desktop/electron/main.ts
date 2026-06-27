@@ -28,6 +28,7 @@ const PORT = Number.isInteger(parsedBackendPort) && parsedBackendPort > 0 && par
   : 5000;
 const BACKEND_HOST = process.env.MAPLEVAULT_BACKEND_HOST || '127.0.0.1';
 const RENDERER_URL = process.env.MAPLEVAULT_RENDERER_URL || 'http://127.0.0.1:5173';
+const BACKEND_STARTUP_RETRIES = 40;
 const BACKEND_SESSION_TOKEN = isDev
   ? process.env.MAPLEVAULT_API_TOKEN || ''
   : crypto.randomBytes(32).toString('hex');
@@ -97,7 +98,7 @@ function setStartupSettings(enabled: boolean): StartupSettings {
 function startBackendProcess() {
   if (!isDev) {
     console.log('Arrancando el servidor backend en producción...');
-    const backendPath = path.resolve(__dirname, '../../app/backend/dist/server.js').replace('app.asar', 'app.asar.unpacked');
+    const backendPath = path.resolve(__dirname, '../backend-runtime/dist/server.js').replace('app.asar', 'app.asar.unpacked');
     const { dbPath } = getDatabasePaths();
     
     backendProcess = spawn(process.execPath, [backendPath], {
@@ -190,7 +191,7 @@ async function bootAppWorkflow() {
   startBackendProcess();
 
   updateSplashStatus('Conectando con biblioteca...');
-  const isHealthy = await waitForBackend(PORT, 8, BACKEND_HOST);
+  const isHealthy = await waitForBackend(PORT, BACKEND_STARTUP_RETRIES, BACKEND_HOST);
   if (!isHealthy) {
     showErrorDiagnostics(
       `El backend interno no respondió en el puerto ${PORT} después de múltiples intentos.\nPor favor, verifica los logs e intenta de nuevo.`,
