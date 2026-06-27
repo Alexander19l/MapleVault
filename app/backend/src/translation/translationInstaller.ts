@@ -40,6 +40,17 @@ function appendOutput(current: string, chunk: unknown): string {
   return normalized.length > 6000 ? normalized.slice(-6000) : normalized;
 }
 
+function getInstallationFailureMessage(code: number | null, output: string): string {
+  if (/ctranslate2|visual c\+\+/i.test(output)) {
+    return [
+      'No se pudo preparar la dependencia nativa de LibreTranslate.',
+      'Revisa el diagnostico de Microsoft Visual C++ Runtime y reinicia Windows si fue solicitado.'
+    ].join(' ');
+  }
+
+  return `La instalacion de LibreTranslate termino con codigo ${code ?? 'desconocido'}.`;
+}
+
 function findSetupScript(fileExists: typeof fs.existsSync): string | null {
   const configuredPath = process.env.MAPLEVAULT_LIBRETRANSLATE_SETUP_SCRIPT?.trim();
   const candidates = [
@@ -187,7 +198,7 @@ export class LibreTranslateInstaller {
         state: 'error',
         startedAt,
         finishedAt: new Date().toISOString(),
-        message: `La instalacion de LibreTranslate termino con codigo ${code ?? 'desconocido'}.`,
+        message: getInstallationFailureMessage(code, output),
         output
       };
       return;
@@ -229,4 +240,3 @@ export function startLibreTranslateInstallation(): Promise<TranslationInstallSta
 export function getLibreTranslateInstallationStatus(): TranslationInstallStatus {
   return installer.getStatus();
 }
-

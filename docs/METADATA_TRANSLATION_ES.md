@@ -108,6 +108,8 @@ Ambas rutas usan el mismo script y guardan el runtime por usuario en:
 %LOCALAPPDATA%\MapleVault\libretranslate\.venv
 ```
 
+En Windows, CTranslate2 requiere Microsoft Visual C++ Runtime x64. El instalador opcional comprueba esta dependencia y, si falta, descarga el redistribuible v14 desde el enlace oficial de Microsoft, valida su firma digital y solicita autorización de Windows para instalarlo. Después valida directamente `import ctranslate2`; si Windows solicita reiniciar, se debe reiniciar y volver a ejecutar la instalación desde Ajustes.
+
 La instalación desde Ajustes se ejecuta en segundo plano y expone progreso mediante:
 
 ```text

@@ -41,6 +41,7 @@ logs/
 # Local validation artifacts
 scratch/
 tmp-ui-validation/
+.codex-remote-attachments/
 
 # Environment
 .env

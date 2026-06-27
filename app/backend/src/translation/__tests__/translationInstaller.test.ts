@@ -95,12 +95,13 @@ describe('LibreTranslateInstaller', () => {
     });
 
     await installer.start();
-    child.stderr.emit('data', 'No se pudo descargar el modelo');
+    child.stderr.emit('data', 'CTranslate2 no pudo cargar Microsoft Visual C++ Runtime');
     child.emit('exit', 1);
 
     expect(installer.getStatus()).toEqual(expect.objectContaining({
       state: 'error',
-      output: expect.stringContaining('No se pudo descargar el modelo')
+      message: expect.stringContaining('dependencia nativa'),
+      output: expect.stringContaining('Visual C++ Runtime')
     }));
   });
 
@@ -115,4 +116,3 @@ describe('LibreTranslateInstaller', () => {
     expect(status.state).toBe('unsupported');
   });
 });
-
