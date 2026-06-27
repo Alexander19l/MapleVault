@@ -2,6 +2,11 @@
   "name": "maplevault-local",
   "version": "1.0.0",
   "description": "Local desktop application for managing, discovering, and organizing anime series (MapleVault).",
+  "author": "MapleVault Contributors",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Alexander19l/MapleVault.git"
+  },
   "main": "dist/desktop/main.js",
   "scripts": {
     "postinstall": "npm run install:backend && npm run install:frontend",
@@ -15,10 +20,11 @@
     "build:backend": "npm --prefix app/backend run build",
     "build:desktop": "tsc -p app/desktop && node scripts/copy-assets.js",
     "build": "npm run build:frontend && npm run build:backend && npm run build:desktop",
-    "package": "npm run build && electron-builder",
-    "dist": "electron-builder",
-    "dist:win": "electron-builder --win",
-    "dist:linux": "electron-builder --linux",
+    "verify:package": "node scripts/verify-package-inputs.js",
+    "package": "npm run build && npm run verify:package && electron-builder",
+    "dist": "npm run package",
+    "dist:win": "npm run build && npm run verify:package && electron-builder --win",
+    "dist:linux": "npm run build && npm run verify:package && electron-builder --linux",
     "audit": "npm audit && npm --prefix app/backend audit && npm --prefix app/frontend audit",
     "audit:fix": "npm audit fix && npm --prefix app/backend audit fix && npm --prefix app/frontend audit fix",
     "typecheck": "tsc -p app/desktop --noEmit && tsc -p app/backend --noEmit",

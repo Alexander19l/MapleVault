@@ -14,8 +14,9 @@ Opciones disponibles:
 
 - `1`: iniciar MapleVault en modo desarrollo con backend, frontend Vite y Electron.
 - `2`: compilar backend, frontend y desktop.
-- `3`: validar código con typecheck, lint frontend y tests de seguridad.
+- `3`: validar código con typecheck, lint frontend y todas las pruebas del backend.
 - `4`: empaquetar instalador con Electron Builder.
+- `5`: preparar el entorno local de LibreTranslate.
 
 `iniciar.bat` queda como alias compatible y llama internamente a `MapleVault.bat`.
 
@@ -76,6 +77,19 @@ También se puede usar:
 ```bash
 npm run check
 ```
+
+## Instalador
+
+El instalador de Windows se genera con:
+
+```bash
+npm run package
+```
+
+La salida validada queda en `dist/MapleVault-Setup-<version>-x64.exe`.
+Los comandos `npm run dist`, `npm run dist:win` y `npm run dist:linux`
+compilan y verifican sus entradas antes de empaquetar para evitar builds
+obsoletos o incompletos.
 
 ## Datos Locales
 

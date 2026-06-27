@@ -26,13 +26,19 @@ if errorlevel 1 (
   exit /b 1
 )
 
-if not exist "node_modules" (
-  echo [INFO] No se encontro node_modules en la raiz.
+if not exist "node_modules" goto install_dependencies
+if not exist "app\backend\node_modules" goto install_dependencies
+if not exist "app\frontend\node_modules" goto install_dependencies
+goto dependencies_ready
+
+:install_dependencies
+  echo [INFO] Faltan dependencias del proyecto.
   choice /C SN /N /M "Instalar dependencias ahora? [S/N]: "
   if errorlevel 2 goto end
   npm install
   if errorlevel 1 goto fail
-)
+
+:dependencies_ready
 
 echo Selecciona una opcion:
 echo.
@@ -43,7 +49,7 @@ echo [2] Compilar MapleVault
 echo     Genera app/backend/dist, app/frontend/dist y dist/desktop
 echo.
 echo [3] Validar codigo
-echo     Typecheck + lint frontend + tests de seguridad
+echo     Typecheck + lint frontend + todas las pruebas del backend
 echo.
 echo [4] Empaquetar instalador
 echo     Build completo + electron-builder
