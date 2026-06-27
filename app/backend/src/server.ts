@@ -25,6 +25,7 @@ const PORT = Number.isInteger(parsedPort) && parsedPort > 0 && parsedPort <= 65_
   ? parsedPort
   : 5000;
 const HOST = process.env.MAPLEVAULT_HOST || '127.0.0.1';
+const INSTANCE_ID = process.env.MAPLEVAULT_INSTANCE_ID || '';
 
 // Configuracin de CORS restrictiva para seguridad local (prevenir CSRF)
 const allowedOrigins = [
@@ -74,7 +75,10 @@ app.use(createSystemRouter());
 
 // GET /health - Sondeo de salud del servidor
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
+  res.json({
+    status: 'ok',
+    ...(INSTANCE_ID ? { instanceId: INSTANCE_ID } : {})
+  });
 });
 
 // ==========================================

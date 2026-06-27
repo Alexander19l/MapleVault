@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import axios from 'axios';
+import net from 'net';
 import { spawn, ChildProcess } from 'child_process';
 import { 
   showSplash, 
@@ -25,12 +26,13 @@ let cachedCloseBehavior: CloseBehavior | null = null;
 
 const isDev = !app.isPackaged;
 const parsedBackendPort = Number.parseInt(process.env.MAPLEVAULT_BACKEND_PORT || '5000', 10);
-const PORT = Number.isInteger(parsedBackendPort) && parsedBackendPort > 0 && parsedBackendPort <= 65_535
+let backendPort = Number.isInteger(parsedBackendPort) && parsedBackendPort > 0 && parsedBackendPort <= 65_535
   ? parsedBackendPort
   : 5000;
 const BACKEND_HOST = process.env.MAPLEVAULT_BACKEND_HOST || '127.0.0.1';
 const RENDERER_URL = process.env.MAPLEVAULT_RENDERER_URL || 'http://127.0.0.1:5173';
 const BACKEND_STARTUP_RETRIES = 40;
+const BACKEND_INSTANCE_ID = isDev ? '' : crypto.randomUUID();
 const BACKEND_SESSION_TOKEN = isDev
   ? process.env.MAPLEVAULT_API_TOKEN || ''
   : crypto.randomBytes(32).toString('hex');
@@ -79,7 +81,7 @@ function setCloseBehavior(value: unknown): CloseBehavior {
 
 async function syncCloseBehaviorFromBackend(): Promise<void> {
   try {
-    const response = await axios.get(`http://${BACKEND_HOST}:${PORT}/settings`, {
+    const response = await axios.get(`http://${BACKEND_HOST}:${backendPort}/settings`, {
       timeout: 2000,
       headers: BACKEND_SESSION_TOKEN
         ? { 'X-MapleVault-Token': BACKEND_SESSION_TOKEN }
@@ -91,6 +93,28 @@ async function syncCloseBehaviorFromBackend(): Promise<void> {
     cachedCloseBehavior = null;
     getCloseBehavior();
   }
+}
+
+function findAvailableBackendPort(host: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.unref();
+    server.once('error', reject);
+    server.listen(0, host, () => {
+      const address = server.address();
+      const availablePort = typeof address === 'object' && address ? address.port : 0;
+      server.close(error => {
+        if (error) return reject(error);
+        if (!availablePort) return reject(new Error('No se pudo reservar un puerto local para MapleVault.'));
+        resolve(availablePort);
+      });
+    });
+  });
+}
+
+async function configureBackendPort(): Promise<void> {
+  if (isDev || process.env.MAPLEVAULT_BACKEND_PORT) return;
+  backendPort = await findAvailableBackendPort(BACKEND_HOST);
 }
 
 function getStartupSettings(): StartupSettings {
@@ -139,9 +163,10 @@ function startBackendProcess() {
       env: { 
         ...process.env, 
         ELECTRON_RUN_AS_NODE: '1',
-        PORT: String(PORT),
+        PORT: String(backendPort),
         MAPLEVAULT_HOST: BACKEND_HOST,
         MAPLEVAULT_API_TOKEN: BACKEND_SESSION_TOKEN,
+        MAPLEVAULT_INSTANCE_ID: BACKEND_INSTANCE_ID,
         DATABASE_PATH: dbPath
       },
       stdio: 'inherit',
@@ -225,10 +250,15 @@ async function bootAppWorkflow() {
   startBackendProcess();
 
   updateSplashStatus('Conectando con biblioteca...');
-  const isHealthy = await waitForBackend(PORT, BACKEND_STARTUP_RETRIES, BACKEND_HOST);
+  const isHealthy = await waitForBackend(
+    backendPort,
+    BACKEND_STARTUP_RETRIES,
+    BACKEND_HOST,
+    isDev ? undefined : BACKEND_INSTANCE_ID
+  );
   if (!isHealthy) {
     showErrorDiagnostics(
-      `El backend interno no respondió en el puerto ${PORT} después de múltiples intentos.\nPor favor, verifica los logs e intenta de nuevo.`,
+      `El backend interno no respondió en el puerto ${backendPort} después de múltiples intentos.\nPor favor, verifica los logs e intenta de nuevo.`,
       bootAppWorkflow
     );
     killBackend();
@@ -341,8 +371,10 @@ function killBackend() {
 }
 
 app.whenReady().then(async () => {
+  await configureBackendPort();
+
   ipcMain.handle('app-get-api-config', () => ({
-    baseUrl: `http://localhost:${PORT}`,
+    baseUrl: `http://${BACKEND_HOST}:${backendPort}`,
     token: BACKEND_SESSION_TOKEN
   }));
 

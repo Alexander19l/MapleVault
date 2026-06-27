@@ -37,6 +37,7 @@ Al reinstalar, el instalador permite seleccionar **Iniciar con biblioteca y ajus
 - Endpoint `GET /chat/capabilities` para consultar funciones, acciones y ejemplos del asistente.
 - Backups SQLite mediante `VACUUM INTO`.
 - Electron con `contextIsolation`, `sandbox` y `nodeIntegration` desactivado en la ventana principal.
+- Backend empaquetado aislado por instancia mediante puerto dinámico, token de sesión e identificador de salud; no reutiliza servidores de desarrollo que estén en el puerto 5000.
 
 ## Estructura
 

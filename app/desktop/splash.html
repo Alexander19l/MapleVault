@@ -20,50 +20,70 @@
     }
     .container {
       text-align: center;
+      width: 320px;
+    }
+    .mascot {
+      display: block;
+      width: 138px;
+      height: 138px;
+      object-fit: contain;
+      margin: 0 auto 12px;
+      filter: drop-shadow(0 14px 22px rgba(0, 0, 0, 0.38));
+      animation: enter 280ms ease-out both;
     }
     .logo {
-      font-size: 26px;
-      font-weight: 800;
-      letter-spacing: 2px;
-      margin-bottom: 2px;
-      background: linear-gradient(135deg, #8B5CF6 0%, #38BDF8 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: 0;
+      color: #F4F6F8;
+      margin-bottom: 4px;
     }
     .subtitle {
-      font-size: 9px;
-      text-transform: uppercase;
-      font-weight: 700;
-      color: #6F7785;
-      letter-spacing: 3px;
-      margin-bottom: 30px;
+      font-size: 10px;
+      font-weight: 600;
+      color: #747E8D;
+      letter-spacing: 0;
+      margin-bottom: 22px;
+    }
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
     }
     .spinner {
-      width: 24px;
-      height: 24px;
-      border: 2.5px solid #1E2430;
-      border-top-color: #8B5CF6;
+      width: 17px;
+      height: 17px;
+      border: 2px solid #252B36;
+      border-top-color: #D95858;
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
-      margin: 0 auto 20px auto;
+      flex: 0 0 auto;
     }
     .status {
       font-size: 11px;
       color: #A8B0BD;
       font-weight: 500;
-      letter-spacing: 0.5px;
+      letter-spacing: 0;
     }
     @keyframes spin {
       to { transform: rotate(360deg); }
+    }
+    @keyframes enter {
+      from { opacity: 0; transform: translateY(5px); }
+      to { opacity: 1; transform: translateY(0); }
     }
   </style>
 </head>
 <body>
   <div class="container">
+    <img class="mascot" src="./assets/splash-mascot.png" alt="Mascota de MapleVault">
     <div class="logo">MapleVault</div>
-    <div class="subtitle"></div>
-    <div class="spinner"></div>
-    <div class="status" id="status-text">Iniciando base de datos...</div>
+    <div class="subtitle">Biblioteca local de anime</div>
+    <div class="loading">
+      <div class="spinner"></div>
+      <div class="status" id="status-text">Iniciando base de datos...</div>
+    </div>
   </div>
   <script src="./splash-renderer.js"></script>
 </body>

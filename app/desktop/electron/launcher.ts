@@ -10,7 +10,7 @@ let errorWindow: BrowserWindow | null = null;
 export function showSplash() {
   splashWindow = new BrowserWindow({
     width: 420,
-    height: 300,
+    height: 360,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -81,13 +81,15 @@ export function checkDatabase(): { ok: boolean; error?: string } {
 export async function waitForBackend(
   port: number = 5000,
   retries: number = 40,
-  host: string = '127.0.0.1'
+  host: string = '127.0.0.1',
+  expectedInstanceId?: string
 ): Promise<boolean> {
   const url = `http://${host}:${port}/health`;
   for (let i = 0; i < retries; i++) {
     try {
       const res = await axios.get(url, { timeout: 600 });
-      if (res.status === 200 && res.data.status === 'ok') {
+      const matchesInstance = !expectedInstanceId || res.data.instanceId === expectedInstanceId;
+      if (res.status === 200 && res.data.status === 'ok' && matchesInstance) {
         return true;
       }
     } catch (e) {
