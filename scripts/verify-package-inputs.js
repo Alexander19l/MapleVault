@@ -12,6 +12,7 @@ const requiredFiles = [
   'dist/desktop/assets/icon.ico',
   'dist/desktop/assets/icon.png',
   'dist/backend-runtime/dist/server.js',
+  'dist/backend-runtime/scripts/setup-libretranslate.ps1',
   'dist/backend-runtime/node_modules/sqlite3/package.json',
   'app/frontend/dist/index.html',
   'app/backend/dist/server.js'

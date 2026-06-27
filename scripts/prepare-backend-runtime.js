@@ -41,6 +41,11 @@ fs.rmSync(runtimeRoot, { recursive: true, force: true });
 fs.mkdirSync(path.join(runtimeRoot, 'node_modules'), { recursive: true });
 fs.cpSync(path.join(backendRoot, 'dist'), path.join(runtimeRoot, 'dist'), { recursive: true });
 fs.copyFileSync(path.join(backendRoot, 'package.json'), path.join(runtimeRoot, 'package.json'));
+fs.mkdirSync(path.join(runtimeRoot, 'scripts'), { recursive: true });
+fs.copyFileSync(
+  path.join(root, 'scripts', 'setup-libretranslate.ps1'),
+  path.join(runtimeRoot, 'scripts', 'setup-libretranslate.ps1')
+);
 
 for (const packagePath of productionPackages) {
   const resolvedPackagePath = path.resolve(packagePath);

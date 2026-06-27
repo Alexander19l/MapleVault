@@ -20,6 +20,8 @@ Opciones disponibles:
 
 `iniciar.bat` queda como alias compatible y llama internamente a `MapleVault.bat`.
 
+El instalador de Windows ofrece LibreTranslate como componente opcional, desmarcado por defecto por su peso. También se puede instalar, verificar y diagnosticar después desde **Ajustes > Traducción de metadata** sin reinstalar MapleVault.
+
 ## Capacidades Principales
 
 - Catálogo local con filtros por título, género, temporada, año, estado, tipo y puntuación.

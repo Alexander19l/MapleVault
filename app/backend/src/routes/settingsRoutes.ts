@@ -8,6 +8,10 @@ import {
   normalizeTranslationSettingsForStorage,
   saveSettings
 } from '../settings/appSettings';
+import {
+  getLibreTranslateInstallationStatus,
+  startLibreTranslateInstallation
+} from '../translation/translationInstaller';
 import { getLibreTranslateRuntimeStatus } from '../translation/translationRuntime';
 import {
   getErrorMessage as getSharedErrorMessage,
@@ -38,6 +42,8 @@ interface AppSettingsStore {
 
 interface TranslationRuntimeService {
   getLibreTranslateRuntimeStatus: typeof getLibreTranslateRuntimeStatus;
+  getLibreTranslateInstallationStatus: typeof getLibreTranslateInstallationStatus;
+  startLibreTranslateInstallation: typeof startLibreTranslateInstallation;
 }
 
 interface SettingsRouterDependencies {
@@ -66,7 +72,9 @@ const defaultAppSettingsStore: AppSettingsStore = {
 };
 
 const defaultTranslationRuntimeService: TranslationRuntimeService = {
-  getLibreTranslateRuntimeStatus
+  getLibreTranslateRuntimeStatus,
+  getLibreTranslateInstallationStatus,
+  startLibreTranslateInstallation
 };
 
 function getErrorMessage(error: unknown): string {
@@ -185,6 +193,23 @@ export function createSettingsRouter({
       res.json(await translationRuntimeService.getLibreTranslateRuntimeStatus());
     } catch (error: unknown) {
       res.status(500).json({ state: 'error', error: getErrorMessage(error) });
+    }
+  });
+
+  router.get('/translation/install/status', (_req, res) => {
+    res.json(translationRuntimeService.getLibreTranslateInstallationStatus());
+  });
+
+  router.post('/translation/install', async (_req, res) => {
+    try {
+      const status = await translationRuntimeService.startLibreTranslateInstallation();
+      const statusCode = status.state === 'installing' || status.state === 'verifying' ? 202 : 200;
+      res.status(statusCode).json(status);
+    } catch (error: unknown) {
+      res.status(500).json({
+        state: 'error',
+        message: getErrorMessage(error)
+      });
     }
   });
 

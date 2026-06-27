@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '../services/api';
 import { showConfirm } from '../utils/dialog';
 import type { ChatActionHistoryItem, DatabaseBackup } from '../types';
@@ -22,11 +22,18 @@ import {
   AlertTriangle,
   Clock3,
   Power,
-  RotateCcw
+  RotateCcw,
+  LoaderCircle
 } from 'lucide-react';
 
 interface SettingsProps {
   onRefreshData?: () => void;
+}
+
+interface TranslationInstallStatus {
+  state: 'idle' | 'installing' | 'verifying' | 'success' | 'error' | 'unsupported';
+  message?: string;
+  output?: string;
 }
 
 export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
@@ -50,6 +57,9 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [translationStatus, setTranslationStatus] = useState<any>(null);
+  const [translationInstallStatus, setTranslationInstallStatus] = useState<TranslationInstallStatus>({
+    state: 'idle'
+  });
 
   // Estados de backup e importación
   const [backupStatus, setBackupStatus] = useState<string | null>(null);
@@ -86,10 +96,35 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
   const [actionHistoryStatusFilter, setActionHistoryStatusFilter] = useState<'all' | 'SUCCESS' | 'REJECTED' | 'ERROR'>('all');
   const [actionHistoryConfirmationFilter, setActionHistoryConfirmationFilter] = useState<'all' | 'required' | 'not_required'>('all');
 
+  const loadTranslationStatus = useCallback(async () => {
+    try {
+      const status = await api.getTranslationStatus();
+      setTranslationStatus(status);
+    } catch (_) {
+      setTranslationStatus(null);
+    }
+  }, []);
+
+  const loadTranslationInstallStatus = useCallback(async () => {
+    try {
+      const status = await api.getTranslationInstallStatus();
+      setTranslationInstallStatus(status);
+      if (status.state === 'success') {
+        await loadTranslationStatus();
+      }
+    } catch (_) {
+      setTranslationInstallStatus({
+        state: 'error',
+        message: 'No se pudo consultar el estado de instalación.'
+      });
+    }
+  }, [loadTranslationStatus]);
+
   useEffect(() => {
     loadSettings();
     loadActionHistory();
     loadTranslationStatus();
+    loadTranslationInstallStatus();
     loadStartupSettings();
     loadDatabaseBackups();
 
@@ -98,7 +133,18 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
         window.clearTimeout(backupStatusTimerRef.current);
       }
     };
-  }, []);
+  }, [loadTranslationInstallStatus, loadTranslationStatus]);
+
+  useEffect(() => {
+    const isInstalling = ['installing', 'verifying'].includes(translationInstallStatus.state);
+    if (!isInstalling) return;
+
+    const intervalId = window.setInterval(() => {
+      void loadTranslationInstallStatus();
+    }, 1500);
+
+    return () => window.clearInterval(intervalId);
+  }, [loadTranslationInstallStatus, translationInstallStatus.state]);
 
   const handleClearCatalog = async () => {
     try {
@@ -173,15 +219,6 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
     }
   };
 
-  const loadTranslationStatus = async () => {
-    try {
-      const status = await api.getTranslationStatus();
-      setTranslationStatus(status);
-    } catch (_) {
-      setTranslationStatus(null);
-    }
-  };
-
   const loadActionHistory = async () => {
     try {
       setActionHistoryLoading(true);
@@ -207,6 +244,23 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
       hour: '2-digit',
       minute: '2-digit'
     });
+  };
+
+  const handleInstallLibreTranslate = async () => {
+    const confirmed = await showConfirm(
+      'LibreTranslate es un componente opcional y pesado. Se descargaran Python si hace falta, el servicio local y el modelo ingles-espanol. El proceso puede tardar varios minutos. ¿Deseas continuar?'
+    );
+    if (!confirmed) return;
+
+    try {
+      const status = await api.installLibreTranslate();
+      setTranslationInstallStatus(status);
+    } catch (err: any) {
+      setTranslationInstallStatus({
+        state: 'error',
+        message: err.response?.data?.message || err.message || 'No se pudo iniciar la instalacion.'
+      });
+    }
   };
 
   const formatBackupDate = (value: string) => {
@@ -615,6 +669,52 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
               />
               Iniciar LibreTranslate automáticamente junto con MapleVault
             </label>
+
+            <div className="flex flex-col gap-3 border border-cyan-500/20 bg-cyan-500/5 p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-slate-200">Componente local opcional</p>
+                <p className="mt-1 text-[10px] leading-relaxed text-slate-400">
+                  Instala LibreTranslate y el modelo inglés-español en tu perfil de Windows. No forma parte del instalador base por su tamaño.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleInstallLibreTranslate}
+                disabled={translationInstallStatus.state === 'installing' || translationInstallStatus.state === 'verifying'}
+                className="inline-flex h-9 shrink-0 items-center justify-center gap-2 border border-cyan-500/40 bg-cyan-500/10 px-3 text-[10px] font-bold text-cyan-200 transition-colors hover:bg-cyan-500/20 disabled:cursor-wait disabled:opacity-60"
+              >
+                {translationInstallStatus.state === 'installing' || translationInstallStatus.state === 'verifying' ? (
+                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Download className="h-3.5 w-3.5" />
+                )}
+                {translationInstallStatus.state === 'installing'
+                  ? 'Instalando...'
+                  : translationInstallStatus.state === 'verifying'
+                    ? 'Verificando...'
+                    : 'Instalar LibreTranslate'}
+              </button>
+            </div>
+
+            {translationInstallStatus.state !== 'idle' && (
+              <div className={`border px-3 py-2 text-[10px] ${
+                translationInstallStatus.state === 'success'
+                  ? 'border-emerald-500/25 bg-emerald-500/5 text-emerald-200'
+                  : translationInstallStatus.state === 'error' || translationInstallStatus.state === 'unsupported'
+                    ? 'border-rose-500/25 bg-rose-500/5 text-rose-200'
+                    : 'border-amber-500/25 bg-amber-500/5 text-amber-100'
+              }`}>
+                <p className="font-bold">{translationInstallStatus.message || 'Procesando instalación...'}</p>
+                {translationInstallStatus.output && (
+                  <details className="mt-2">
+                    <summary className="cursor-pointer font-bold text-slate-300">Ver diagnóstico</summary>
+                    <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-words bg-slate-950/60 p-2 font-mono text-[9px] text-slate-400">
+                      {translationInstallStatus.output}
+                    </pre>
+                  </details>
+                )}
+              </div>
+            )}
 
             {translationStatus && (
               <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-3 py-2 text-[10px] text-slate-300">

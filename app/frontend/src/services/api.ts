@@ -337,6 +337,16 @@ export const api = {
     return response.data;
   },
 
+  getTranslationInstallStatus: async () => {
+    const response = await client.get('/translation/install/status');
+    return response.data;
+  },
+
+  installLibreTranslate: async () => {
+    const response = await client.post('/translation/install');
+    return response.data;
+  },
+
   getDuplicatePreview: async () => {
     const response = await client.get('/maintenance/duplicates');
     return response.data;

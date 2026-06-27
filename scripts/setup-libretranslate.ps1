@@ -1,8 +1,19 @@
+param(
+  [string]$DataDir = "",
+  [switch]$NonInteractive
+)
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
-$DataDir = Join-Path $ProjectRoot "app\data"
+$ResolvedDataDir = if ([string]::IsNullOrWhiteSpace($DataDir)) {
+  Join-Path $ProjectRoot "app\data"
+} else {
+  [System.IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($DataDir))
+}
+
+$DataDir = $ResolvedDataDir
 $RuntimeDir = Join-Path $DataDir "libretranslate"
 $VenvDir = Join-Path $RuntimeDir ".venv"
 $VenvPython = Join-Path $VenvDir "Scripts\python.exe"
@@ -67,7 +78,19 @@ if (-not $Python) {
     throw "No se encontro Python real ni winget. Instala Python 3.11 o superior y vuelve a ejecutar este script."
   }
 
-  winget install --id Python.Python.3.11 -e --scope user --silent --accept-package-agreements --accept-source-agreements
+  $WingetArguments = @(
+    "install",
+    "--id", "Python.Python.3.11",
+    "-e",
+    "--scope", "user",
+    "--accept-package-agreements",
+    "--accept-source-agreements"
+  )
+  if ($NonInteractive) {
+    $WingetArguments += "--silent"
+  }
+
+  & winget @WingetArguments
   if ($LASTEXITCODE -ne 0) {
     throw "winget no pudo instalar Python 3.11."
   }

@@ -97,28 +97,36 @@ LIBRETRANSLATE_AUTOSTART_COMMAND=
 
 ## Ejecución Recomendada De LibreTranslate
 
-MapleVault intenta iniciar LibreTranslate automáticamente al arrancar si la traducción está activada. Busca estos comandos, en orden:
+LibreTranslate es opcional porque Python, el servicio y los modelos pueden ocupar varios cientos de MB. En Windows se puede preparar de dos formas:
+
+1. Marcar **Instalar LibreTranslate junto con MapleVault** durante la instalación.
+2. Abrir **Ajustes > Traducción de metadata** y pulsar **Instalar LibreTranslate**.
+
+Ambas rutas usan el mismo script y guardan el runtime por usuario en:
 
 ```text
-app/data/libretranslate/.venv/Scripts/libretranslate.exe --host 127.0.0.1 --port 5001
-libretranslate --host 127.0.0.1 --port 5001
+%LOCALAPPDATA%\MapleVault\libretranslate\.venv
 ```
 
-MapleVault también busca primero una instalación local preparada en:
+La instalación desde Ajustes se ejecuta en segundo plano y expone progreso mediante:
+
+```text
+POST /translation/install
+GET  /translation/install/status
+GET  /translation/status
+```
+
+El proceso solo se considera correcto después de iniciar LibreTranslate y comprobar que `GET /languages` incluye un modelo con destino `es`. Un fallo del componente opcional no bloquea la instalación ni el uso del resto de MapleVault.
+
+En desarrollo se conserva la ruta compatible:
 
 ```text
 app/data/libretranslate/.venv
 ```
 
-Para prepararla, abre `MapleVault.bat` y selecciona:
+Para prepararla, abre `MapleVault.bat` y selecciona `[5] Preparar LibreTranslate`. MapleVault busca ambas ubicaciones y luego intenta el comando `libretranslate` disponible en `PATH`. Si se quiere forzar un comando propio, usar `LIBRETRANSLATE_AUTOSTART_COMMAND`.
 
-```text
-[5] Preparar LibreTranslate
-```
-
-Esto crea un entorno virtual local, instala LibreTranslate y prepara el modelo `translate-en_es` para traducir sinopsis en inglés a español. Después de esa preparación, el inicio del traductor es automático al abrir MapleVault. Si se quiere forzar un comando propio, usar `LIBRETRANSLATE_AUTOSTART_COMMAND`.
-
-Si aparece un error HTTP 400 con el mensaje `es is not supported`, el servicio está iniciado pero no tiene instalado el modelo hacia español. Ejecuta nuevamente `[5] Preparar LibreTranslate` y reinicia MapleVault para recargar los modelos.
+Si aparece un error HTTP 400 con el mensaje `es is not supported`, el servicio está iniciado pero no tiene instalado el modelo hacia español. Reintenta la instalación desde Ajustes para instalar `translate-en_es`.
 
 Si prefieres Docker, puedes ejecutar manualmente:
 
