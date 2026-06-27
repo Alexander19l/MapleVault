@@ -3,6 +3,7 @@ import cors from 'cors';
 import { initDb } from './database/db';
 import { createRateLimitMiddleware } from './security/rateLimiter';
 import { createSessionAuthMiddleware } from './security/sessionAuth';
+import { isAllowedCorsOrigin } from './security/corsPolicy';
 import { stopLibreTranslateRuntime } from './translation/translationRuntime';
 import { createAssistantRouter } from './routes/assistantRoutes';
 import { createBackupRouter } from './routes/backupRoutes';
@@ -26,18 +27,11 @@ const PORT = Number.isInteger(parsedPort) && parsedPort > 0 && parsedPort <= 65_
   : 5000;
 const HOST = process.env.MAPLEVAULT_HOST || '127.0.0.1';
 const INSTANCE_ID = process.env.MAPLEVAULT_INSTANCE_ID || '';
-
-// Configuracin de CORS restrictiva para seguridad local (prevenir CSRF)
-const allowedOrigins = [
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
-  'http://localhost:5000',
-  'http://127.0.0.1:5000'
-];
+const HAS_SESSION_TOKEN = Boolean(process.env.MAPLEVAULT_API_TOKEN);
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin) || origin.startsWith('file://') || origin.startsWith('vscode-webview://')) {
+    if (isAllowedCorsOrigin(origin, HAS_SESSION_TOKEN)) {
       callback(null, true);
     } else {
       callback(new Error('Bloqueado por la poltica de seguridad CORS de MapleVault (Origen no permitido)'));
