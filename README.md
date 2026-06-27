@@ -20,7 +20,9 @@ Opciones disponibles:
 
 `iniciar.bat` queda como alias compatible y llama internamente a `MapleVault.bat`.
 
-El instalador de Windows ofrece LibreTranslate como componente opcional, desmarcado por defecto por su peso. También se puede instalar, verificar y diagnosticar después desde **Ajustes > Traducción de metadata** sin reinstalar MapleVault.
+El instalador de Windows ofrece LibreTranslate como componente opcional, desmarcado por defecto por su peso. Al seleccionarlo, comprueba e instala Python 3.11 y Microsoft Visual C++ Runtime x64 solo si son necesarios, además del servicio y el modelo inglés-español. También se puede instalar, verificar y diagnosticar después desde **Ajustes > Traducción de metadata** sin reinstalar MapleVault.
+
+Las instalaciones nuevas comienzan con Inicio, Catálogo y Mi Lista vacíos. Las series de demostración solo se habilitan deliberadamente en desarrollo mediante `MAPLEVAULT_SEED_DEMO_DATA=true`.
 
 ## Capacidades Principales
 

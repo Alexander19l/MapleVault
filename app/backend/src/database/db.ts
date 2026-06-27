@@ -2,6 +2,7 @@ import sqlite3 from 'sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { AsyncLocalStorage } from 'async_hooks';
+import { shouldSeedDemoData } from './demoDataPolicy';
 
 export const DB_PATH = process.env.DATABASE_PATH || path.join(path.resolve(__dirname, '../../../data'), 'database.sqlite');
 const DB_DIR = path.dirname(DB_PATH);
@@ -542,9 +543,9 @@ export async function initDb() {
     `, [src.name, src.url, src.type, 1, src.limit]);
   }
 
-  // Insertar semillas de anime si la tabla está vacía
+  // Los datos de demostración son opt-in y nunca se insertan en una instalación normal.
   const count = await query.get('SELECT COUNT(*) as count FROM anime');
-  if (count && count.count === 0 && process.env.MAPLEVAULT_SEED_DEMO_DATA !== 'false') {
+  if (count && count.count === 0 && shouldSeedDemoData()) {
     console.log('Sembrando base de datos con animes populares de muestra...');
     await seedAnimeData();
   }

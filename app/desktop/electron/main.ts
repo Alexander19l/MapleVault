@@ -20,6 +20,7 @@ let backendProcess: ChildProcess | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
 let isClosePromptOpen = false;
+let cachedCloseBehavior: CloseBehavior | null = null;
 
 const isDev = !app.isPackaged;
 const parsedBackendPort = Number.parseInt(process.env.MAPLEVAULT_BACKEND_PORT || '5000', 10);
@@ -41,22 +42,38 @@ interface StartupSettings {
   reason?: string;
 }
 
+function normalizeCloseBehavior(value: unknown): CloseBehavior {
+  return value === 'minimize' || value === 'quit' || value === 'ask' ? value : 'ask';
+}
+
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
   app.exit(0);
 }
 
 function getCloseBehavior(): CloseBehavior {
+  if (cachedCloseBehavior) return cachedCloseBehavior;
+
   try {
     const { dbDir } = getDatabasePaths();
     const settingsPath = path.join(dbDir, 'settings.json');
-    if (!fs.existsSync(settingsPath)) return 'ask';
-    const value = JSON.parse(fs.readFileSync(settingsPath, 'utf8'))?.closeBehavior;
-    return value === 'minimize' || value === 'quit' || value === 'ask' ? value : 'ask';
+    if (!fs.existsSync(settingsPath)) {
+      cachedCloseBehavior = 'ask';
+      return cachedCloseBehavior;
+    }
+    cachedCloseBehavior = normalizeCloseBehavior(
+      JSON.parse(fs.readFileSync(settingsPath, 'utf8'))?.closeBehavior
+    );
+    return cachedCloseBehavior;
   } catch (err: any) {
     console.warn('[Main] No se pudo leer la preferencia de cierre:', err.message);
     return 'ask';
   }
+}
+
+function setCloseBehavior(value: unknown): CloseBehavior {
+  cachedCloseBehavior = normalizeCloseBehavior(value);
+  return cachedCloseBehavior;
 }
 
 function getStartupSettings(): StartupSettings {
@@ -332,6 +349,8 @@ app.whenReady().then(async () => {
   ipcMain.handle('window-is-maximized', () => { return mainWindow?.isMaximized() || false; });
   ipcMain.handle('app-get-startup-settings', () => getStartupSettings());
   ipcMain.handle('app-set-startup-settings', (_event, enabled: boolean) => setStartupSettings(Boolean(enabled)));
+  ipcMain.handle('app-get-close-behavior', () => getCloseBehavior());
+  ipcMain.handle('app-set-close-behavior', (_event, value: unknown) => setCloseBehavior(value));
 
   ipcMain.handle('show-confirm', async (_event, message: string) => {
     const options: MessageBoxOptions = {

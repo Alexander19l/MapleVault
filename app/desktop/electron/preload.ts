@@ -57,7 +57,9 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'show-confirm',
   'app-get-api-config',
   'app-get-startup-settings',
-  'app-set-startup-settings'
+  'app-set-startup-settings',
+  'app-get-close-behavior',
+  'app-set-close-behavior'
 ]);
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -86,6 +88,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     set: (enabled: boolean): Promise<{ supported: boolean; enabled: boolean; reason?: string }> => {
       return ipcRenderer.invoke('app-set-startup-settings', Boolean(enabled));
+    }
+  },
+
+  closeBehavior: {
+    get: (): Promise<'ask' | 'minimize' | 'quit'> => {
+      return ipcRenderer.invoke('app-get-close-behavior');
+    },
+    set: (value: 'ask' | 'minimize' | 'quit'): Promise<'ask' | 'minimize' | 'quit'> => {
+      return ipcRenderer.invoke('app-set-close-behavior', value);
     }
   },
 

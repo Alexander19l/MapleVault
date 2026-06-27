@@ -177,7 +177,9 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
     try {
       const data = await api.getSettings();
       setSelectedLang('es');
-      setCloseBehavior(data.closeBehavior || 'ask');
+      const storedCloseBehavior = data.closeBehavior || 'ask';
+      setCloseBehavior(storedCloseBehavior);
+      await (window as any).electronAPI?.closeBehavior?.set?.(storedCloseBehavior);
       if (data.translation) {
         setTranslationSettings({
           enabled: data.translation.enabled ?? true,
@@ -365,6 +367,7 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
         closeBehavior,
         translation: translationSettings
       });
+      await (window as any).electronAPI?.closeBehavior?.set?.(closeBehavior);
       await api.setAISettings(aiSettings);
 
       const startupApi = (window as any).electronAPI?.startup;
@@ -606,7 +609,11 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
               <span className="block text-[10px] text-slate-500 font-bold uppercase tracking-wider">Al cerrar MapleVault</span>
               <select
                 value={closeBehavior}
-                onChange={(e: any) => setCloseBehavior(e.target.value)}
+                onChange={(event) => {
+                  const value = event.target.value as 'ask' | 'minimize' | 'quit';
+                  setCloseBehavior(value);
+                  void (window as any).electronAPI?.closeBehavior?.set?.(value);
+                }}
                 className="w-full bg-slate-800 border border-dark-border text-white text-xs px-3 py-2.5 rounded-xl focus:outline-none focus:border-primary-500"
               >
                 <option value="ask">Preguntar siempre</option>
