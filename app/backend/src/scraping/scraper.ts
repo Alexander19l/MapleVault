@@ -1,58 +1,19 @@
 import axios from 'axios';
 import { query } from '../database/db';
+import {
+  normalizeAniListMedia,
+  normalizeAniListRelations,
+  normalizeAnimeStatus,
+  normalizeAnimeType
+} from './animeNormalization';
+import type {
+  ExternalSearchOptions,
+  ExternalSearchPage,
+  NormalizedAnime
+} from './animeTypes';
 
-// Interfaces de datos normalizados de Anime
-export interface NormalizedAnime {
-  external_id: number;
-  source: string;
-  title: string;
-  title_romaji?: string;
-  title_english?: string;
-  title_japanese?: string;
-  synopsis?: string;
-  year?: number;
-  season?: string;
-  status?: string; // 'finished', 'airing', 'upcoming', 'cancelled'
-  type?: string;   // 'tv', 'movie', 'ova', 'ona', 'special'
-  episodes?: number;
-  duration?: number;
-  score?: number;      // 0 a 10
-  popularity?: number;
-  cover_image?: string;
-  banner_image?: string;
-  studio?: string;
-  source_material?: string;
-  age_rating?: string;
-  start_date?: string;
-  end_date?: string;
-  genres: string[];
-  official_url?: string;
-  is_adult?: number;
-  relations?: {
-    related_external_id: number;
-    relation_type: string;
-    title: string;
-    format?: string;
-    type?: string;
-    status?: string;
-    cover_image?: string;
-  }[];
-}
-
-export interface ExternalSearchPage {
-  items: NormalizedAnime[];
-  page: number;
-  pageSize: number;
-  total: number;
-  totalPages: number;
-  hasNextPage: boolean;
-  available: boolean;
-}
-
-export interface ExternalSearchOptions {
-  page?: number;
-  perPage?: number;
-}
+export { normalizeAniListRelations };
+export type { ExternalSearchOptions, ExternalSearchPage, NormalizedAnime };
 
 // Simplificar títulos para aumentar coincidencia de scraping
 export function simplifyTitle(title: string): string {
@@ -78,87 +39,6 @@ export async function logScraping(source: string, action: string, status: string
   } catch (err) {
     console.error('Error al guardar log de scraping:', err);
   }
-}
-
-// Normalización de estados de emisión
-function normalizeStatus(status?: string | null): string {
-  const s = String(status || '').toLowerCase();
-  if (s.includes('finish') || s === 'completed' || s === 'finished') return 'finished';
-  if (s.includes('air') || s === 'releasing' || s === 'currently airing') return 'airing';
-  if (s.includes('yet') || s === 'not_yet_released' || s === 'upcoming') return 'upcoming';
-  if (s.includes('cancel')) return 'cancelled';
-  return 'unknown';
-}
-
-// Normalización de tipos de anime
-function normalizeType(type?: string | null): string {
-  const t = String(type || '').toLowerCase();
-  if (t === 'tv' || t === 'tv_special') return 'tv';
-  if (t === 'movie') return 'movie';
-  if (t === 'ova') return 'ova';
-  if (t === 'ona') return 'ona';
-  if (t === 'special') return 'special';
-  return 'tv';
-}
-
-const ALLOWED_ANIME_RELATION_TYPES = new Set(['PREQUEL', 'SEQUEL']);
-
-export function normalizeAniListRelations(edges: any[] = []): NonNullable<NormalizedAnime['relations']> {
-  return edges
-    .filter(edge => {
-      const relationType = String(edge?.relationType || '').toUpperCase();
-      const mediaType = String(edge?.node?.type || '').toUpperCase();
-      return ALLOWED_ANIME_RELATION_TYPES.has(relationType) && mediaType === 'ANIME';
-    })
-    .map(edge => {
-      const node = edge.node;
-      return {
-        related_external_id: node.id,
-        relation_type: String(edge.relationType).toUpperCase(),
-        title: node.title?.english || node.title?.romaji || node.title?.native || 'Título no disponible',
-        format: node.format,
-        type: node.type,
-        status: node.status ? normalizeStatus(node.status) : undefined,
-        cover_image: node.coverImage?.large
-      };
-    });
-}
-
-function normalizeAniListMedia(m: any): NormalizedAnime {
-  const start = m.startDate?.year
-    ? `${m.startDate.year}-${String(m.startDate.month || 1).padStart(2, '0')}-${String(m.startDate.day || 1).padStart(2, '0')}`
-    : undefined;
-  const end = m.endDate?.year
-    ? `${m.endDate.year}-${String(m.endDate.month || 1).padStart(2, '0')}-${String(m.endDate.day || 1).padStart(2, '0')}`
-    : undefined;
-
-  return {
-    external_id: m.id,
-    source: 'AniList',
-    title: m.title?.english || m.title?.romaji || m.title?.native || 'Título no disponible',
-    title_romaji: m.title?.romaji,
-    title_english: m.title?.english,
-    title_japanese: m.title?.native,
-    synopsis: m.description ? m.description.replace(/<\/?[^>]+(>|$)/g, '') : '',
-    year: m.seasonYear,
-    season: m.season ? m.season.toLowerCase() : undefined,
-    status: normalizeStatus(m.status),
-    type: normalizeType(m.format),
-    episodes: m.episodes,
-    duration: m.duration,
-    score: m.averageScore ? m.averageScore / 10 : undefined,
-    popularity: m.popularity,
-    cover_image: m.coverImage?.large,
-    banner_image: m.bannerImage,
-    studio: m.studios?.nodes?.[0]?.name,
-    source_material: m.source ? m.source.toLowerCase() : undefined,
-    start_date: start,
-    end_date: end,
-    genres: m.genres || [],
-    official_url: m.siteUrl,
-    is_adult: m.isAdult ? 1 : 0,
-    relations: normalizeAniListRelations(m.relations?.edges || [])
-  };
 }
 
 // --- INTEGRACIÓN CON ANILIST (GRAPHQL) ---
@@ -506,8 +386,8 @@ export async function searchJikanPage(
         synopsis: m.synopsis,
         year: m.year || (m.aired?.prop?.from?.year) || undefined,
         season: m.season ? m.season.toLowerCase() : undefined,
-        status: normalizeStatus(m.status),
-        type: normalizeType(m.type || 'tv'),
+        status: normalizeAnimeStatus(m.status),
+        type: normalizeAnimeType(m.type || 'tv'),
         episodes: m.episodes,
         duration: m.duration ? parseInt(m.duration) : undefined,
         score: m.score,

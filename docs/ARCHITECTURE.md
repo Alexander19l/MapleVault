@@ -18,13 +18,82 @@ El sistema está orientado a privacidad local: la base de datos vive en el equip
 ## Componentes
 
 - `app/desktop/electron/main.ts`: ciclo de vida de Electron, backend embebido, IPC y ventanas.
+- `app/desktop/electron/desktopAssets.ts`: resolucion de assets de escritorio
+  usados por ventanas, bandeja del sistema e instalador.
 - `app/desktop/electron/preload.ts`: API segura expuesta al renderer por `contextBridge`.
 - `app/backend/src/server.ts`: API HTTP local.
 - `app/backend/src/database/db.ts`: conexion SQLite, tablas y migraciones simples.
 - `app/backend/src/database/backup.ts`: backups con `VACUUM INTO`.
+- `app/backend/src/routes/backupRoutes.ts`: contrato HTTP de creación, listado,
+  restauración y eliminación de respaldos.
+- `app/backend/src/routes/systemRoutes.ts`: endpoints locales de salud y
+  diagnostico con dependencias inyectables para pruebas unitarias.
+- `app/backend/src/routes/settingsRoutes.ts`: contrato HTTP de ajustes de app,
+  IA, memoria inicial y estado de traduccion.
+- `app/backend/src/routes/settingsRouteService.ts`: reglas puras de ajustes,
+  normalizacion de cierre y prueba de conectividad de proveedores IA.
+- `app/backend/src/routes/dataTransferRoutes.ts`: exportacion e importacion de
+  catalogo manteniendo las rutas publicas `/settings/export` y `/settings/import`.
+- `app/backend/src/routes/dataTransferService.ts`: construccion del payload de
+  exportacion e importacion validada de anime/lista personal.
+- `app/backend/src/routes/scrapingRoutes.ts`: sincronizacion de temporadas,
+  scraping masivo, logs y configuracion de fuentes.
+- `app/backend/src/routes/scrapingRepository.ts`: lecturas y actualizaciones
+  SQL de logs y fuentes de scraping.
+- `app/backend/src/routes/scrapingSyncService.ts`: orquestacion de scraping
+  por temporada y scraping masivo en segundo plano.
+- `app/backend/src/routes/assistantRoutes.ts`: contrato HTTP de Maple Assistant,
+  mensajes, acciones, historial, memoria y auditoria.
+- `app/backend/src/routes/assistantRepository.ts`: lecturas/escrituras SQL
+  del historial del chat y auditoria reciente del asistente.
+- `app/backend/src/routes/episodeRoutes.ts`: contrato HTTP de episodios,
+  progreso visto y servidores de AnimeAV1, TioAnime, JKAnime y AnimeFLV.
+- `app/backend/src/routes/episodeRepository.ts`: lecturas/escrituras SQL de
+  episodios, slugs de proveedores y progreso visto.
+- `app/backend/src/routes/libraryRoutes.ts`: contrato HTTP de catalogo,
+  lista personal, busqueda externa, recomendaciones, importacion y duplicados.
+- `app/backend/src/routes/libraryCache.ts`: cache breve compartida para lecturas
+  de Inicio, Temporadas y Recomendaciones con invalidacion centralizada.
+- `app/backend/src/routes/libraryCatalogRepository.ts`: consulta principal del
+  catalogo con filtros, ordenamiento, paginacion y total opcional.
+- `app/backend/src/routes/libraryFilters.ts`: filtros SQL puros del catalogo,
+  ordenamiento y condicion no adulta reutilizable.
+- `app/backend/src/routes/libraryReadRepository.ts`: lecturas reutilizables de
+  ficha, relaciones, lista personal, generos y duplicados.
+- `app/backend/src/routes/librarySummaryRepository.ts`: consultas agregadas
+  para Inicio y Temporadas, separadas del handler HTTP.
+- `app/backend/src/routes/libraryWriteRepository.ts`: mutaciones SQL de
+  catalogo y lista personal, dejando validacion y respuestas en el router.
+- `app/backend/src/routes/routeUtils.ts`: utilidades HTTP compartidas para
+  errores, payloads e IDs.
+- `app/backend/src/anime`: helpers compartidos de payloads y filas de anime.
+- `app/backend/src/settings/appSettings.ts`: lectura, normalizacion y escritura
+  de `settings.json`.
+- `app/backend/src/serverStartup.ts`: tareas de arranque del backend,
+  incluyendo autoinicio de traduccion y backups automaticos/periodicos.
 - `app/backend/src/security`: validadores, sanitizacion y rate limiting.
 - `app/backend/src/chatbot`: NLP, memoria, confirmaciones, capacidades y acciones del asistente.
+- `app/backend/src/chatbot/entityDictionaries.ts`: diccionarios de generos,
+  tags y aliases usados por el extractor local del asistente.
+- `app/backend/src/chatbot/searchQueryHelpers.ts`: normalizacion pura de
+  busquedas del asistente, criterios de filtro y ordenamiento permitido.
+- `app/backend/src/chatbot/intentReferenceUtils.ts`: limpieza y resolucion
+  de referencias textuales usadas por intents de info, agregar, borrar y feedback.
+- `app/backend/src/chatbot/intentNavigationMatcher.ts`: deteccion pura de
+  ayuda, catalogo, filtros y paginacion contextual del asistente.
+- `app/backend/src/chatbot/intentLibraryActionMatcher.ts`: deteccion pura de
+  altas, bajas, puntuaciones y estados; no ejecuta cambios ni omite confirmaciones.
+- `app/backend/src/chatbot/intentAnimeInfoMatcher.ts`: deteccion pura de
+  consultas generales y campos concretos de informacion de una serie.
+- `app/backend/src/chatbot/intentOperationalMatcher.ts`: deteccion pura de
+  comandos de sincronizacion y operaciones sobre episodios.
+- `app/backend/src/chatbot/syncJobManager.ts`: estado y cancelacion cooperativa
+  del trabajo de sincronizacion de metadatos en segundo plano.
 - `app/backend/src/scraping`: AniList y fuentes externas.
+- `app/backend/src/scraping/animeTypes.ts`: contratos normalizados compartidos
+  por proveedores, persistencia e importacion.
+- `app/backend/src/scraping/animeNormalization.ts`: normalizadores puros de
+  estados, formatos, fichas y relaciones de AniList.
 - `app/frontend/src/services/api.ts`: cliente HTTP centralizado.
 
 ## Flujo del Chatbot
@@ -79,7 +148,9 @@ minutos para reducir latencia y solicitudes repetidas.
 
 ## Deuda Tecnica Restante
 
-- `server.ts` aun concentra demasiadas rutas; debe separarse en routes/services/repositories.
+- `server.ts` ya funciona principalmente como composition root de middleware,
+  routers y arranque; la siguiente separacion debe enfocarse en servicios de
+  aplicacion para importacion/sincronizacion y orquestacion de scraping.
 - Las fuentes de scraping dependen de HTML externo y deben aislarse tras una interfaz de provider.
 - Conviene migrar validacion a esquemas compartidos con frontend si el proyecto crece.
 
@@ -93,3 +164,44 @@ Las pantallas Inicio, Catalogo y Temporadas usan respuestas acotadas:
 - Las recomendaciones agrupan generos en consultas SQL y evitan consultas N+1.
 - Los indices compuestos `year + season + popularity` y
   `status + popularity + score` aceleran las rutas mas usadas tras scraping masivo.
+
+## Respaldo Y Restauracion SQLite
+
+Las copias manuales se crean con `VACUUM INTO`, por lo que son consistentes
+incluso cuando SQLite usa WAL. Ajustes permite listar y restaurar estas copias
+sin reiniciar la aplicacion.
+
+Antes de reemplazar la base activa, el backend:
+
+- valida `PRAGMA integrity_check`;
+- verifica las tablas requeridas y las claves foraneas;
+- crea una copia de emergencia;
+- serializa y pausa las consultas sobre la conexion compartida;
+- cierra SQLite, reemplaza el archivo y vuelve a abrir la conexion;
+- restaura automaticamente el archivo anterior si la reapertura falla.
+
+La retencion conserva las 10 copias manuales mas recientes y las 3 copias de
+emergencia mas recientes. Esto limita el crecimiento del almacenamiento sin
+eliminar el punto de recuperacion inmediato.
+
+## Runtime Del Instalador
+
+Antes de ejecutar Electron Builder, `prepare-backend-runtime.js` crea
+`dist/backend-runtime` con el backend compilado y solo las dependencias de
+produccion reportadas por npm. El entorno de desarrollo no se modifica y
+herramientas como TypeScript, Vitest, ts-node o nodemon no entran al instalador.
+
+## Carga Diferida De Maple Assistant
+
+El asistente se divide en capas para evitar descargar todo el renderer al abrir
+la aplicacion:
+
+- `ChatPanel` contiene el marco, controles de ventana y carga del historial.
+- `ChatRuntime` incorpora `assistant-ui`, el compositor y el hilo.
+- `markdown-text` se descarga solo cuando existe una respuesta textual.
+- `MapleToolCall` y `tool-fallback` se descargan solo cuando una respuesta
+  contiene tarjetas o herramientas.
+
+En el build de referencia de junio de 2026, el chunk inicial del panel paso de
+aproximadamente 576 KB a 9 KB minificados. El runtime, Markdown y las tarjetas
+quedan en chunks independientes de aproximadamente 154 KB, 162 KB y 17 KB.

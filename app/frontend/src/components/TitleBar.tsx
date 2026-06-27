@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Minus, Square, X, Database } from 'lucide-react';
+import { Minus, Square, X } from 'lucide-react';
+import mapleLeaf from '../assets/maple-leaf.svg';
 
 export const TitleBar: React.FC = () => {
   const [isElectron, setIsElectron] = useState(false);
@@ -60,7 +61,7 @@ export const TitleBar: React.FC = () => {
     <div className="h-9 bg-slate-950/90 backdrop-blur-md border-b border-slate-800/60 select-none flex items-center justify-between px-3 shrink-0 titlebar z-50">
       {/* Logo y título */}
       <div className="flex items-center space-x-2 text-slate-350">
-        <Database className="h-4 w-4 text-primary-400" />
+        <img src={mapleLeaf} alt="" className="h-4 w-4 object-contain" draggable={false} />
         <span className="text-xs font-bold tracking-wide text-slate-200">MapleVault</span>
       </div>
 

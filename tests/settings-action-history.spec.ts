@@ -32,6 +32,14 @@ test('settings shows Maple Assistant action history', async ({ page }) => {
       return route.fulfill({ json: ['Action', 'Fantasy'] });
     }
 
+    if (method === 'GET' && url.pathname === '/dashboard/summary') {
+      return route.fulfill({ json: { recent: [], airing: [], stats: {} } });
+    }
+
+    if (method === 'GET' && url.pathname === '/translation/status') {
+      return route.fulfill({ json: { available: false, status: 'unavailable' } });
+    }
+
     if (method === 'GET' && url.pathname === '/chat/actions/history') {
       return route.fulfill({
         json: [
@@ -85,6 +93,10 @@ test('settings shows Maple Assistant action history', async ({ page }) => {
           }
         ]
       });
+    }
+
+    if (method === 'GET' && url.pathname === '/backup/list') {
+      return route.fulfill({ json: [] });
     }
 
     return route.fulfill({ status: 404, json: { error: `Unhandled mock route: ${method} ${url.pathname}` } });

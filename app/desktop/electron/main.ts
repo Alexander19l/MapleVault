@@ -2,6 +2,8 @@ import { app, BrowserWindow, ipcMain, shell, dialog, Tray, Menu, nativeImage, ty
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import axios from 'axios';
+import net from 'net';
 import { spawn, ChildProcess } from 'child_process';
 import { 
   showSplash, 
@@ -13,20 +15,24 @@ import {
   getDatabasePaths
 } from './launcher';
 import { initPlayerProtection, setPlayerProtectionMainWindow } from './adblock/playerProtection';
+import { resolveDesktopAssetPath, resolveWindowIconPath } from './desktopAssets';
 
 let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcess | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
 let isClosePromptOpen = false;
+let cachedCloseBehavior: CloseBehavior | null = null;
 
 const isDev = !app.isPackaged;
 const parsedBackendPort = Number.parseInt(process.env.MAPLEVAULT_BACKEND_PORT || '5000', 10);
-const PORT = Number.isInteger(parsedBackendPort) && parsedBackendPort > 0 && parsedBackendPort <= 65_535
+let backendPort = Number.isInteger(parsedBackendPort) && parsedBackendPort > 0 && parsedBackendPort <= 65_535
   ? parsedBackendPort
   : 5000;
 const BACKEND_HOST = process.env.MAPLEVAULT_BACKEND_HOST || '127.0.0.1';
 const RENDERER_URL = process.env.MAPLEVAULT_RENDERER_URL || 'http://127.0.0.1:5173';
+const BACKEND_STARTUP_RETRIES = 40;
+const BACKEND_INSTANCE_ID = isDev ? '' : crypto.randomUUID();
 const BACKEND_SESSION_TOKEN = isDev
   ? process.env.MAPLEVAULT_API_TOKEN || ''
   : crypto.randomBytes(32).toString('hex');
@@ -39,22 +45,76 @@ interface StartupSettings {
   reason?: string;
 }
 
+function normalizeCloseBehavior(value: unknown): CloseBehavior {
+  return value === 'minimize' || value === 'quit' || value === 'ask' ? value : 'ask';
+}
+
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
   app.exit(0);
 }
 
 function getCloseBehavior(): CloseBehavior {
+  if (cachedCloseBehavior) return cachedCloseBehavior;
+
   try {
     const { dbDir } = getDatabasePaths();
     const settingsPath = path.join(dbDir, 'settings.json');
-    if (!fs.existsSync(settingsPath)) return 'ask';
-    const value = JSON.parse(fs.readFileSync(settingsPath, 'utf8'))?.closeBehavior;
-    return value === 'minimize' || value === 'quit' || value === 'ask' ? value : 'ask';
+    if (!fs.existsSync(settingsPath)) {
+      cachedCloseBehavior = 'ask';
+      return cachedCloseBehavior;
+    }
+    cachedCloseBehavior = normalizeCloseBehavior(
+      JSON.parse(fs.readFileSync(settingsPath, 'utf8'))?.closeBehavior
+    );
+    return cachedCloseBehavior;
   } catch (err: any) {
     console.warn('[Main] No se pudo leer la preferencia de cierre:', err.message);
     return 'ask';
   }
+}
+
+function setCloseBehavior(value: unknown): CloseBehavior {
+  cachedCloseBehavior = normalizeCloseBehavior(value);
+  return cachedCloseBehavior;
+}
+
+async function syncCloseBehaviorFromBackend(): Promise<void> {
+  try {
+    const response = await axios.get(`http://${BACKEND_HOST}:${backendPort}/settings`, {
+      timeout: 2000,
+      headers: BACKEND_SESSION_TOKEN
+        ? { 'X-MapleVault-Token': BACKEND_SESSION_TOKEN }
+        : undefined
+    });
+    setCloseBehavior(response.data?.closeBehavior);
+  } catch (error: any) {
+    console.warn('[Main] No se pudo sincronizar la preferencia de cierre:', error.message);
+    cachedCloseBehavior = null;
+    getCloseBehavior();
+  }
+}
+
+function findAvailableBackendPort(host: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.unref();
+    server.once('error', reject);
+    server.listen(0, host, () => {
+      const address = server.address();
+      const availablePort = typeof address === 'object' && address ? address.port : 0;
+      server.close(error => {
+        if (error) return reject(error);
+        if (!availablePort) return reject(new Error('No se pudo reservar un puerto local para MapleVault.'));
+        resolve(availablePort);
+      });
+    });
+  });
+}
+
+async function configureBackendPort(): Promise<void> {
+  if (isDev || process.env.MAPLEVAULT_BACKEND_PORT) return;
+  backendPort = await findAvailableBackendPort(BACKEND_HOST);
 }
 
 function getStartupSettings(): StartupSettings {
@@ -96,16 +156,17 @@ function setStartupSettings(enabled: boolean): StartupSettings {
 function startBackendProcess() {
   if (!isDev) {
     console.log('Arrancando el servidor backend en producción...');
-    const backendPath = path.resolve(__dirname, '../../app/backend/dist/server.js').replace('app.asar', 'app.asar.unpacked');
+    const backendPath = path.resolve(__dirname, '../backend-runtime/dist/server.js').replace('app.asar', 'app.asar.unpacked');
     const { dbPath } = getDatabasePaths();
     
     backendProcess = spawn(process.execPath, [backendPath], {
       env: { 
         ...process.env, 
         ELECTRON_RUN_AS_NODE: '1',
-        PORT: String(PORT),
+        PORT: String(backendPort),
         MAPLEVAULT_HOST: BACKEND_HOST,
         MAPLEVAULT_API_TOKEN: BACKEND_SESSION_TOKEN,
+        MAPLEVAULT_INSTANCE_ID: BACKEND_INSTANCE_ID,
         DATABASE_PATH: dbPath
       },
       stdio: 'inherit',
@@ -125,13 +186,7 @@ function startBackendProcess() {
 }
 
 function resolveTrayIconPath(): string {
-  const candidates = [
-    path.join(__dirname, '../../app/desktop/assets/icon.png'),
-    path.join(process.resourcesPath || '', 'app/desktop/assets/icon.png'),
-    path.join(process.cwd(), 'app/desktop/assets/icon.png')
-  ];
-
-  return candidates.find(candidate => fs.existsSync(candidate)) || candidates[0];
+  return resolveDesktopAssetPath('icon.png');
 }
 
 function restoreMainWindow() {
@@ -195,16 +250,22 @@ async function bootAppWorkflow() {
   startBackendProcess();
 
   updateSplashStatus('Conectando con biblioteca...');
-  const isHealthy = await waitForBackend(PORT, 8, BACKEND_HOST);
+  const isHealthy = await waitForBackend(
+    backendPort,
+    BACKEND_STARTUP_RETRIES,
+    BACKEND_HOST,
+    isDev ? undefined : BACKEND_INSTANCE_ID
+  );
   if (!isHealthy) {
     showErrorDiagnostics(
-      `El backend interno no respondió en el puerto ${PORT} después de múltiples intentos.\nPor favor, verifica los logs e intenta de nuevo.`,
+      `El backend interno no respondió en el puerto ${backendPort} después de múltiples intentos.\nPor favor, verifica los logs e intenta de nuevo.`,
       bootAppWorkflow
     );
     killBackend();
     return;
   }
 
+  await syncCloseBehaviorFromBackend();
   updateSplashStatus('Cargando interfaz...');
   createMainWindow();
 }
@@ -216,6 +277,7 @@ function createMainWindow() {
     minWidth: 1000,
     minHeight: 700,
     title: 'MapleVault',
+    icon: resolveWindowIconPath(),
     backgroundColor: '#0D0F14',
     show: false,
     frame: false,
@@ -309,8 +371,10 @@ function killBackend() {
 }
 
 app.whenReady().then(async () => {
+  await configureBackendPort();
+
   ipcMain.handle('app-get-api-config', () => ({
-    baseUrl: `http://localhost:${PORT}`,
+    baseUrl: `http://${BACKEND_HOST}:${backendPort}`,
     token: BACKEND_SESSION_TOKEN
   }));
 
@@ -335,6 +399,8 @@ app.whenReady().then(async () => {
   ipcMain.handle('window-is-maximized', () => { return mainWindow?.isMaximized() || false; });
   ipcMain.handle('app-get-startup-settings', () => getStartupSettings());
   ipcMain.handle('app-set-startup-settings', (_event, enabled: boolean) => setStartupSettings(Boolean(enabled)));
+  ipcMain.handle('app-get-close-behavior', () => getCloseBehavior());
+  ipcMain.handle('app-set-close-behavior', (_event, value: unknown) => setCloseBehavior(value));
 
   ipcMain.handle('show-confirm', async (_event, message: string) => {
     const options: MessageBoxOptions = {

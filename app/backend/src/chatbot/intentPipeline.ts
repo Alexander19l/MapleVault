@@ -28,60 +28,34 @@ import { isGreetingMessage, isRecommendationRequest, isStructuredSearchRequest }
 import { detectLanguage } from './languageDetector';
 import type { NLPResult } from './types';
 import { extractImplicitExclusions, extractSemanticQuery } from './semanticHints';
-
-function extractReferenceOrTitle(message: string, patterns: RegExp[]): string | undefined {
-  for (const pattern of patterns) {
-    const match = message.match(pattern);
-    const value = match?.[1] || match?.[2] || match?.[3];
-    if (value) return value.trim();
-  }
-  return undefined;
-}
-
-function cleanReference(value: string): string {
-  return value
-    .replace(/\s+--(?:force|yes|confirm)\b.*$/i, '')
-    .replace(/^(?:el|la|los|las|del|de la|de los|de las)\s+/i, '')
-    .replace(/\s+(?:from|de)\s+(?:my\s+)?(?:watching|completed|dropped|plan to watch)\s+list$/i, '')
-    .replace(/\s+(?:to|a)\s+(?:my\s+)?(?:watchlist|watching list|completed list|dropped list)$/i, '')
-    .replace(/\s+(a|como)\s+(pendiente|pendientes|viendo|completado|completada|abandonado|abandonada|pausado|pausada)$/i, '')
-    .replace(/\s+a\s+mi\s+lista(?:\s+de\s+\w+)?$/i, '')
-    .trim();
-}
-
-function cleanFeedbackReference(value: string): string {
-  return value
-    .replace(/^[\s"'`]+|[\s"'`.,!?]+$/g, '')
-    .replace(/^(?:el|la|los|las)\s+(?:anime|serie)\s+/i, '')
-    .replace(/^(?:anime|serie)\s+/i, '')
-    .trim();
-}
-
-function extractFeedbackReference(message: string, mode: 'like' | 'dislike'): string | undefined {
-  const normalized = normalizeEntityText(message);
-  const patterns = mode === 'dislike'
-    ? [
-        /\b(?:no me recomiendes|no recomiendes|no me sugieras|no sugieras)\s+(.+)$/i,
-        /\b(?:no me vuelvas a sugerir|no me vuelvas a recomendar)\s+(.+)$/i,
-        /\b(?:no me interesa|no me gusta|no me gustan|odio|evita)\s+(.+)$/i
-      ]
-    : [
-        /\b(?:me gusto|me gusta|me gustan|me encanto|me encanta|me interesa|me enganche)\s+(.+)$/i
-      ];
-
-  for (const pattern of patterns) {
-    const match = normalized.match(pattern);
-    const reference = match?.[1] ? cleanFeedbackReference(match[1]) : '';
-    if (reference) return reference;
-  }
-
-  return undefined;
-}
-
-function assignFeedbackReference(result: NLPResult, reference: string): void {
-  result.entities.refIndexOrTitle = reference;
-  result.entities.animeTitle = reference;
-}
+import {
+  assignFeedbackReference,
+  cleanReference,
+  extractFeedbackReference
+} from './intentReferenceUtils';
+import {
+  matchClearSearchFiltersIntent,
+  matchHelpIntent,
+  matchNavigationIntent,
+  matchViewCatalogIntent
+} from './intentNavigationMatcher';
+import {
+  matchAddToLibraryIntent,
+  matchBatchStatusActionIntent,
+  matchClearUserListIntent,
+  matchRatingActionIntent,
+  matchRemoveFromLibraryIntent,
+  matchStatusActionIntent
+} from './intentLibraryActionMatcher';
+import {
+  matchAnimeInfoFieldIntent,
+  matchGeneralAnimeInfoIntent
+} from './intentAnimeInfoMatcher';
+import {
+  extractMarkedEpisodeEntities,
+  matchEpisodeOperationIntent,
+  matchSynchronizationIntent
+} from './intentOperationalMatcher';
 
 export function parseIntentRegex(message: string): NLPResult {
   const msg = message.toLowerCase().trim();
@@ -160,13 +134,7 @@ export function parseIntentRegex(message: string): NLPResult {
     return { ...result, intent: 'UNSUPPORTED_DOWNLOAD' };
   }
 
-  if (
-    normalizedMsg.match(/^\/?(ayuda|help|comandos|commands|opciones|capacidades)$/)
-    || normalizedMsg.match(/^(muestrame|mostrar|ver)\s+(la\s+)?(ayuda|lista de comandos|capacidades)$/)
-    || normalizedMsg.match(/^que\s+(puedes|sabes)\s+hacer/)
-    || normalizedMsg.match(/^como\s+(te\s+)?(uso|utilizo)/)
-    || normalizedMsg.match(/\b(what can you do|show help|what tools or features do you have)\b/)
-  ) {
+  if (matchHelpIntent(normalizedMsg)) {
     return { ...result, intent: 'HELP' };
   }
 
@@ -181,7 +149,7 @@ export function parseIntentRegex(message: string): NLPResult {
     return { ...result, intent: 'RECALL_PREFERENCE' };
   }
 
-  if (normalizedMsg.match(/\b(?:quita todos los filtros|clear all search filters)\b/)) {
+  if (matchClearSearchFiltersIntent(normalizedMsg)) {
     return { ...result, intent: 'CLEAR_SEARCH_FILTERS' };
   }
 
@@ -193,59 +161,14 @@ export function parseIntentRegex(message: string): NLPResult {
     return { ...result, intent: 'WATCH_ORDER' };
   }
 
-  if (
-    normalizedMsg.match(/^(mi\s+)?catalogo$/)
-    || normalizedMsg.match(/^(muestrame|mostrar|ver)\s+(mi\s+|el\s+)?catalogo$/)
-    || normalizedMsg.match(/^mi\s+lista$/)
-    || normalizedMsg.match(/^que\s+tengo/)
-  ) {
+  if (matchViewCatalogIntent(normalizedMsg)) {
     return { ...result, intent: 'VIEW_CATALOG' };
   }
 
-  if (
-    normalizedMsg.match(/^pagina\s+anterior$/)
-    || normalizedMsg.match(/^(?:volver|regresar|ir)\s+(?:a\s+)?(?:la\s+)?pagina\s+anterior$/)
-    || normalizedMsg.match(/^(?:previous|back)\s+page$/)
-  ) {
-    result.entities.context_continuation = true;
-    return { ...result, intent: 'PREVIOUS_ACTIVE_PAGE' };
-  }
-
-  const directPageMatch = normalizedMsg.match(
-    /^(?:(?:ir|ve|mostrar|muestrame|mostrame|abre|cargar)\s+(?:a\s+)?(?:la\s+)?pagina|pagina|go\s+to\s+page|show\s+page)\s+([1-9]\d{0,2})$/
-  );
-  if (directPageMatch) {
-    result.entities.page = Number(directPageMatch[1]);
-    result.entities.context_continuation = true;
-    return { ...result, intent: 'NAVIGATE_ACTIVE_PAGE' };
-  }
-
-  if (
-    normalizedMsg.match(/^(?:ver|mostrar|muestrame|mostrame|dame|cargar)\s+mas\s+(?:resultados|opciones|recomendaciones|pendientes|completados|completadas)$/)
-    || normalizedMsg.match(/^(?:siguiente|proxima)\s+pagina\s+(?:de\s+)?(?:resultados|recomendaciones|pendientes|completados)$/)
-    || normalizedMsg.match(/^(?:show|load)\s+more\s+(?:results|recommendations|pending|completed)$/)
-  ) {
-    result.entities.context_continuation = true;
-    return { ...result, intent: 'CONTINUE_RESULTS' };
-  }
-
-  if (
-    normalizedMsg.match(/^(?:ver|mostrar|muestrame|mostrame|dame|cargar)\s+mas\s+(?:series|animes)\s+de\s+mi\s+catalogo$/)
-    || normalizedMsg.match(/^(?:siguiente|proxima)\s+pagina\s+del\s+catalogo$/)
-    || normalizedMsg.match(/^continua(?:r)?\s+(?:con\s+)?(?:mi\s+)?catalogo$/)
-    || normalizedMsg.match(/^(?:show|load)\s+more\s+(?:anime|series)\s+from\s+my\s+catalog$/)
-  ) {
-    result.entities.context_continuation = true;
-    return { ...result, intent: 'CONTINUE_CATALOG' };
-  }
-
-  if (
-    normalizedMsg.match(/^(?:ver|mostrar|muestrame|mostrame|dame|cargar)\s+mas\s+(?:series|animes)$/)
-    || normalizedMsg.match(/^(?:siguiente|proxima)\s+pagina$/)
-    || normalizedMsg.match(/^(?:show|load)\s+more\s+(?:anime|series)$/)
-  ) {
-    result.entities.context_continuation = true;
-    return { ...result, intent: 'CONTINUE_ACTIVE' };
+  const navigationMatch = matchNavigationIntent(normalizedMsg);
+  if (navigationMatch) {
+    Object.assign(result.entities, navigationMatch.entities);
+    return { ...result, intent: navigationMatch.intent };
   }
 
   const yearMatch = normalizedMsg.match(/\b(19\d{2}|20\d{2})\b/);
@@ -281,24 +204,16 @@ export function parseIntentRegex(message: string): NLPResult {
     return { ...result, intent: 'REMEMBER_DISLIKE' };
   }
 
-  const absoluteTenMatch = normalizedMsg.match(/\bponle\s+un\s+diez\s+absoluto\s+a\s+(.+)$/);
-  const numericRatingMatch = normalizedMsg.match(/\b(?:ponle|le doy|le pongo|califica|rate)\s+(?:un\s+)?(?:nota\s+)?(\d+(?:\.\d+)?)\s*(?:de\s+10|\/10|de\s+nota)?\s+(?:a\s+)?(.+)$/);
-  if (absoluteTenMatch?.[1] || numericRatingMatch?.[2]) {
-    const score = absoluteTenMatch ? 10 : Number(numericRatingMatch?.[1]);
-    const title = absoluteTenMatch?.[1] || numericRatingMatch?.[2];
-    if (Number.isFinite(score) && score >= 0 && score <= 10 && title) {
-      result.entities.score = score;
-      result.entities.refIndexOrTitle = cleanReference(title);
-      result.entities.animeTitle = result.entities.refIndexOrTitle;
-      return { ...result, intent: 'RATE_ANIME' };
-    }
+  const ratingAction = matchRatingActionIntent(normalizedMsg);
+  if (ratingAction) {
+    Object.assign(result.entities, ratingAction.entities);
+    return { ...result, intent: ratingAction.intent };
   }
 
-  const updateStatusMatch = normalizedMsg.match(/\b(?:marcar|marca|cambiar estado de|change status of)\s+(.+?)\s+(?:como|a|to)\s+(viendo|en progreso|pendiente|completado|completada|abandonado|abandonada|pausado|pausada|watching|completed|dropped|on hold)\b/);
-  if (updateStatusMatch?.[1] && status) {
-    result.entities.refIndexOrTitle = cleanReference(updateStatusMatch[1]);
-    result.entities.animeTitle = result.entities.refIndexOrTitle;
-    return { ...result, intent: 'UPDATE_STATUS' };
+  const statusAction = matchStatusActionIntent(normalizedMsg, status);
+  if (statusAction) {
+    Object.assign(result.entities, statusAction.entities);
+    return { ...result, intent: statusAction.intent };
   }
 
   if (
@@ -433,110 +348,47 @@ export function parseIntentRegex(message: string): NLPResult {
     }
   }
 
-  const infoRef = extractReferenceOrTitle(normalizedMsg, [
-    /^info\s+(.+)/,
-    /^(?:dame|dime|muestra|mostrar|pasame)\s+(?:info|informacion|detalles?)\s+(?:de|del|sobre)\s+(.+)/,
-    /^(?:info|informacion|detalles?)\s+(?:de|del|sobre)\s+(.+)/,
-    /^(?:que sabes de|detalles de)\s+(.+)/,
-    /^ver\s+info\s+(.+)/,
-    /^show\s+(?:me\s+)?(?:info|information|details)\s+(?:about|of)\s+(.+)/
-  ]);
-  if (infoRef) {
-    result.entities.refIndexOrTitle = cleanReference(infoRef);
-    result.entities.animeTitle = result.entities.refIndexOrTitle;
-    return { ...result, intent: 'SHOW_ANIME_INFO' };
+  const generalInfoIntent = matchGeneralAnimeInfoIntent(normalizedMsg);
+  if (generalInfoIntent) {
+    Object.assign(result.entities, generalInfoIntent.entities);
+    return { ...result, intent: generalInfoIntent.intent };
   }
 
-  const addRef = extractReferenceOrTitle(normalizedMsg, [
-    /^agrega(?:r)?\s+(?:el\s+)?(.+)/,
-    /^anade\s+(?:el\s+)?(.+)/,
-    /^importa\s+(?:el\s+)?(.+)/,
-    /^add\s+(.+)/
-  ]);
-  if (addRef && !normalizedMsg.match(/\bbusqueda anterior\b/)) {
-    result.entities.refIndexOrTitle = cleanReference(addRef);
-    result.entities.animeTitle = result.entities.refIndexOrTitle;
-    return { ...result, intent: 'ADD_TO_LIBRARY' };
+  const addAction = matchAddToLibraryIntent(normalizedMsg);
+  if (addAction) {
+    Object.assign(result.entities, addAction.entities);
+    return { ...result, intent: addAction.intent };
   }
 
-  if (normalizedMsg.match(/^borra mi watchlist(?:\s+--(?:force|yes|confirm))*$/)) {
-    return { ...result, intent: 'CLEAR_USER_LIST' };
+  const clearUserListAction = matchClearUserListIntent(normalizedMsg);
+  if (clearUserListAction) {
+    return { ...result, intent: clearUserListAction.intent };
   }
 
-  const removeRef = extractReferenceOrTitle(normalizedMsg, [
-    /^elimina(?:r)?\s+(?:el\s+)?(.+)/,
-    /^borra(?:r)?\s+(?:el\s+)?(.+)/,
-    /^quita(?:r)?\s+(?:el\s+)?(.+)/,
-    /^remove\s+(.+)/
-  ]);
-  if (removeRef && !normalizedMsg.match(/\b(busqueda|filtro|historial)\b/)) {
-    result.entities.refIndexOrTitle = cleanReference(removeRef);
-    result.entities.animeTitle = result.entities.refIndexOrTitle;
-    if (normalizedMsg.match(/\bfrom\s+(?:my\s+)?(?:watching|completed|dropped|plan to watch)(?:\s+list)?\b/)) {
-      result.entities.list = status || normalizedMsg.match(/\b(watching|completed|dropped|plan to watch)\b/)?.[1];
-      return { ...result, intent: 'REMOVE_FROM_LIST' };
-    }
-    return { ...result, intent: 'REMOVE_FROM_LIBRARY' };
+  const removeAction = matchRemoveFromLibraryIntent(normalizedMsg, status);
+  if (removeAction) {
+    Object.assign(result.entities, removeAction.entities);
+    return { ...result, intent: removeAction.intent };
   }
 
-  const batchMatch = normalizedMsg.match(/\bmarca\s+(?:toda\s+)?(?:la\s+)?temporada(?:s)?\s+[0-9y,\s]+\s+de\s+(.+?)\s+como\s+vistas?\b/);
-  if (batchMatch?.[1] && result.entities.seasons?.length) {
-    result.entities.refIndexOrTitle = cleanReference(batchMatch[1]);
-    result.entities.animeTitle = result.entities.refIndexOrTitle;
-    result.entities.status = 'completed';
-    return { ...result, intent: 'BATCH_UPDATE_STATUS' };
+  const batchStatusAction = matchBatchStatusActionIntent(normalizedMsg, result.entities.seasons);
+  if (batchStatusAction) {
+    Object.assign(result.entities, batchStatusAction.entities);
+    return { ...result, intent: batchStatusAction.intent };
   }
 
-  const episodeFieldRef = normalizedMsg.match(/\bcuantos\s+(?:episodios|capitulos)\s+tiene\s+(.+)$/);
-  if (episodeFieldRef?.[1]) {
-    result.entities.refIndexOrTitle = cleanReference(episodeFieldRef[1]);
-    result.entities.animeTitle = result.entities.refIndexOrTitle;
-    result.entities.field = 'episodes';
-    return { ...result, intent: 'SHOW_ANIME_INFO' };
-  }
-
-  const startDateFieldRef = normalizedMsg.match(/\bcuando\s+(?:empezo|inicio|salio)\s+(.+)$/);
-  if (startDateFieldRef?.[1]) {
-    result.entities.refIndexOrTitle = cleanReference(startDateFieldRef[1]);
-    result.entities.animeTitle = result.entities.refIndexOrTitle;
-    result.entities.field = 'start_date';
-    return { ...result, intent: 'SHOW_ANIME_INFO' };
-  }
-
-  const synopsisFieldRef = normalizedMsg.match(/\b(?:de que trata|sinopsis de|resume)\s+(.+)$/);
-  if (synopsisFieldRef?.[1]) {
-    result.entities.refIndexOrTitle = cleanReference(synopsisFieldRef[1]);
-    result.entities.animeTitle = result.entities.refIndexOrTitle;
-    result.entities.field = 'synopsis';
-    return { ...result, intent: 'SHOW_ANIME_INFO' };
-  }
-
-  const genericFieldPatterns: Array<{ pattern: RegExp; field: NLPResult['entities']['field'] }> = [
-    { pattern: /\b(?:cual es la nota|mean score of|puntaje de)\s+(.+)$/, field: 'score' },
-    { pattern: /\b(?:que estudio.*hizo|estudio de animacion que hizo|what studio animated)\s+(.+)$/, field: 'studio' },
-    { pattern: /\b(?:ano de lanzamiento de|cuando se estreno)\s+(.+)$/, field: 'start_date' },
-    { pattern: /\b(?:cuando se estrena la proxima parte de|when does the next episode of)\s+(.+)$/, field: 'next_episode_date' },
-    { pattern: /\b(?:cuando.*proxima temporada de|when does the next season of)\s+(.+?)(?:\s+air)?$/, field: 'next_season_date' }
-  ];
-  for (const fieldPattern of genericFieldPatterns) {
-    const match = normalizedMsg.match(fieldPattern.pattern);
-    if (match?.[1]) {
-      result.entities.refIndexOrTitle = cleanReference(match[1]);
-      result.entities.animeTitle = result.entities.refIndexOrTitle;
-      result.entities.field = fieldPattern.field;
-      return { ...result, intent: 'SHOW_ANIME_INFO' };
-    }
+  const fieldInfoIntent = matchAnimeInfoFieldIntent(normalizedMsg);
+  if (fieldInfoIntent) {
+    Object.assign(result.entities, fieldInfoIntent.entities);
+    return { ...result, intent: fieldInfoIntent.intent };
   }
 
   if (isStructuredSearchRequest(msg, normalizedMsg, result.entities)) {
     return { ...result, intent: 'SEARCH_ANIME' };
   }
 
-  if (normalizedMsg.match(/sincroniza|actualiza( mis)? listas|sincronizacion|reintenta.*sincroniz/)) return { ...result, intent: 'SYNC_LIBRARY' };
-  if (normalizedMsg.match(/actualiza.*metadatos/)) return { ...result, intent: 'SYNC_METADATA' };
-  if (normalizedMsg.match(/actualiza.*capitulos|busca.*capitulos nuevos|verifica.*capitulos/)) return { ...result, intent: 'SYNC_EPISODES' };
-  if (normalizedMsg.match(/cancela.*sincronizac/)) return { ...result, intent: 'CANCEL_SYNC' };
-  if (normalizedMsg.match(/resumen.*sincronizac/)) return { ...result, intent: 'SYNC_SUMMARY' };
+  const synchronizationIntent = matchSynchronizationIntent(normalizedMsg);
+  if (synchronizationIntent) return { ...result, intent: synchronizationIntent };
 
   if (normalizedMsg.match(/analiza mi biblioteca|cuantos animes tengo guardados|cuantos animes he completado|cuantos.*pendientes|generos favoritos|estudios veo|anos.*mas|temporada.*mas|anime.*mas avanzado/)) return { ...result, intent: 'LIBRARY_STATS' };
 
@@ -553,20 +405,13 @@ export function parseIntentRegex(message: string): NLPResult {
     return { ...result, intent: 'RECOMMEND_GENERAL' };
   }
 
-  if (normalizedMsg.match(/muestrame.*capitulos/)) return { ...result, intent: 'SHOW_EPISODES' };
-  if (normalizedMsg.match(/marca.*visto/)) {
-    if (normalizedMsg.includes('todos') || normalizedMsg.includes('anteriores')) return { ...result, intent: 'MARK_ALL_WATCHED' };
-    return { ...result, intent: 'MARK_EPISODE_WATCHED' };
+  const episodeOperationIntent = matchEpisodeOperationIntent(normalizedMsg);
+  if (episodeOperationIntent) {
+    if (episodeOperationIntent === 'MARK_EPISODE_WATCHED') {
+      Object.assign(result.entities, extractMarkedEpisodeEntities(normalizedMsg));
+    }
+    return { ...result, intent: episodeOperationIntent };
   }
-  if (normalizedMsg.match(/ultimos?\s+capitulos?\s+vistos?/)) return { ...result, intent: 'FILTER_EPISODES_WATCHED' };
-  if (normalizedMsg.match(/ultimo capitulo visto/)) return { ...result, intent: 'LAST_WATCHED_EPISODE' };
-  if (normalizedMsg.match(/siguiente.*pendiente/)) return { ...result, intent: 'NEXT_PENDING_EPISODE' };
-  if (normalizedMsg.match(/ordena.*menor a mayor/)) return { ...result, intent: 'SORT_EPISODES_ASC' };
-  if (normalizedMsg.match(/ordena.*mayor a menor/)) return { ...result, intent: 'SORT_EPISODES_DESC' };
-  if (normalizedMsg.match(/filtra.*vistos/)) return { ...result, intent: 'FILTER_EPISODES_WATCHED' };
-  if (normalizedMsg.match(/filtra.*pendientes|que capitulos.*pendientes/)) return { ...result, intent: 'FILTER_EPISODES_PENDING' };
-  if (normalizedMsg.match(/que\s+capitulos?\s+me\s+faltan/)) return { ...result, intent: 'FILTER_EPISODES_PENDING' };
-  if (normalizedMsg.match(/abre.*capitulo/)) return { ...result, intent: 'OPEN_EPISODE' };
 
   if (normalizedMsg.match(/anade.*biblioteca/)) return { ...result, intent: 'ADD_TO_LIBRARY' };
   if (normalizedMsg.match(/elimina.*biblioteca/)) return { ...result, intent: 'REMOVE_FROM_LIBRARY' };

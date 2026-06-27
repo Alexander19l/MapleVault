@@ -1,5 +1,6 @@
 import { query } from '../database/db';
 import type { ChatResponse } from './chatResponse';
+import { resolveReferenceOrTitle } from './referenceResolver';
 import type { NLPResult } from './types';
 
 export async function handleShowEpisodes(entities: NLPResult['entities']): Promise<ChatResponse> {
@@ -27,6 +28,44 @@ export function handleMarkAllWatched(): ChatResponse {
       type: 'mark_all_watched',
       data: {},
       confirmMessage: 'Marcar todo como visto'
+    }
+  };
+}
+
+export async function handleMarkEpisodeWatched(entities: NLPResult['entities']): Promise<ChatResponse> {
+  const reference = entities.refIndexOrTitle || entities.animeTitle || entities.query;
+  const episodeNumber = Number(entities.episodeNumber);
+  if (!reference || !Number.isInteger(episodeNumber) || episodeNumber < 1 || episodeNumber > 10000) {
+    return {
+      text: 'Indica la serie y el episodio. Ejemplo: "marca el episodio 3 de Naruto como visto".'
+    };
+  }
+
+  const anime = await resolveReferenceOrTitle(reference);
+  if (!anime?.id || anime.result_origin !== 'local') {
+    return {
+      text: `No encontré "${reference}" en el catálogo local. Agrégala antes de actualizar episodios.`
+    };
+  }
+
+  const totalEpisodes = Number(anime.episodes);
+  if (Number.isFinite(totalEpisodes) && totalEpisodes > 0 && episodeNumber > totalEpisodes) {
+    return {
+      text: `"${anime.title}" tiene ${totalEpisodes} episodios registrados. No preparé ningún cambio.`
+    };
+  }
+
+  return {
+    text: `Preparé el episodio ${episodeNumber} de "${anime.title}" para marcarlo como visto. Confirma para actualizar tu progreso.`,
+    action: {
+      type: 'mark_watched',
+      data: {
+        animeId: anime.id,
+        title: anime.title,
+        episodeNumber,
+        watched: true
+      },
+      confirmMessage: `Marcar episodio ${episodeNumber} de ${anime.title} como visto`
     }
   };
 }
@@ -59,6 +98,33 @@ export async function handleFilterEpisodesPending(): Promise<ChatResponse> {
 
   return {
     text: `Estos son algunos de tus próximos capítulos pendientes:\n${pendingList.join('\n')}`
+  };
+}
+
+export async function handleNextPendingEpisode(): Promise<ChatResponse> {
+  const next = await query.get(`
+    SELECT
+      a.title,
+      a.episodes,
+      COALESCE(MAX(w.episode_number), 0) + 1 AS next_episode
+    FROM user_list ul
+    JOIN anime a ON ul.anime_id = a.id
+    LEFT JOIN watched_episodes w ON w.anime_id = a.id
+    WHERE ul.watch_status = 'watching'
+    GROUP BY a.id, a.title, a.episodes, ul.updated_at
+    HAVING a.episodes IS NULL
+        OR a.episodes = 0
+        OR COALESCE(MAX(w.episode_number), 0) < a.episodes
+    ORDER BY ul.updated_at DESC, a.title ASC
+    LIMIT 1
+  `);
+
+  if (!next) {
+    return { text: 'No encontré un siguiente episodio pendiente entre tus series en progreso.' };
+  }
+
+  return {
+    text: `Tu siguiente episodio pendiente es el **Episodio ${next.next_episode}** de **${next.title}**.`
   };
 }
 

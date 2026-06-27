@@ -1,4 +1,10 @@
 import { splitGenres } from '../recommendations/scoring';
+import {
+  buildSearchTextContext,
+  getAnimeSearchOrderBy,
+  hasAnimeSearchCriteria,
+  uniqueLowercaseFilters
+} from './searchQueryHelpers';
 import type { NLPResult } from './types';
 
 export interface AnimeSearchPlan {
@@ -11,46 +17,13 @@ export interface AnimeSearchPlan {
 }
 
 export function buildAnimeSearchPlan(entities: NLPResult['entities']): AnimeSearchPlan {
-  const queryText = String(entities.query || entities.animeTitle || '').trim();
-  const tagQuery = Array.isArray(entities.tags) ? entities.tags.join(' ') : '';
-  const onlineQueryText = queryText || String(
-    entities.staff
-    || entities.genre
-    || tagQuery
-    || entities.studio
-    || entities.source_material
-    || entities.format
-    || ''
-  ).trim();
+  const { queryText, onlineQueryText } = buildSearchTextContext(entities);
   const genreFilters = splitGenres(entities.genre);
-  const tagFilters = Array.isArray(entities.tags) ? [...new Set(entities.tags.map(tag => String(tag).toLowerCase()).filter(Boolean))] : [];
-  const excludedTagFilters = Array.isArray(entities.exclude_tags) ? [...new Set(entities.exclude_tags.map(tag => String(tag).toLowerCase()).filter(Boolean))] : [];
+  const tagFilters = uniqueLowercaseFilters(entities.tags);
+  const excludedTagFilters = uniqueLowercaseFilters(entities.exclude_tags);
   const params: any[] = [];
   const conditions: string[] = [];
-  const hasSearchCriteria = Boolean(
-    queryText
-    || entities.genre
-    || entities.year
-    || entities.season
-    || entities.studio
-    || entities.format
-    || entities.formats?.length
-    || entities.year_from
-    || entities.year_to
-    || entities.min_episodes !== undefined
-    || entities.max_episodes !== undefined
-    || entities.duration_max !== undefined
-    || tagFilters.length > 0
-    || excludedTagFilters.length > 0
-    || entities.min_score !== undefined
-    || entities.max_score !== undefined
-    || entities.airing_status
-    || entities.staff
-    || entities.source_material
-    || entities.exclude_franchise
-    || entities.exclude_related_to
-    || entities.exclude_origin
-  );
+  const hasSearchCriteria = hasAnimeSearchCriteria(entities, queryText, tagFilters, excludedTagFilters);
 
   if (!hasSearchCriteria) {
     return {
@@ -217,14 +190,7 @@ export function buildAnimeSearchPlan(entities: NLPResult['entities']): AnimeSear
     sql += ' GROUP BY a.id';
   }
 
-  const orderBy: Record<string, string> = {
-    score_asc: 'a.score ASC, a.popularity DESC, a.id DESC',
-    score_desc: 'a.score DESC, a.popularity DESC, a.id DESC',
-    release_date_asc: 'a.year ASC, a.start_date ASC, a.id ASC',
-    release_date_desc: 'a.year DESC, a.start_date DESC, a.id DESC',
-    popularity_desc: 'a.popularity DESC, a.score DESC, a.id DESC'
-  };
-  sql += ` ORDER BY ${orderBy[entities.sort_by || 'popularity_desc']} LIMIT 32`;
+  sql += ` ORDER BY ${getAnimeSearchOrderBy(entities.sort_by)} LIMIT 32`;
 
   return {
     queryText,

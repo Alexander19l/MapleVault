@@ -31,6 +31,10 @@ test('muestra la mascota de MapleVault en la marca lateral y en Inicio', async (
       return route.fulfill({ json: [] });
     }
 
+    if (method === 'GET' && url.pathname === '/dashboard/summary') {
+      return route.fulfill({ json: { recent: [], airing: [], stats: {} } });
+    }
+
     if (method === 'GET' && url.pathname === '/anime') {
       return route.fulfill({
         json: [

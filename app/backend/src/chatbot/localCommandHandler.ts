@@ -17,6 +17,8 @@ import {
   handleFilterEpisodesWatched,
   handleLastWatchedEpisode,
   handleMarkAllWatched,
+  handleMarkEpisodeWatched,
+  handleNextPendingEpisode,
   handleShowEpisodes
 } from './episodeCommandHandler';
 import {
@@ -52,6 +54,7 @@ import {
   showPagedAnimeResultsPage
 } from './resultPagination';
 import { handleSearchAnime } from './searchCommandHandler';
+import { handleCancelSync, handleSyncSummary } from './syncCommandHandler';
 
 export type { ChatResponse } from './chatResponse';
 
@@ -209,6 +212,14 @@ async function handleLocalIntentInternal(nlp: NLPResult): Promise<ChatResponse> 
         return handleSyncMetadata();
       }
 
+      case 'CANCEL_SYNC': {
+        return handleCancelSync();
+      }
+
+      case 'SYNC_SUMMARY': {
+        return handleSyncSummary();
+      }
+
       case 'FIND_DUPLICATES': {
         return handleFindDuplicates();
       }
@@ -227,6 +238,14 @@ async function handleLocalIntentInternal(nlp: NLPResult): Promise<ChatResponse> 
 
       case 'MARK_ALL_WATCHED': {
         return handleMarkAllWatched();
+      }
+
+      case 'MARK_EPISODE_WATCHED': {
+        return handleMarkEpisodeWatched(entities);
+      }
+
+      case 'NEXT_PENDING_EPISODE': {
+        return handleNextPendingEpisode();
       }
 
       case 'FILTER_EPISODES_PENDING': {

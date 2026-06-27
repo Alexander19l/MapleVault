@@ -178,6 +178,46 @@ export const INTENTS = [
     protected: false
   },
   {
+    id: 'marcar_episodio_visto',
+    internalIntent: 'MARK_EPISODE_WATCHED',
+    description: 'Prepara el registro de un episodio visto y requiere confirmacion.',
+    example: 'marca el episodio 3 de Naruto como visto',
+    entities: ['refIndexOrTitle', 'episodeNumber'],
+    protected: true
+  },
+  {
+    id: 'siguiente_episodio_pendiente',
+    internalIntent: 'NEXT_PENDING_EPISODE',
+    description: 'Muestra el siguiente episodio pendiente de las series en progreso.',
+    example: 'siguiente capitulo pendiente',
+    entities: [],
+    protected: false
+  },
+  {
+    id: 'sincronizar_biblioteca',
+    internalIntent: 'SYNC_LIBRARY',
+    description: 'Prepara una sincronizacion de metadatos con AniList y requiere confirmacion.',
+    example: 'sincroniza mi biblioteca',
+    entities: [],
+    protected: true
+  },
+  {
+    id: 'cancelar_sincronizacion',
+    internalIntent: 'CANCEL_SYNC',
+    description: 'Solicita detener la sincronizacion activa al terminar el elemento actual.',
+    example: 'cancela la sincronizacion',
+    entities: [],
+    protected: false
+  },
+  {
+    id: 'resumen_sincronizacion',
+    internalIntent: 'SYNC_SUMMARY',
+    description: 'Muestra progreso, actualizaciones y errores de la sincronizacion actual.',
+    example: 'resumen de sincronizacion',
+    entities: [],
+    protected: false
+  },
+  {
     id: 'ayuda',
     internalIntent: 'HELP',
     description: 'Muestra comandos disponibles generados desde capabilities.',

@@ -1,6 +1,6 @@
 ﻿import axios from 'axios';
 
-import type { ChatActionHistoryItem, ChatCapabilities, ChatMessage } from '../types';
+import type { ChatActionHistoryItem, ChatCapabilities, ChatMessage, DatabaseBackup } from '../types';
 
 export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -297,6 +297,11 @@ export const api = {
     return response.data;
   },
 
+  saveCloseBehavior: async (closeBehavior: 'ask' | 'minimize' | 'quit') => {
+    const response = await client.patch('/settings/window', { closeBehavior });
+    return response.data;
+  },
+
   exportData: async () => {
     const response = await client.post('/settings/export');
     return response.data;
@@ -312,6 +317,16 @@ export const api = {
     return response.data;
   },
 
+  listDatabaseBackups: async (): Promise<DatabaseBackup[]> => {
+    const response = await client.get('/backup/list');
+    return response.data;
+  },
+
+  restoreDatabaseBackup: async (backupPath: string) => {
+    const response = await client.post('/backup/restore', { backupPath });
+    return response.data;
+  },
+
   getSystemHealth: async () => {
     const response = await client.get('/system/health');
     return response.data;
@@ -324,6 +339,16 @@ export const api = {
 
   getTranslationStatus: async () => {
     const response = await client.get('/translation/status');
+    return response.data;
+  },
+
+  getTranslationInstallStatus: async () => {
+    const response = await client.get('/translation/install/status');
+    return response.data;
+  },
+
+  installLibreTranslate: async () => {
+    const response = await client.post('/translation/install');
     return response.data;
   },
 

@@ -43,15 +43,36 @@ function delay(ms: number): Promise<void> {
 function getInstallHint(): string {
   return [
     'LibreTranslate no esta instalado, no esta disponible o no tiene el modelo hacia espanol.',
-    'Ejecuta MapleVault.bat y selecciona "Preparar LibreTranslate" una sola vez para instalar el runtime y el modelo translate-en_es.',
+    'Puedes instalar el componente opcional y el modelo translate-en_es desde Ajustes > Traduccion de metadata.',
+    'En desarrollo tambien puedes usar "Preparar LibreTranslate" desde MapleVault.bat.',
     'Tambien puedes definir LIBRETRANSLATE_AUTOSTART_COMMAND con un comando propio.'
   ].join(' ');
 }
 
-function getLocalLibreTranslateExecutable(): string {
+export function getLibreTranslateInstallDataDir(): string {
+  const configuredDirectory = process.env.MAPLEVAULT_LIBRETRANSLATE_DATA_DIR?.trim();
+  if (configuredDirectory) {
+    return path.resolve(configuredDirectory);
+  }
+
+  if (process.platform === 'win32' && process.env.LOCALAPPDATA) {
+    return path.join(process.env.LOCALAPPDATA, 'MapleVault');
+  }
+
+  return path.dirname(DB_PATH);
+}
+
+export function getLocalLibreTranslateExecutables(): string[] {
   const executable = process.platform === 'win32' ? 'libretranslate.exe' : 'libretranslate';
   const venvBin = process.platform === 'win32' ? 'Scripts' : 'bin';
-  return path.join(path.dirname(DB_PATH), 'libretranslate', '.venv', venvBin, executable);
+  const runtimeDirectories = [
+    path.join(getLibreTranslateInstallDataDir(), 'libretranslate'),
+    path.join(path.dirname(DB_PATH), 'libretranslate')
+  ];
+
+  return [...new Set(runtimeDirectories.map(runtimeDirectory => (
+    path.join(runtimeDirectory, '.venv', venvBin, executable)
+  )))];
 }
 
 function parseHostAndPort(settings: TranslationSettings): { host: string; port: string } {
@@ -111,17 +132,16 @@ function buildStartCandidates(settings: TranslationSettings): StartCandidate[] {
   const { host, port } = parseHostAndPort(settings);
   const commonArgs = ['--host', host, '--port', port];
   const envCommand = process.env.LIBRETRANSLATE_AUTOSTART_COMMAND;
-  const localExecutable = getLocalLibreTranslateExecutable();
-
-  const candidates: StartCandidate[] = [
-    {
+  const candidates: StartCandidate[] = getLocalLibreTranslateExecutables().map(localExecutable => ({
       command: localExecutable,
       args: commonArgs,
       label: `${localExecutable} ${commonArgs.join(' ')}`,
       allowMissing: true
-    },
+    }));
+
+  candidates.push(
     { command: 'libretranslate', args: commonArgs, label: `libretranslate ${commonArgs.join(' ')}` }
-  ];
+  );
 
   if (!envCommand) return candidates;
 

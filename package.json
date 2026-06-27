@@ -1,7 +1,16 @@
 {
   "name": "maplevault-local",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "description": "Local desktop application for managing, discovering, and organizing anime series (MapleVault).",
+  "author": "MapleVault Contributors",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Alexander19l/MapleVault.git"
+  },
+  "engines": {
+    "node": ">=22.12.0",
+    "npm": ">=10"
+  },
   "main": "dist/desktop/main.js",
   "scripts": {
     "postinstall": "npm run install:backend && npm run install:frontend",
@@ -15,10 +24,12 @@
     "build:backend": "npm --prefix app/backend run build",
     "build:desktop": "tsc -p app/desktop && node scripts/copy-assets.js",
     "build": "npm run build:frontend && npm run build:backend && npm run build:desktop",
-    "package": "npm run build && electron-builder",
-    "dist": "electron-builder",
-    "dist:win": "electron-builder --win",
-    "dist:linux": "electron-builder --linux",
+    "prepare:package-runtime": "node scripts/prepare-backend-runtime.js",
+    "verify:package": "node scripts/verify-package-inputs.js",
+    "package": "npm run build && npm run prepare:package-runtime && npm run verify:package && electron-builder",
+    "dist": "npm run package",
+    "dist:win": "npm run build && npm run prepare:package-runtime && npm run verify:package && electron-builder --win",
+    "dist:linux": "npm run build && npm run prepare:package-runtime && npm run verify:package && electron-builder --linux",
     "audit": "npm audit && npm --prefix app/backend audit && npm --prefix app/frontend audit",
     "audit:fix": "npm audit fix && npm --prefix app/backend audit fix && npm --prefix app/frontend audit fix",
     "typecheck": "tsc -p app/desktop --noEmit && tsc -p app/backend --noEmit",
@@ -34,8 +45,8 @@
     "@playwright/test": "^1.60.0",
     "@types/node": "^25.9.2",
     "concurrently": "^8.2.2",
-    "electron": "^30.5.1",
-    "electron-builder": "^24.13.3",
+    "electron": "^42.5.0",
+    "electron-builder": "^26.15.3",
     "typescript": "^5.4.5"
   },
   "dependencies": {

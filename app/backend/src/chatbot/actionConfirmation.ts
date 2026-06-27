@@ -79,6 +79,10 @@ export function getPendingActionsCount(): number {
   return pendingActions.size;
 }
 
+export function clearPendingActions(): void {
+  pendingActions.clear();
+}
+
 /**
  * Tipos de acciones que requieren confirmación
  */

@@ -102,6 +102,13 @@ export interface ScrapingLog {
   created_at: string;
 }
 
+export interface DatabaseBackup {
+  name: string;
+  path: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+
 export type ChatActionType =
   | 'add_anime'
   | 'resolve_duplicates'

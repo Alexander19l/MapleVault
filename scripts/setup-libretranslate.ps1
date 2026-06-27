@@ -1,13 +1,26 @@
+param(
+  [string]$DataDir = "",
+  [switch]$NonInteractive
+)
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
-$DataDir = Join-Path $ProjectRoot "app\data"
+$ResolvedDataDir = if ([string]::IsNullOrWhiteSpace($DataDir)) {
+  Join-Path $ProjectRoot "app\data"
+} else {
+  [System.IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($DataDir))
+}
+
+$DataDir = $ResolvedDataDir
 $RuntimeDir = Join-Path $DataDir "libretranslate"
 $VenvDir = Join-Path $RuntimeDir ".venv"
 $VenvPython = Join-Path $VenvDir "Scripts\python.exe"
 $ArgosPm = Join-Path $VenvDir "Scripts\argospm.exe"
 $LibreTranslateCli = Join-Path $VenvDir "Scripts\libretranslate.exe"
+$VisualCppDownloadUrl = "https://aka.ms/vc14/vc_redist.x64.exe"
+$script:VisualCppRestartRequired = $false
 
 function Write-Step($Message) {
   Write-Host "[LibreTranslate] $Message" -ForegroundColor Cyan
@@ -56,6 +69,84 @@ function Invoke-Python($Python, [string[]]$Arguments) {
   }
 }
 
+function Test-VisualCppRuntime {
+  $registryPaths = @(
+    "HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64",
+    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\x64"
+  )
+
+  foreach ($registryPath in $registryPaths) {
+    try {
+      $runtime = Get-ItemProperty -Path $registryPath -ErrorAction Stop
+      if ($runtime.Installed -eq 1 -and $runtime.Major -ge 14) {
+        return $true
+      }
+    } catch {
+      # Continue with the file check for minimal or damaged registry installations.
+    }
+  }
+
+  $requiredFiles = @(
+    (Join-Path $env:SystemRoot "System32\vcruntime140.dll"),
+    (Join-Path $env:SystemRoot "System32\vcruntime140_1.dll"),
+    (Join-Path $env:SystemRoot "System32\msvcp140.dll")
+  )
+  return -not ($requiredFiles | Where-Object { -not (Test-Path -LiteralPath $_) })
+}
+
+function Install-VisualCppRuntime([switch]$Repair) {
+  $downloadDirectory = Join-Path $RuntimeDir ".downloads"
+  $installerPath = Join-Path $downloadDirectory "vc_redist.x64.exe"
+
+  Write-Step "Descargando Microsoft Visual C++ Runtime x64 desde el sitio oficial..."
+  New-Item -ItemType Directory -Force -Path $downloadDirectory | Out-Null
+
+  try {
+    $previousSecurityProtocol = [Net.ServicePointManager]::SecurityProtocol
+    $previousProgressPreference = $ProgressPreference
+    try {
+      [Net.ServicePointManager]::SecurityProtocol = $previousSecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+      $ProgressPreference = "SilentlyContinue"
+      Invoke-WebRequest -Uri $VisualCppDownloadUrl -OutFile $installerPath -UseBasicParsing
+    } finally {
+      [Net.ServicePointManager]::SecurityProtocol = $previousSecurityProtocol
+      $ProgressPreference = $previousProgressPreference
+    }
+
+    $signature = Get-AuthenticodeSignature -FilePath $installerPath
+    $isMicrosoftSignature = $signature.Status -eq "Valid" -and
+      $signature.SignerCertificate -and
+      $signature.SignerCertificate.Subject -match "Microsoft Corporation"
+    if (-not $isMicrosoftSignature) {
+      throw "La firma digital del instalador de Visual C++ no es valida o no pertenece a Microsoft."
+    }
+
+    $installAction = if ($Repair) { "/repair" } else { "/install" }
+    $actionLabel = if ($Repair) { "Reparando" } else { "Instalando" }
+    Write-Step "$actionLabel Microsoft Visual C++ Runtime x64. Windows puede solicitar confirmacion..."
+    $installer = Start-Process -FilePath $installerPath `
+      -ArgumentList @($installAction, "/quiet", "/norestart") `
+      -Wait `
+      -PassThru
+
+    if ($installer.ExitCode -eq 3010) {
+      $script:VisualCppRestartRequired = $true
+    } elseif ($installer.ExitCode -notin @(0, 1638)) {
+      throw "El instalador de Visual C++ termino con codigo $($installer.ExitCode)."
+    }
+  } finally {
+    Remove-Item -LiteralPath $installerPath -Force -ErrorAction SilentlyContinue
+  }
+}
+
+function Test-CTranslate2Import {
+  $output = @(& $VenvPython -c "import ctranslate2; print(ctranslate2.__version__)" 2>&1)
+  return @{
+    Success = $LASTEXITCODE -eq 0
+    Output = ($output -join [Environment]::NewLine)
+  }
+}
+
 Write-Step "Preparando entorno local en $RuntimeDir"
 New-Item -ItemType Directory -Force -Path $RuntimeDir | Out-Null
 
@@ -67,7 +158,19 @@ if (-not $Python) {
     throw "No se encontro Python real ni winget. Instala Python 3.11 o superior y vuelve a ejecutar este script."
   }
 
-  winget install --id Python.Python.3.11 -e --scope user --silent --accept-package-agreements --accept-source-agreements
+  $WingetArguments = @(
+    "install",
+    "--id", "Python.Python.3.11",
+    "-e",
+    "--scope", "user",
+    "--accept-package-agreements",
+    "--accept-source-agreements"
+  )
+  if ($NonInteractive) {
+    $WingetArguments += "--silent"
+  }
+
+  & winget @WingetArguments
   if ($LASTEXITCODE -ne 0) {
     throw "winget no pudo instalar Python 3.11."
   }
@@ -95,10 +198,42 @@ if ($LASTEXITCODE -ne 0) {
   throw "No se pudo actualizar pip en el entorno local."
 }
 
+if (-not (Test-VisualCppRuntime)) {
+  Write-Step "Falta una dependencia nativa requerida por CTranslate2."
+  Install-VisualCppRuntime
+}
+
 Write-Step "Instalando LibreTranslate. Esto puede tardar varios minutos la primera vez..."
 & $VenvPython -m pip install --upgrade libretranslate
 if ($LASTEXITCODE -ne 0) {
   throw "No se pudo instalar LibreTranslate en el entorno local."
+}
+
+Write-Step "Normalizando dependencias HTTP compatibles..."
+& $VenvPython -m pip install --upgrade "chardet>=3.0.2,<6"
+if ($LASTEXITCODE -ne 0) {
+  throw "No se pudo preparar una version compatible de chardet."
+}
+
+& $VenvPython -m pip check
+if ($LASTEXITCODE -ne 0) {
+  throw "El entorno de LibreTranslate contiene dependencias incompatibles."
+}
+
+$CTranslate2Check = Test-CTranslate2Import
+if (-not $CTranslate2Check.Success) {
+  Write-Step "CTranslate2 no pudo cargar sus dependencias nativas. Reparando Visual C++ Runtime..."
+  Install-VisualCppRuntime -Repair
+  $CTranslate2Check = Test-CTranslate2Import
+}
+
+if (-not $CTranslate2Check.Success) {
+  $restartHint = if ($script:VisualCppRestartRequired) {
+    " Reinicia Windows y vuelve a intentar la instalacion desde Ajustes."
+  } else {
+    ""
+  }
+  throw "CTranslate2 no pudo importarse despues de instalar Microsoft Visual C++ Runtime.$restartHint Detalle: $($CTranslate2Check.Output)"
 }
 
 Write-Step "Verificando modulo instalado..."

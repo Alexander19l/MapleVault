@@ -196,6 +196,22 @@ describe('Maple Assistant - filtros anidados y semántica avanzada', () => {
       [3, 'on_hold']
     );
   });
+
+  it('ejecuta el marcado de episodio solo con token valido', async () => {
+    (db.query.get as any)
+      .mockResolvedValueOnce({ title: 'Naruto' })
+      .mockResolvedValueOnce({ cnt: 3 });
+    const data = { animeId: 31, episodeNumber: 3, watched: true };
+    const token = registerPendingAction('mark_watched', data, 'Marcar episodio 3 de Naruto');
+
+    const result = await executeChatbotAction('mark_watched', data, token);
+
+    expect(result).toContain('Cap');
+    expect(db.query.run).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT OR IGNORE INTO watched_episodes'),
+      [31, 3]
+    );
+  });
 });
 
 describe('Maple Assistant - matriz rápida de intents soportados', () => {

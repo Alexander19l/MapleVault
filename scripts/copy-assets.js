@@ -19,3 +19,13 @@ files.forEach(file => {
     console.error(`Source file not found: ${srcPath}`);
   }
 });
+
+const assetsSrcDir = path.join(srcDir, 'assets');
+const assetsDestDir = path.join(destDir, 'assets');
+if (fs.existsSync(assetsSrcDir)) {
+  fs.rmSync(assetsDestDir, { recursive: true, force: true });
+  fs.cpSync(assetsSrcDir, assetsDestDir, { recursive: true });
+  console.log('Copied assets to dist/desktop/assets/');
+} else {
+  console.error(`Assets directory not found: ${assetsSrcDir}`);
+}

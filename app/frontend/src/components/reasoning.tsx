@@ -9,7 +9,7 @@ import {
   type ReasoningMessagePartComponent,
   type ReasoningGroupComponent,
 } from "@assistant-ui/react";
-import { MarkdownText } from "@/components/markdown-text";
+import { LazyMarkdownText } from "@/components/lazy-markdown-text";
 import {
   Collapsible,
   CollapsibleContent,
@@ -217,7 +217,7 @@ function ReasoningText({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
-const ReasoningImpl: ReasoningMessagePartComponent = () => <MarkdownText />;
+const ReasoningImpl: ReasoningMessagePartComponent = () => <LazyMarkdownText />;
 
 const ReasoningGroupImpl: ReasoningGroupComponent = ({
   children,

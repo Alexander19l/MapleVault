@@ -538,7 +538,7 @@ const MapleVisualCard: React.FC<{ args: any }> = ({ args }) => {
   return null;
 };
 
-interface MapleToolCallProps {
+export interface MapleToolCallProps {
   toolName?: string;
   args?: any;
   argsText?: string;

@@ -14,10 +14,17 @@ Opciones disponibles:
 
 - `1`: iniciar MapleVault en modo desarrollo con backend, frontend Vite y Electron.
 - `2`: compilar backend, frontend y desktop.
-- `3`: validar código con typecheck, lint frontend y tests de seguridad.
+- `3`: validar código con typecheck, lint frontend y todas las pruebas del backend.
 - `4`: empaquetar instalador con Electron Builder.
+- `5`: preparar el entorno local de LibreTranslate.
 
 `iniciar.bat` queda como alias compatible y llama internamente a `MapleVault.bat`.
+
+El instalador de Windows ofrece LibreTranslate como componente opcional, desmarcado por defecto por su peso. Al seleccionarlo, comprueba e instala Python 3.11 y Microsoft Visual C++ Runtime x64 solo si son necesarios, además del servicio y el modelo inglés-español. También se puede instalar, verificar y diagnosticar después desde **Ajustes > Traducción de metadata** sin reinstalar MapleVault.
+
+Las instalaciones nuevas comienzan con Inicio, Catálogo y Mi Lista vacíos. Las series de demostración solo se habilitan deliberadamente en desarrollo mediante `MAPLEVAULT_SEED_DEMO_DATA=true`.
+
+Al reinstalar, el instalador permite seleccionar **Iniciar con biblioteca y ajustes vacíos**. La opción está desmarcada para evitar pérdidas accidentales y elimina únicamente la base y configuración anteriores; el runtime pesado de LibreTranslate se conserva.
 
 ## Capacidades Principales
 
@@ -30,6 +37,7 @@ Opciones disponibles:
 - Endpoint `GET /chat/capabilities` para consultar funciones, acciones y ejemplos del asistente.
 - Backups SQLite mediante `VACUUM INTO`.
 - Electron con `contextIsolation`, `sandbox` y `nodeIntegration` desactivado en la ventana principal.
+- Backend empaquetado aislado por instancia mediante puerto dinámico, token de sesión e identificador de salud; no reutiliza servidores de desarrollo que estén en el puerto 5000.
 
 ## Estructura
 
@@ -48,6 +56,12 @@ maplevault-local/
 ```
 
 ## Desarrollo
+
+Requisitos:
+
+- Node.js `22.12` o superior.
+- npm `10` o superior.
+- Windows 10/11 para generar el instalador NSIS.
 
 ```bash
 npm install
@@ -76,6 +90,19 @@ También se puede usar:
 ```bash
 npm run check
 ```
+
+## Instalador
+
+El instalador de Windows se genera con:
+
+```bash
+npm run package
+```
+
+La salida validada queda en `dist/MapleVault-Setup-<version>-x64.exe`.
+Los comandos `npm run dist`, `npm run dist:win` y `npm run dist:linux`
+compilan y verifican sus entradas antes de empaquetar para evitar builds
+obsoletos o incompletos.
 
 ## Datos Locales
 

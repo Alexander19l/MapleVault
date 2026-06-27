@@ -7,20 +7,16 @@
   "files": [
     "app/frontend/dist/**/*",
     "dist/desktop/**/*",
-    "app/backend/dist/**/*",
-    "app/backend/node_modules/**/*",
-    "app/desktop/splash.html",
-    "app/desktop/error.html",
-    "app/desktop/assets/**/*",
+    "dist/backend-runtime/**/*",
     "package.json"
   ],
   "asarUnpack": [
-    "app/backend/**/*"
+    "dist/backend-runtime/**/*"
   ],
-  "includeSubNodeModules": true,
   "win": {
     "target": ["nsis"],
-    "icon": "app/desktop/assets/icon.png"
+    "icon": "app/desktop/assets/icon.ico",
+    "artifactName": "MapleVault-Setup-${version}-${arch}.${ext}"
   },
   "linux": {
     "target": ["AppImage", "deb"],
@@ -30,6 +26,7 @@
     "oneClick": false,
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
-    "createStartMenuShortcut": true
+    "createStartMenuShortcut": true,
+    "include": "build/installer.nsh"
   }
 }

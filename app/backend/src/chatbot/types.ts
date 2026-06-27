@@ -34,6 +34,7 @@ export interface NLPResult {
     title_2?: string;
     franchise?: string;
     seasons?: number[];
+    episodeNumber?: number;
     field?: 'episodes' | 'start_date' | 'synopsis' | 'score' | 'studio' | 'next_episode_date' | 'next_season_date';
     sort_by?: 'score_asc' | 'score_desc' | 'release_date_asc' | 'release_date_desc' | 'popularity_desc';
     staff?: string;

@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '../services/api';
 import { showConfirm } from '../utils/dialog';
-import type { ChatActionHistoryItem } from '../types';
+import type { ChatActionHistoryItem, DatabaseBackup } from '../types';
 
 import { 
   Settings as SettingsIcon, 
@@ -21,11 +21,19 @@ import {
   XCircle,
   AlertTriangle,
   Clock3,
-  Power
+  Power,
+  RotateCcw,
+  LoaderCircle
 } from 'lucide-react';
 
 interface SettingsProps {
   onRefreshData?: () => void;
+}
+
+interface TranslationInstallStatus {
+  state: 'idle' | 'installing' | 'verifying' | 'success' | 'error' | 'unsupported';
+  message?: string;
+  output?: string;
 }
 
 export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
@@ -49,9 +57,18 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [translationStatus, setTranslationStatus] = useState<any>(null);
+  const [translationInstallStatus, setTranslationInstallStatus] = useState<TranslationInstallStatus>({
+    state: 'idle'
+  });
 
   // Estados de backup e importación
   const [backupStatus, setBackupStatus] = useState<string | null>(null);
+  const [databaseBackups, setDatabaseBackups] = useState<DatabaseBackup[]>([]);
+  const [backupListLoading, setBackupListLoading] = useState(false);
+  const [backupListError, setBackupListError] = useState<string | null>(null);
+  const [backupCreating, setBackupCreating] = useState(false);
+  const [restoringBackup, setRestoringBackup] = useState<string | null>(null);
+  const backupStatusTimerRef = useRef<number | null>(null);
   const [importStatus, setImportStatus] = useState<string | null>(null);
 
   // Estados de scraping masivo
@@ -79,12 +96,55 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
   const [actionHistoryStatusFilter, setActionHistoryStatusFilter] = useState<'all' | 'SUCCESS' | 'REJECTED' | 'ERROR'>('all');
   const [actionHistoryConfirmationFilter, setActionHistoryConfirmationFilter] = useState<'all' | 'required' | 'not_required'>('all');
 
+  const loadTranslationStatus = useCallback(async () => {
+    try {
+      const status = await api.getTranslationStatus();
+      setTranslationStatus(status);
+    } catch (_) {
+      setTranslationStatus(null);
+    }
+  }, []);
+
+  const loadTranslationInstallStatus = useCallback(async () => {
+    try {
+      const status = await api.getTranslationInstallStatus();
+      setTranslationInstallStatus(status);
+      if (status.state === 'success') {
+        await loadTranslationStatus();
+      }
+    } catch (_) {
+      setTranslationInstallStatus({
+        state: 'error',
+        message: 'No se pudo consultar el estado de instalación.'
+      });
+    }
+  }, [loadTranslationStatus]);
+
   useEffect(() => {
     loadSettings();
     loadActionHistory();
     loadTranslationStatus();
+    loadTranslationInstallStatus();
     loadStartupSettings();
-  }, []);
+    loadDatabaseBackups();
+
+    return () => {
+      if (backupStatusTimerRef.current !== null) {
+        window.clearTimeout(backupStatusTimerRef.current);
+      }
+    };
+  }, [loadTranslationInstallStatus, loadTranslationStatus]);
+
+  useEffect(() => {
+    const isInstalling = ['installing', 'verifying'].includes(translationInstallStatus.state);
+    if (!isInstalling) return;
+
+    const intervalId = window.setInterval(() => {
+      void loadTranslationInstallStatus();
+    }, 1500);
+
+    return () => window.clearInterval(intervalId);
+  }, [loadTranslationInstallStatus, translationInstallStatus.state]);
 
   const handleClearCatalog = async () => {
     try {
@@ -117,7 +177,9 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
     try {
       const data = await api.getSettings();
       setSelectedLang('es');
-      setCloseBehavior(data.closeBehavior || 'ask');
+      const storedCloseBehavior = data.closeBehavior || 'ask';
+      setCloseBehavior(storedCloseBehavior);
+      await (window as any).electronAPI?.closeBehavior?.set?.(storedCloseBehavior);
       if (data.translation) {
         setTranslationSettings({
           enabled: data.translation.enabled ?? true,
@@ -159,15 +221,6 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
     }
   };
 
-  const loadTranslationStatus = async () => {
-    try {
-      const status = await api.getTranslationStatus();
-      setTranslationStatus(status);
-    } catch (_) {
-      setTranslationStatus(null);
-    }
-  };
-
   const loadActionHistory = async () => {
     try {
       setActionHistoryLoading(true);
@@ -193,6 +246,51 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
       hour: '2-digit',
       minute: '2-digit'
     });
+  };
+
+  const handleInstallLibreTranslate = async () => {
+    const confirmed = await showConfirm(
+      'LibreTranslate es un componente opcional y pesado. Se descargaran Python si hace falta, el servicio local y el modelo ingles-espanol. El proceso puede tardar varios minutos. ¿Deseas continuar?'
+    );
+    if (!confirmed) return;
+
+    try {
+      const status = await api.installLibreTranslate();
+      setTranslationInstallStatus(status);
+    } catch (err: any) {
+      setTranslationInstallStatus({
+        state: 'error',
+        message: err.response?.data?.message || err.message || 'No se pudo iniciar la instalacion.'
+      });
+    }
+  };
+
+  const formatBackupDate = (value: string) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'Fecha no disponible';
+    return date.toLocaleString('es-419', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const formatBackupSize = (sizeBytes: number) => {
+    if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) return '0 KB';
+    if (sizeBytes < 1024 * 1024) return `${Math.max(1, Math.round(sizeBytes / 1024))} KB`;
+    return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const scheduleBackupStatusClear = (delayMs: number) => {
+    if (backupStatusTimerRef.current !== null) {
+      window.clearTimeout(backupStatusTimerRef.current);
+    }
+    backupStatusTimerRef.current = window.setTimeout(() => {
+      setBackupStatus(null);
+      backupStatusTimerRef.current = null;
+    }, delayMs);
   };
 
   const getHistoryStatusMeta = (status: string) => {
@@ -269,6 +367,7 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
         closeBehavior,
         translation: translationSettings
       });
+      await (window as any).electronAPI?.closeBehavior?.set?.(closeBehavior);
       await api.setAISettings(aiSettings);
 
       const startupApi = (window as any).electronAPI?.startup;
@@ -332,14 +431,63 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
 
   const handleCreateBackup = async () => {
     try {
+      setBackupCreating(true);
       setBackupStatus('Creando copia de seguridad...');
       const res = await api.createBackup();
-      setBackupStatus(`Copia de seguridad creada con éxito. Guardada en data/backups como: ${res.filename}`);
+      await loadDatabaseBackups();
+      setBackupStatus(`Copia de seguridad creada correctamente: ${res.filename}`);
     } catch (err: any) {
       console.error('Error al crear backup:', err);
-      setBackupStatus(`Error al crear copia de seguridad: ${err.message}`);
+      setBackupStatus(`Error al crear copia de seguridad: ${err.response?.data?.error || err.message}`);
     } finally {
-      setTimeout(() => setBackupStatus(null), 5000);
+      setBackupCreating(false);
+      scheduleBackupStatusClear(8000);
+    }
+  };
+
+  const handleCloseBehaviorChange = (value: 'ask' | 'minimize' | 'quit') => {
+    setCloseBehavior(value);
+    void (window as any).electronAPI?.closeBehavior?.set?.(value);
+    void api.saveCloseBehavior(value).catch((error: any) => {
+      console.error('No se pudo guardar el comportamiento de cierre:', error);
+      setSaveStatus('No se pudo guardar el comportamiento de cierre.');
+    });
+  };
+
+  const loadDatabaseBackups = async () => {
+    try {
+      setBackupListLoading(true);
+      setBackupListError(null);
+      const backups = await api.listDatabaseBackups();
+      setDatabaseBackups(Array.isArray(backups) ? backups : []);
+    } catch (err: any) {
+      console.error('Error al cargar copias de seguridad:', err);
+      setBackupListError(err.response?.data?.error || err.message || 'No se pudieron cargar las copias de seguridad.');
+    } finally {
+      setBackupListLoading(false);
+    }
+  };
+
+  const handleRestoreBackup = async (backup: DatabaseBackup) => {
+    const confirmed = await showConfirm(
+      `¿Restaurar la copia "${backup.name}"? MapleVault reemplazará los datos actuales y creará primero una copia de emergencia.`
+    );
+    if (!confirmed) return;
+
+    try {
+      setRestoringBackup(backup.name);
+      setBackupStatus(`Restaurando ${backup.name}...`);
+      const result = await api.restoreDatabaseBackup(backup.path);
+      await loadDatabaseBackups();
+      setBackupStatus(result.message || 'La copia se restauró correctamente.');
+      onRefreshData?.();
+      window.dispatchEvent(new CustomEvent('maplevault:database-restored'));
+    } catch (err: any) {
+      console.error('Error al restaurar copia de seguridad:', err);
+      setBackupStatus(`No se pudo restaurar la copia: ${err.response?.data?.error || err.message}`);
+    } finally {
+      setRestoringBackup(null);
+      scheduleBackupStatusClear(10000);
     }
   };
 
@@ -470,7 +618,10 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
               <span className="block text-[10px] text-slate-500 font-bold uppercase tracking-wider">Al cerrar MapleVault</span>
               <select
                 value={closeBehavior}
-                onChange={(e: any) => setCloseBehavior(e.target.value)}
+                onChange={(event) => {
+                  const value = event.target.value as 'ask' | 'minimize' | 'quit';
+                  handleCloseBehaviorChange(value);
+                }}
                 className="w-full bg-slate-800 border border-dark-border text-white text-xs px-3 py-2.5 rounded-xl focus:outline-none focus:border-primary-500"
               >
                 <option value="ask">Preguntar siempre</option>
@@ -533,6 +684,52 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
               />
               Iniciar LibreTranslate automáticamente junto con MapleVault
             </label>
+
+            <div className="flex flex-col gap-3 border border-cyan-500/20 bg-cyan-500/5 p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-slate-200">Componente local opcional</p>
+                <p className="mt-1 text-[10px] leading-relaxed text-slate-400">
+                  Instala LibreTranslate y el modelo inglés-español en tu perfil de Windows. No forma parte del instalador base por su tamaño.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleInstallLibreTranslate}
+                disabled={translationInstallStatus.state === 'installing' || translationInstallStatus.state === 'verifying'}
+                className="inline-flex h-9 shrink-0 items-center justify-center gap-2 border border-cyan-500/40 bg-cyan-500/10 px-3 text-[10px] font-bold text-cyan-200 transition-colors hover:bg-cyan-500/20 disabled:cursor-wait disabled:opacity-60"
+              >
+                {translationInstallStatus.state === 'installing' || translationInstallStatus.state === 'verifying' ? (
+                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Download className="h-3.5 w-3.5" />
+                )}
+                {translationInstallStatus.state === 'installing'
+                  ? 'Instalando...'
+                  : translationInstallStatus.state === 'verifying'
+                    ? 'Verificando...'
+                    : 'Instalar LibreTranslate'}
+              </button>
+            </div>
+
+            {translationInstallStatus.state !== 'idle' && (
+              <div className={`border px-3 py-2 text-[10px] ${
+                translationInstallStatus.state === 'success'
+                  ? 'border-emerald-500/25 bg-emerald-500/5 text-emerald-200'
+                  : translationInstallStatus.state === 'error' || translationInstallStatus.state === 'unsupported'
+                    ? 'border-rose-500/25 bg-rose-500/5 text-rose-200'
+                    : 'border-amber-500/25 bg-amber-500/5 text-amber-100'
+              }`}>
+                <p className="font-bold">{translationInstallStatus.message || 'Procesando instalación...'}</p>
+                {translationInstallStatus.output && (
+                  <details className="mt-2">
+                    <summary className="cursor-pointer font-bold text-slate-300">Ver diagnóstico</summary>
+                    <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-words bg-slate-950/60 p-2 font-mono text-[9px] text-slate-400">
+                      {translationInstallStatus.output}
+                    </pre>
+                  </details>
+                )}
+              </div>
+            )}
 
             {translationStatus && (
               <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-3 py-2 text-[10px] text-slate-300">
@@ -964,14 +1161,22 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
               <p className="text-[10px] text-slate-500 mt-0.5">Clona el archivo de la base de datos física actual.</p>
             </div>
             {backupStatus && (
-              <p className="text-[10px] text-primary-400 italic font-semibold">{backupStatus}</p>
+              <p
+                role="status"
+                aria-live="polite"
+                className="text-[10px] text-primary-400 italic font-semibold"
+              >
+                {backupStatus}
+              </p>
             )}
             <button
+              type="button"
               onClick={handleCreateBackup}
-              className="w-full py-2 bg-slate-800 hover:bg-slate-755 border border-dark-border text-slate-300 hover:text-white rounded-xl text-xs font-semibold flex items-center justify-center space-x-1.5 transition-colors"
+              disabled={backupCreating || Boolean(restoringBackup)}
+              className="w-full py-2 bg-slate-800 hover:bg-slate-755 border border-dark-border text-slate-300 hover:text-white rounded-xl text-xs font-semibold flex items-center justify-center space-x-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <FolderLock className="h-4 w-4 text-slate-450" />
-              <span>Respaldar DB SQLite</span>
+              <FolderLock className={`h-4 w-4 text-slate-450 ${backupCreating ? 'animate-pulse' : ''}`} />
+              <span>{backupCreating ? 'Creando respaldo...' : 'Respaldar DB SQLite'}</span>
             </button>
           </div>
 
@@ -988,6 +1193,7 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
 
             <div className="flex gap-2">
               <button
+                type="button"
                 onClick={handleExportData}
                 className="flex-1 py-2 bg-slate-800 hover:bg-slate-755 border border-dark-border text-slate-300 hover:text-white rounded-xl text-xs font-semibold flex items-center justify-center space-x-1.5 transition-colors"
               >
@@ -1007,6 +1213,78 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
               </label>
             </div>
           </div>
+        </div>
+
+        <div className="border-t border-dark-border/60 pt-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <span className="text-xs font-bold text-slate-200">Copias SQLite disponibles</span>
+              <p className="mt-0.5 text-[10px] text-slate-500">
+                La restauración valida la integridad y mantiene una copia de emergencia de los datos actuales.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={loadDatabaseBackups}
+              disabled={backupListLoading || Boolean(restoringBackup)}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center border border-dark-border bg-slate-900 text-slate-400 transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+              title="Actualizar lista de copias"
+              aria-label="Actualizar lista de copias"
+            >
+              <RefreshCw className={`h-4 w-4 ${backupListLoading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+
+          {backupListError && (
+            <p className="text-[10px] font-semibold text-rose-300">{backupListError}</p>
+          )}
+
+          {!backupListLoading && !backupListError && databaseBackups.length === 0 && (
+            <p className="border border-dashed border-dark-border px-3 py-4 text-center text-[11px] text-slate-500">
+              Aún no hay copias SQLite disponibles.
+            </p>
+          )}
+
+          {databaseBackups.length > 0 && (
+            <div className="max-h-64 divide-y divide-dark-border/50 overflow-y-auto border border-dark-border/60">
+              {databaseBackups.map(backup => {
+                const isEmergency = backup.name.startsWith('emergency_before_restore_');
+                const isRestoring = restoringBackup === backup.name;
+
+                return (
+                  <div
+                    key={backup.name}
+                    className="flex flex-col gap-3 bg-slate-950/30 px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="truncate text-[11px] font-bold text-slate-200">{backup.name}</span>
+                        {isEmergency && (
+                          <span className="border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-amber-300">
+                            Emergencia
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1 text-[10px] text-slate-500">
+                        {formatBackupDate(backup.createdAt)} · {formatBackupSize(backup.sizeBytes)}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleRestoreBackup(backup)}
+                      disabled={Boolean(restoringBackup) || backupCreating}
+                      className="inline-flex min-h-9 shrink-0 items-center justify-center gap-2 border border-cyan-500/30 bg-cyan-500/10 px-3 text-[10px] font-bold text-cyan-300 transition-colors hover:bg-cyan-500/15 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"
+                      aria-label={`Restaurar ${backup.name}`}
+                    >
+                      <RotateCcw className={`h-3.5 w-3.5 ${isRestoring ? 'animate-spin' : ''}`} />
+                      <span>{isRestoring ? 'Restaurando...' : 'Restaurar'}</span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </section>
 

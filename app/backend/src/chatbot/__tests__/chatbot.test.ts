@@ -68,6 +68,18 @@ describe('1. Pruebas Unitarias de NLP Engine', async () => {
     expect(result.intent).toBe('SYNC_LIBRARY');
   });
 
+  it('Deberia distinguir el ultimo capitulo visto del historial reciente', async () => {
+    const result = await parseIntent('Ultimo capitulo visto');
+    expect(result.intent).toBe('LAST_WATCHED_EPISODE');
+  });
+
+  it('Deberia extraer serie y numero al marcar un episodio', async () => {
+    const result = await parseIntent('Marca el episodio 3 de Naruto como visto');
+    expect(result.intent).toBe('MARK_EPISODE_WATCHED');
+    expect(result.entities.refIndexOrTitle).toBe('naruto');
+    expect(result.entities.episodeNumber).toBe(3);
+  });
+
   it('Debería detectar memoria de género (REMEMBER_PREFERENCE)', async () => {
     const result = await parseIntent('Recuerda que me gusta el género mecha');
     expect(result.intent).toBe('REMEMBER_PREFERENCE');
@@ -457,6 +469,47 @@ describe('2. Pruebas de Integración - Comandos del Chatbot', async () => {
     expect(response.action?.type).toBe('mark_all_watched');
   });
 
+  it('Prepara un episodio visto sin escribir antes de confirmar', async () => {
+    (db.query.get as any).mockResolvedValueOnce({
+      id: 31,
+      title: 'Naruto',
+      episodes: 220
+    });
+
+    const response = await handleLocalIntent({
+      intent: 'MARK_EPISODE_WATCHED',
+      entities: {
+        refIndexOrTitle: 'naruto',
+        animeTitle: 'naruto',
+        episodeNumber: 3
+      }
+    });
+
+    expect(response.action?.type).toBe('mark_watched');
+    expect(response.action?.data).toMatchObject({
+      animeId: 31,
+      episodeNumber: 3,
+      watched: true
+    });
+    expect(db.query.run).not.toHaveBeenCalled();
+  });
+
+  it('Muestra el siguiente episodio pendiente usando datos locales', async () => {
+    (db.query.get as any).mockResolvedValueOnce({
+      title: 'Naruto',
+      episodes: 220,
+      next_episode: 4
+    });
+
+    const response = await handleLocalIntent({
+      intent: 'NEXT_PENDING_EPISODE',
+      entities: {}
+    });
+
+    expect(response.text).toContain('Episodio 4');
+    expect(response.text).toContain('Naruto');
+  });
+
   it('Busca animes de invierno 2025 - devuelve respuesta esperada', async () => {
     const response = await handleLocalIntent({ intent: 'SEARCH_ANIME', entities: { season: 'winter', year: 2025 } });
     expect(response.text).toContain('No encontré resultados verificados');
@@ -472,6 +525,18 @@ describe('2. Pruebas de Integración - Comandos del Chatbot', async () => {
   it('Sincroniza mi biblioteca - muestra advertencia', async () => {
     const response = await handleLocalIntent({ intent: 'SYNC_LIBRARY', entities: {} });
     expect(response.action?.type).toBe('sync_all');
+  });
+
+  it('Informa cuando no hay sincronizacion activa para cancelar', async () => {
+    const response = await handleLocalIntent({ intent: 'CANCEL_SYNC', entities: {} });
+    expect(response.text).toContain('No hay una sincronización activa');
+    expect(response.action).toBeUndefined();
+  });
+
+  it('Muestra el estado de sincronizacion sin iniciar otro trabajo', async () => {
+    const response = await handleLocalIntent({ intent: 'SYNC_SUMMARY', entities: {} });
+    expect(response.text).toContain('Todavía no se ejecutó');
+    expect(response.action).toBeUndefined();
   });
 
   it('Genera perfil de memoria, gustos y rastro del usuario desde SQLite', async () => {
