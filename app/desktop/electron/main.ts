@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, shell, dialog, Tray, Menu, nativeImage, ty
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import axios from 'axios';
 import { spawn, ChildProcess } from 'child_process';
 import { 
   showSplash, 
@@ -74,6 +75,22 @@ function getCloseBehavior(): CloseBehavior {
 function setCloseBehavior(value: unknown): CloseBehavior {
   cachedCloseBehavior = normalizeCloseBehavior(value);
   return cachedCloseBehavior;
+}
+
+async function syncCloseBehaviorFromBackend(): Promise<void> {
+  try {
+    const response = await axios.get(`http://${BACKEND_HOST}:${PORT}/settings`, {
+      timeout: 2000,
+      headers: BACKEND_SESSION_TOKEN
+        ? { 'X-MapleVault-Token': BACKEND_SESSION_TOKEN }
+        : undefined
+    });
+    setCloseBehavior(response.data?.closeBehavior);
+  } catch (error: any) {
+    console.warn('[Main] No se pudo sincronizar la preferencia de cierre:', error.message);
+    cachedCloseBehavior = null;
+    getCloseBehavior();
+  }
 }
 
 function getStartupSettings(): StartupSettings {
@@ -218,6 +235,7 @@ async function bootAppWorkflow() {
     return;
   }
 
+  await syncCloseBehaviorFromBackend();
   updateSplashStatus('Cargando interfaz...');
   createMainWindow();
 }

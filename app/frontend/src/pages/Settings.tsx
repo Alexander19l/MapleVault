@@ -445,6 +445,15 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
     }
   };
 
+  const handleCloseBehaviorChange = (value: 'ask' | 'minimize' | 'quit') => {
+    setCloseBehavior(value);
+    void (window as any).electronAPI?.closeBehavior?.set?.(value);
+    void api.saveCloseBehavior(value).catch((error: any) => {
+      console.error('No se pudo guardar el comportamiento de cierre:', error);
+      setSaveStatus('No se pudo guardar el comportamiento de cierre.');
+    });
+  };
+
   const loadDatabaseBackups = async () => {
     try {
       setBackupListLoading(true);
@@ -611,8 +620,7 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
                 value={closeBehavior}
                 onChange={(event) => {
                   const value = event.target.value as 'ask' | 'minimize' | 'quit';
-                  setCloseBehavior(value);
-                  void (window as any).electronAPI?.closeBehavior?.set?.(value);
+                  handleCloseBehaviorChange(value);
                 }}
                 className="w-full bg-slate-800 border border-dark-border text-white text-xs px-3 py-2.5 rounded-xl focus:outline-none focus:border-primary-500"
               >

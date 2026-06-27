@@ -297,6 +297,11 @@ export const api = {
     return response.data;
   },
 
+  saveCloseBehavior: async (closeBehavior: 'ask' | 'minimize' | 'quit') => {
+    const response = await client.patch('/settings/window', { closeBehavior });
+    return response.data;
+  },
+
   exportData: async () => {
     const response = await client.post('/settings/export');
     return response.data;

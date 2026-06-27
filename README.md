@@ -24,6 +24,8 @@ El instalador de Windows ofrece LibreTranslate como componente opcional, desmarc
 
 Las instalaciones nuevas comienzan con Inicio, Catálogo y Mi Lista vacíos. Las series de demostración solo se habilitan deliberadamente en desarrollo mediante `MAPLEVAULT_SEED_DEMO_DATA=true`.
 
+Al reinstalar, el instalador permite seleccionar **Iniciar con biblioteca y ajustes vacíos**. La opción está desmarcada para evitar pérdidas accidentales y elimina únicamente la base y configuración anteriores; el runtime pesado de LibreTranslate se conserva.
+
 ## Capacidades Principales
 
 - Catálogo local con filtros por título, género, temporada, año, estado, tipo y puntuación.

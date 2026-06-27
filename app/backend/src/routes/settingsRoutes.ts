@@ -20,7 +20,8 @@ import {
 import {
   buildSavedAppSettings,
   getAIConnectivityEndpoint,
-  hasOllamaModel
+  hasOllamaModel,
+  normalizeCloseBehavior
 } from './settingsRouteService';
 
 interface AISettingsService {
@@ -183,6 +184,29 @@ export function createSettingsRouter({
 
       appSettingsStore.saveSettings(newSettings);
       res.json({ message: 'Ajustes guardados con éxito' });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
+    }
+  });
+
+  router.patch('/settings/window', (req, res) => {
+    try {
+      if (!validateBodySize(res, req.body)) return;
+      const current = appSettingsStore.loadSettings();
+      const closeBehavior = normalizeCloseBehavior(
+        req.body?.closeBehavior,
+        current.closeBehavior
+      );
+
+      if (closeBehavior !== req.body?.closeBehavior) {
+        return res.status(400).json({ error: 'Comportamiento de cierre no válido.' });
+      }
+
+      appSettingsStore.saveSettings({
+        ...current,
+        closeBehavior
+      });
+      res.json({ closeBehavior });
     } catch (error: unknown) {
       res.status(500).json({ error: getErrorMessage(error) });
     }
