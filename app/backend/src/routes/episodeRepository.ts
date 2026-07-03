@@ -51,6 +51,15 @@ export function saveAnimeSlug(
   return queryClient.run(`UPDATE anime SET ${slugColumn} = ? WHERE id = ?`, [slug, animeId]);
 }
 
+export function clearAnimeSlug(
+  queryClient: EpisodeQueryClient,
+  animeId: number,
+  slugColumn: string
+): Promise<{ lastID: number; changes: number }> {
+  assertValidSlugColumn(slugColumn);
+  return queryClient.run(`UPDATE anime SET ${slugColumn} = NULL WHERE id = ?`, [animeId]);
+}
+
 export async function getWatchedEpisodeNumbers(
   queryClient: EpisodeQueryClient,
   animeId: number

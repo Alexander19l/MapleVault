@@ -3,6 +3,7 @@ import { query } from '../database/db';
 import {
   getAnimeAV1Embeds,
   getAnimeAV1Episodes,
+  getAnimeAV1Media,
   getAnimeAV1Slug,
   getAnimeFLVEpisodes,
   getAnimeFLVServers,
@@ -14,8 +15,10 @@ import {
   getTioAnimeServers,
   getTioAnimeSlug
 } from '../scraping/scraper';
+import { isAnimeTitleMatch } from '../scraping/animeTitleMatching';
 import { validateId } from '../security/validators';
 import {
+  clearAnimeSlug,
   getAnimeForSlugLookup,
   getAnimeSlug,
   getWatchedEpisodeNumbers,
@@ -29,6 +32,7 @@ type QueryClient = Pick<typeof query, 'get' | 'all' | 'run'>;
 interface EpisodeScraperService {
   getAnimeAV1Slug: typeof getAnimeAV1Slug;
   getAnimeAV1Episodes: typeof getAnimeAV1Episodes;
+  getAnimeAV1Media: typeof getAnimeAV1Media;
   getAnimeAV1Embeds: typeof getAnimeAV1Embeds;
   getTioAnimeSlug: typeof getTioAnimeSlug;
   getTioAnimeEpisodes: typeof getTioAnimeEpisodes;
@@ -59,6 +63,7 @@ interface ProviderRouteConfig {
 const defaultScraperService: EpisodeScraperService = {
   getAnimeAV1Slug,
   getAnimeAV1Episodes,
+  getAnimeAV1Media,
   getAnimeAV1Embeds,
   getTioAnimeSlug,
   getTioAnimeEpisodes,
@@ -169,19 +174,36 @@ export function createEpisodeRouter({
       }
 
       let slug = anime.animeav1_slug;
-      if (!slug) {
-        slug = await scraperService.getAnimeAV1Slug(anime.title, anime.title_romaji, anime.title_english);
-        if (slug) {
-          await saveAnimeSlug(queryClient, id, 'animeav1_slug', slug);
+      let media = null;
+      const aliases = [anime.title, anime.title_romaji, anime.title_english];
+
+      if (slug) {
+        media = await scraperService.getAnimeAV1Media(slug);
+        if (!isAnimeTitleMatch(aliases, media.title)) {
+          await clearAnimeSlug(queryClient, id, 'animeav1_slug');
+          slug = null;
+          media = null;
         }
       }
 
       if (!slug) {
+        slug = await scraperService.getAnimeAV1Slug(anime.title, anime.title_romaji, anime.title_english);
+        if (slug) {
+          media = await scraperService.getAnimeAV1Media(slug);
+          if (!isAnimeTitleMatch(aliases, media.title)) {
+            slug = null;
+            media = null;
+          } else {
+            await saveAnimeSlug(queryClient, id, 'animeav1_slug', slug);
+          }
+        }
+      }
+
+      if (!slug || !media) {
         return res.status(404).json({ error: 'No se encontro este anime en AnimeAV1' });
       }
 
-      const episodes = await scraperService.getAnimeAV1Episodes(slug);
-      res.json({ slug, episodes });
+      res.json({ slug, episodes: media.episodes });
     } catch (error: unknown) {
       res.status(500).json({ error: getErrorMessage(error) });
     }

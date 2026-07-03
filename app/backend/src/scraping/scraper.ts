@@ -11,6 +11,9 @@ import type {
   ExternalSearchPage,
   NormalizedAnime
 } from './animeTypes';
+import {
+  findBestAnimeTitleMatch
+} from './animeTitleMatching';
 
 export { normalizeAniListRelations };
 export type { ExternalSearchOptions, ExternalSearchPage, NormalizedAnime };
@@ -550,12 +553,16 @@ function deserializeSvelteKit(index: number, flatArray: any[], cache = new Map()
 
 // Obtener slug de AnimeAV1 buscando en el catálogo por título(s)
 export async function getAnimeAV1Slug(title: string, romaji?: string, english?: string): Promise<string | null> {
-  const queries = [title, romaji, english].filter((q): q is string => typeof q === 'string' && q.trim().length > 0);
+  const aliases = [title, romaji, english]
+    .filter((q): q is string => typeof q === 'string' && q.trim().length > 0);
+  const queries = [...new Set(aliases)];
   
   const simplified = simplifyTitle(title);
   if (simplified && !queries.includes(simplified)) {
     queries.push(simplified);
   }
+
+  const candidatesBySlug = new Map<string, { slug: string; title: string }>();
   
   for (const q of queries) {
     try {
@@ -570,85 +577,135 @@ export async function getAnimeAV1Slug(title: string, romaji?: string, english?: 
       
       const cheerio = require('cheerio');
       const $ = cheerio.load(response.data);
-      const slugs: string[] = [];
+      let extractedFromArticles = 0;
       
-      // Intentar extraer de las tarjetas article
-      $('article').each((i: any, el: any) => {
+      $('article').each((_: any, el: any) => {
         const link = $(el).find('a').filter((idx: any, aEl: any) => {
           const href = $(aEl).attr('href');
           return !!(href && href.startsWith('/media/') && href.split('/').length === 3);
         }).first();
-        
         const href = link.attr('href');
-        if (href) {
-          const slug = href.split('/')[2];
-          if (!slugs.includes(slug)) {
-            slugs.push(slug);
-          }
+        if (!href) return;
+
+        const slug = href.split('/')[2];
+        const heading = $(el).find('h1, h2, h3, h4, [class*="title"]').first().text().trim();
+        const imageAlt = ($(el).find('img').first().attr('alt') || '')
+          .replace(/^portada\s+de\s+/i, '')
+          .trim();
+        const candidateTitle = heading || imageAlt;
+        if (slug && candidateTitle) {
+          candidatesBySlug.set(slug, { slug, title: candidateTitle });
+          extractedFromArticles += 1;
         }
       });
 
-      // Como fallback, buscar cualquier enlace que empiece por /media/ y tenga 3 partes
-      if (slugs.length === 0) {
-        $('a').each((i: any, el: any) => {
+      if (extractedFromArticles === 0) {
+        $('a').each((_: any, el: any) => {
           const href = $(el).attr('href');
           if (href && href.startsWith('/media/')) {
             const parts = href.split('/');
             if (parts.length === 3) {
               const slug = parts[2];
-              if (!slugs.includes(slug)) {
-                slugs.push(slug);
+              const candidateTitle = ($(el).attr('title') || $(el).text()).trim();
+              if (slug && candidateTitle) {
+                candidatesBySlug.set(slug, { slug, title: candidateTitle });
               }
             }
           }
         });
       }
       
-      if (slugs.length > 0) {
-        await logScraping('AnimeAV1 Scraping', `Buscar slug para: "${q}"`, 'success', `Encontrado slug: ${slugs[0]}`);
-        return slugs[0];
+      const match = findBestAnimeTitleMatch(aliases, [...candidatesBySlug.values()]);
+      if (match?.score === 1) {
+        await logScraping(
+          'AnimeAV1 Scraping',
+          `Buscar slug para: "${q}"`,
+          'success',
+          `Coincidencia exacta: ${match.candidate.title} (${match.candidate.slug})`
+        );
+        return match.candidate.slug;
       }
     } catch (err: any) {
       await logScraping('AnimeAV1 Scraping', `Buscar slug para: "${q}"`, 'error', `Fallo al buscar: ${err.message}`);
       console.error(`Error buscando slug en AnimeAV1 para "${q}":`, err.message);
     }
   }
+
+  const match = findBestAnimeTitleMatch(aliases, [...candidatesBySlug.values()]);
+  if (match) {
+    await logScraping(
+      'AnimeAV1 Scraping',
+      `Buscar slug para: "${title}"`,
+      'success',
+      `Coincidencia validada: ${match.candidate.title} (${match.candidate.slug}, ${match.score.toFixed(2)})`
+    );
+    return match.candidate.slug;
+  }
+
+  await logScraping(
+    'AnimeAV1 Scraping',
+    `Buscar slug para: "${title}"`,
+    'error',
+    'No se encontró una coincidencia de título segura'
+  );
   return null;
+}
+
+export interface AnimeAV1MediaData {
+  title: string;
+  slug: string;
+  episodes: { id: number; number: number }[];
+}
+
+export function extractAnimeAV1MediaData(data: any, fallbackSlug: string): AnimeAV1MediaData {
+  if (!data || !Array.isArray(data.nodes)) {
+    throw new Error('Formato SvelteKit no reconocido');
+  }
+
+  for (const node of data.nodes) {
+    if (!node || node.type !== 'data' || !Array.isArray(node.data)) continue;
+    const root = deserializeSvelteKit(0, node.data);
+    if (!root?.media) continue;
+
+    const media = root.media;
+    const episodes = Array.isArray(media.episodes)
+      ? media.episodes
+        .map((episode: any) => ({
+          id: Number(episode.id),
+          number: Number(episode.number)
+        }))
+        .filter((episode: { id: number; number: number }) =>
+          Number.isFinite(episode.id) && Number.isFinite(episode.number)
+        )
+        .sort((left: { number: number }, right: { number: number }) => left.number - right.number)
+      : [];
+
+    return {
+      title: String(media.title || '').trim(),
+      slug: String(media.slug || fallbackSlug).trim(),
+      episodes
+    };
+  }
+
+  throw new Error('AnimeAV1 no devolvió metadata de la serie');
+}
+
+export async function getAnimeAV1Media(slug: string): Promise<AnimeAV1MediaData> {
+  const url = `https://animeav1.com/media/${encodeURIComponent(slug)}/__data.json`;
+  const response = await axios.get(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
+    },
+    timeout: 8000
+  });
+  return extractAnimeAV1MediaData(response.data, slug);
 }
 
 // Obtener la lista de episodios de un anime por su slug
 export async function getAnimeAV1Episodes(slug: string): Promise<{ id: number, number: number }[]> {
   try {
     await logScraping('AnimeAV1 Scraping', `Obtener episodios para slug: "${slug}"`, 'started', `Solicitando __data.json del catálogo`);
-    const url = `https://animeav1.com/media/${slug}/__data.json`;
-    const response = await axios.get(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
-      },
-      timeout: 8000
-    });
-    
-    const data = response.data;
-    if (!data || !data.nodes || !Array.isArray(data.nodes)) {
-      throw new Error('Formato SvelteKit no reconocido');
-    }
-    
-    // Buscar el nodo que contenga los episodios recorriendo todos de forma segura
-    let episodes: { id: number, number: number }[] = [];
-    for (const node of data.nodes) {
-      if (node && node.type === 'data' && Array.isArray(node.data)) {
-        const root = deserializeSvelteKit(0, node.data);
-        if (root && root.media && Array.isArray(root.media.episodes)) {
-          episodes = root.media.episodes.map((ep: any) => ({
-            id: ep.id,
-            number: ep.number
-          }));
-          break;
-        }
-      }
-    }
-    
-    episodes.sort((a, b) => a.number - b.number);
+    const { episodes } = await getAnimeAV1Media(slug);
     await logScraping('AnimeAV1 Scraping', `Obtener episodios para slug: "${slug}"`, 'success', `Encontrados ${episodes.length} episodios`);
     return episodes;
   } catch (err: any) {

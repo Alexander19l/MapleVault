@@ -11,6 +11,7 @@ const queryRunMock = vi.fn<(sql: string, params?: unknown[]) => Promise<any>>();
 const scraperService = {
   getAnimeAV1Slug: vi.fn(),
   getAnimeAV1Episodes: vi.fn(),
+  getAnimeAV1Media: vi.fn(),
   getAnimeAV1Embeds: vi.fn(),
   getTioAnimeSlug: vi.fn(),
   getTioAnimeEpisodes: vi.fn(),
@@ -75,6 +76,11 @@ describe('Episode HTTP router', () => {
     queryRunMock.mockResolvedValue({ changes: 1 });
     scraperService.getAnimeAV1Slug.mockResolvedValue('maple-av1');
     scraperService.getAnimeAV1Episodes.mockResolvedValue([{ number: 1, title: 'Inicio' }]);
+    scraperService.getAnimeAV1Media.mockResolvedValue({
+      title: 'Maple Show',
+      slug: 'maple-av1',
+      episodes: [{ id: 1, number: 1 }]
+    });
     scraperService.getAnimeAV1Embeds.mockResolvedValue([
       { server: 'StreamSB' },
       { server: 'Mega' }
@@ -104,10 +110,51 @@ describe('Episode HTTP router', () => {
     expect(response.status).toBe(200);
     expect(json).toEqual({
       slug: 'maple-av1',
-      episodes: [{ number: 1, title: 'Inicio' }]
+      episodes: [{ id: 1, number: 1 }]
     });
     expect(scraperService.getAnimeAV1Slug).toHaveBeenCalledWith('Maple Show', 'Maple Show', '');
+    expect(scraperService.getAnimeAV1Media).toHaveBeenCalledWith('maple-av1');
     expect(queryRunMock).toHaveBeenCalledWith('UPDATE anime SET animeav1_slug = ? WHERE id = ?', ['maple-av1', 10]);
+  });
+
+  it('descarta y repara un slug AV1 persistido que pertenece a un spin-off', async () => {
+    queryGetMock.mockResolvedValueOnce({
+      id: 113,
+      title: 'My Hero Academia',
+      title_romaji: 'Boku no Hero Academia',
+      title_english: 'My Hero Academia',
+      animeav1_slug: 'vigilante-boku-no-hero-academia-illegals-2nd-season'
+    });
+    scraperService.getAnimeAV1Slug.mockResolvedValueOnce('boku-no-hero-academia');
+    scraperService.getAnimeAV1Media
+      .mockResolvedValueOnce({
+        title: 'Vigilante: Boku no Hero Academia Illegals 2nd Season',
+        slug: 'vigilante-boku-no-hero-academia-illegals-2nd-season',
+        episodes: [{ id: 10, number: 1 }]
+      })
+      .mockResolvedValueOnce({
+        title: 'Boku no Hero Academia',
+        slug: 'boku-no-hero-academia',
+        episodes: [{ id: 20, number: 1 }]
+      });
+
+    const { response, json } = await requestJson('/anime/113/episodes');
+
+    expect(response.status).toBe(200);
+    expect(json).toEqual({
+      slug: 'boku-no-hero-academia',
+      episodes: [{ id: 20, number: 1 }]
+    });
+    expect(queryRunMock).toHaveBeenNthCalledWith(
+      1,
+      'UPDATE anime SET animeav1_slug = NULL WHERE id = ?',
+      [113]
+    );
+    expect(queryRunMock).toHaveBeenNthCalledWith(
+      2,
+      'UPDATE anime SET animeav1_slug = ? WHERE id = ?',
+      ['boku-no-hero-academia', 113]
+    );
   });
 
   it('devuelve episodios vistos y actualiza progreso al alternar visto', async () => {
