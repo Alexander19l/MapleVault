@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   RefreshCw, 
   Trash2, 
@@ -62,6 +62,7 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
   const [episodes, setEpisodes] = useState<{ id: number; number: number }[]>([]);
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
   const [episodesError, setEpisodesError] = useState<string | null>(null);
+  const episodesRequestId = useRef(0);
   
   const [selectedEpisode, setSelectedEpisode] = useState<number | null>(null);
   const [embeds, setEmbeds] = useState<any>(null);
@@ -193,6 +194,8 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
   };
 
   const loadEpisodes = useCallback(async () => {
+    const requestId = ++episodesRequestId.current;
+
     try {
       setLoadingEpisodes(true);
       setEpisodesError(null);
@@ -211,12 +214,18 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
       } else {
         res = await api.getAnimeFLVEpisodes(currentAnimeId);
       }
-      setEpisodes(res.episodes || []);
+      if (requestId === episodesRequestId.current) {
+        setEpisodes(res.episodes || []);
+      }
     } catch (err: any) {
       console.error('Error al cargar episodios:', err);
-      setEpisodesError(err.response?.data?.error || `No se pudieron extraer los episodios de ${provider.toUpperCase()}.`);
+      if (requestId === episodesRequestId.current) {
+        setEpisodesError(err.response?.data?.error || `No se pudieron extraer los episodios de ${provider.toUpperCase()}.`);
+      }
     } finally {
-      setLoadingEpisodes(false);
+      if (requestId === episodesRequestId.current) {
+        setLoadingEpisodes(false);
+      }
     }
   }, [currentAnimeId, provider]);
 
@@ -230,6 +239,14 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
   }, [currentAnimeId]);
 
   useEffect(() => {
+    episodesRequestId.current += 1;
+    setEpisodes([]);
+    setEpisodesError(null);
+    setLoadingEpisodes(false);
+    setSelectedEpisode(null);
+    setEmbeds(null);
+    setSelectedServer(null);
+
     if (animeId !== null) {
       setIsExternalView(false);
       setCurrentAnimeId(animeId);

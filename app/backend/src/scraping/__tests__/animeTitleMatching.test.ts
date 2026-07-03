@@ -53,9 +53,53 @@ describe('coincidencia segura de títulos para proveedores de episodios', () => 
   it('normaliza ordinales equivalentes sin mezclar temporadas distintas', () => {
     expect(normalizeAnimeTitle('Boku no Hero Academia 2nd Season'))
       .toBe(normalizeAnimeTitle('Boku no Hero Academia Season 2'));
+    expect(normalizeAnimeTitle('Boku no Hero Academia 2'))
+      .toBe(normalizeAnimeTitle('Boku no Hero Academia 2nd Season'));
     expect(isAnimeTitleMatch(
       ['Boku no Hero Academia 2nd Season'],
       'Boku no Hero Academia Season 3'
     )).toBe(false);
   });
+
+  it('rechaza la serie base cuando el alias corresponde a una temporada posterior', () => {
+    expect(isAnimeTitleMatch(
+      ['My Hero Academia Season 2', 'Boku no Hero Academia 2'],
+      'Boku no Hero Academia'
+    )).toBe(false);
+  });
+
+  it('aplica la temporada detectada aunque otro alias haya perdido el sufijo', () => {
+    const match = findBestAnimeTitleMatch(
+      ['Example Saga', 'Example Saga Season 2'],
+      [
+        { slug: 'example-saga', title: 'Example Saga' },
+        { slug: 'example-saga-2nd-season', title: 'Example Saga 2nd Season' }
+      ]
+    );
+
+    expect(match?.candidate.slug).toBe('example-saga-2nd-season');
+  });
+
+  it.each([2, 3, 4, 5, 6, 7])(
+    'elige la temporada %i de Boku no Hero aunque la serie base aparezca primero',
+    season => {
+      const suffix = season === 2 ? '2nd' : season === 3 ? '3rd' : `${season}th`;
+      const match = findBestAnimeTitleMatch(
+        [`My Hero Academia Season ${season}`, `Boku no Hero Academia ${season}`],
+        [
+          {
+            slug: 'boku-no-hero-academia',
+            title: 'Boku no Hero Academia'
+          },
+          {
+            slug: `boku-no-hero-academia-${suffix}-season`,
+            title: `Boku no Hero Academia ${suffix} Season`
+          }
+        ]
+      );
+
+      expect(match?.candidate.slug).toBe(`boku-no-hero-academia-${suffix}-season`);
+      expect(match?.score).toBe(1);
+    }
+  );
 });
