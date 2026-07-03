@@ -39,10 +39,15 @@ function App() {
     const handleOpenDetail = (e: any) => {
       handleViewDetails(e.detail.isExternal ? e.detail.data : e.detail.id);
     };
+    const handleDataChanged = () => {
+      setRefreshTrigger(current => current + 1);
+    };
     window.addEventListener('openAnimeDetail', handleOpenDetail);
+    window.addEventListener('maplevault:data-changed', handleDataChanged);
 
     return () => {
       window.removeEventListener('openAnimeDetail', handleOpenDetail);
+      window.removeEventListener('maplevault:data-changed', handleDataChanged);
     };
   }, []);
 
@@ -99,7 +104,7 @@ function App() {
   const renderPage = () => {
     switch (activePage) {
       case 'home':
-        return <Home onViewDetails={handleViewDetails} onNavigate={setActivePage} />;
+        return <Home onViewDetails={handleViewDetails} onNavigate={setActivePage} refreshTrigger={refreshTrigger} />;
       case 'catalog':
         return (
           <Catalog 
@@ -149,7 +154,7 @@ function App() {
       case 'settings':
         return <Settings onRefreshData={handleRefreshData} />;
       default:
-        return <Home onViewDetails={handleViewDetails} onNavigate={setActivePage} />;
+        return <Home onViewDetails={handleViewDetails} onNavigate={setActivePage} refreshTrigger={refreshTrigger} />;
     }
   };
 

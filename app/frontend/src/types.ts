@@ -145,6 +145,10 @@ export type ChatActionType =
   | 'delete_anime'
   | 'sync_all';
 
+export interface ChatActionExecutionResponse {
+  text: string;
+}
+
 export interface ChatMessage {
   id?: number;
   role: 'user' | 'assistant';

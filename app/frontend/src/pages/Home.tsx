@@ -18,6 +18,7 @@ import {
 interface HomeProps {
   onViewDetails: (id: number) => void;
   onNavigate: (page: string) => void;
+  refreshTrigger: number;
 }
 
 const getCurrentSeasonLabel = () => {
@@ -28,7 +29,7 @@ const getCurrentSeasonLabel = () => {
   return 'Otoño';
 };
 
-export const Home: React.FC<HomeProps> = ({ onViewDetails, onNavigate }) => {
+export const Home: React.FC<HomeProps> = ({ onViewDetails, onNavigate, refreshTrigger }) => {
   const [stats, setStats] = useState({
     total: 0,
     watching: 0,
@@ -44,7 +45,7 @@ export const Home: React.FC<HomeProps> = ({ onViewDetails, onNavigate }) => {
 
   useEffect(() => {
     loadHomeData();
-  }, []);
+  }, [refreshTrigger]);
 
   const loadHomeData = async () => {
     try {

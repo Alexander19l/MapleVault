@@ -1,6 +1,13 @@
 ﻿import axios from 'axios';
 
-import type { ChatActionHistoryItem, ChatCapabilities, ChatMessage, DatabaseBackup } from '../types';
+import type {
+  ChatActionExecutionResponse,
+  ChatActionHistoryItem,
+  ChatActionType,
+  ChatCapabilities,
+  ChatMessage,
+  DatabaseBackup
+} from '../types';
 
 export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -214,7 +221,11 @@ export const api = {
     return response.data;
   },
 
-  executeChatAction: async (type: string, data: any, confirmToken?: string) => {
+  executeChatAction: async (
+    type: ChatActionType,
+    data: Record<string, unknown>,
+    confirmToken?: string
+  ): Promise<ChatActionExecutionResponse> => {
     const response = await client.post('/chat/execute-action', { type, data, confirmToken });
     return response.data;
   },
