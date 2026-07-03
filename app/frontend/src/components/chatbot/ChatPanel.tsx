@@ -3,6 +3,7 @@ import { Maximize2, Minimize2, MoveDiagonal2, Sparkles, Trash2, X } from 'lucide
 import { api } from '../../services/api';
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { ChatMessage } from '../../types';
+import { AssistantLoadingIndicator } from './AssistantLoadingIndicator';
 
 const ChatRuntime = lazy(() => import('./ChatRuntime').then(module => ({
   default: module.ChatRuntime
@@ -337,8 +338,8 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           {historyLoaded ? (
             <Suspense
               fallback={(
-                <div className="flex flex-1 items-center justify-center text-xs font-semibold text-[var(--text-dim)]">
-                  Preparando conversación...
+                <div className="flex flex-1 items-center justify-center px-4">
+                  <AssistantLoadingIndicator label="Preparando la conversación..." />
                 </div>
               )}
             >
@@ -349,8 +350,8 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
               />
             </Suspense>
           ) : (
-            <div className="flex flex-1 items-center justify-center text-xs font-semibold text-[var(--text-dim)]">
-              Cargando historial...
+            <div className="flex flex-1 items-center justify-center px-4">
+              <AssistantLoadingIndicator label="Cargando el historial..." />
             </div>
           )}
         </div>

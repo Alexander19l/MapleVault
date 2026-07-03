@@ -30,12 +30,43 @@
 
 /* Make text area match */
 .assistant-ui-theme textarea {
-  background-color: rgba(15, 23, 42, 0.6) !important;
+  background-color: transparent !important;
   color: white !important;
   border-color: var(--border-medium) !important;
-  font-size: 0.75rem !important; /* text-xs */
+  font-size: 0.75rem !important;
 }
 
 .assistant-ui-theme textarea:focus {
   border-color: var(--accent-primary) !important;
+}
+
+@keyframes maple-assistant-loading-ring {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes maple-assistant-loading-breathe {
+  0%,
+  100% {
+    transform: translateY(1px) scale(0.96);
+  }
+  50% {
+    transform: translateY(-1px) scale(1);
+  }
+}
+
+.maple-assistant-loading-ring {
+  animation: maple-assistant-loading-ring 2.8s linear infinite;
+}
+
+.maple-assistant-loading-mascot {
+  animation: maple-assistant-loading-breathe 1.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .maple-assistant-loading-ring,
+  .maple-assistant-loading-mascot {
+    animation: none;
+  }
 }
