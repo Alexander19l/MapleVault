@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '../services/api';
 import { showConfirm } from '../utils/dialog';
-import type { ChatActionHistoryItem, DatabaseBackup } from '../types';
+import type { ChatActionHistoryItem, DatabaseBackup, ScrapingJobStatus } from '../types';
 
 import { 
   Settings as SettingsIcon, 
@@ -75,6 +75,35 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
   const [scrapingYear, setScrapingYear] = useState<number>(new Date().getFullYear() - 1);
   const [scrapingStatus, setScrapingStatus] = useState<string | null>(null);
   const [scrapingLoading, setScrapingLoading] = useState(false);
+  const [scrapingJob, setScrapingJob] = useState<ScrapingJobStatus | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    let refreshInFlight = false;
+
+    const refreshScrapingStatus = async () => {
+      if (document.hidden || refreshInFlight) return;
+      refreshInFlight = true;
+      try {
+        const status = await api.getScrapingStatus();
+        if (active) setScrapingJob(status);
+      } catch (error) {
+        console.error('Error al consultar el progreso del scraping:', error);
+      } finally {
+        refreshInFlight = false;
+      }
+    };
+
+    void refreshScrapingStatus();
+    const interval = window.setInterval(
+      refreshScrapingStatus,
+      scrapingJob?.state === 'running' ? 1000 : 5000
+    );
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [scrapingJob?.state]);
 
   // Borrado de Catálogo
   const [keepUserList, setKeepUserList] = useState(true);
@@ -497,12 +526,13 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
       setScrapingStatus('Iniciando scraping masivo...');
       const res = await api.syncYears(scrapingYear);
       setScrapingStatus(res.message);
+      if (res.job) setScrapingJob(res.job);
     } catch (err: any) {
       console.error('Error al iniciar scraping masivo:', err);
+      if (err.response?.data?.job) setScrapingJob(err.response.data.job);
       setScrapingStatus('Error: ' + (err.response?.data?.error || err.message));
     } finally {
       setScrapingLoading(false);
-      setTimeout(() => setScrapingStatus(null), 8000);
     }
   };
 
@@ -869,18 +899,46 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
           <button
             type="button"
             onClick={handleStartMassiveScraping}
-            disabled={scrapingLoading}
+            disabled={scrapingLoading || scrapingJob?.state === 'running'}
             className="w-full sm:w-auto px-6 py-2 bg-violet-600 hover:bg-violet-500 disabled:bg-violet-850 text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center space-x-1.5"
           >
-            {scrapingLoading && <span className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />}
-            <span>{scrapingLoading ? 'Iniciando...' : 'Iniciar Scraping Masivo'}</span>
+            {(scrapingLoading || scrapingJob?.state === 'running') && <span className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />}
+            <span>
+              {scrapingLoading
+                ? 'Iniciando...'
+                : scrapingJob?.state === 'running'
+                  ? `Sincronizando ${scrapingJob.progressPercent}%`
+                  : 'Iniciar Scraping Masivo'}
+            </span>
           </button>
         </div>
 
-        {scrapingStatus && (
+        {(scrapingStatus || scrapingJob?.state === 'running') && (
           <p className="text-[10px] text-primary-400 italic font-semibold pt-1">
-            {scrapingStatus}
+            {scrapingJob?.state === 'running' ? scrapingJob.message : scrapingStatus}
           </p>
+        )}
+
+        {scrapingJob && scrapingJob.state !== 'idle' && (
+          <div className="space-y-2 rounded-lg border border-dark-border/60 bg-slate-900/40 p-3">
+            <div className="flex items-center justify-between text-[10px]">
+              <span className="text-slate-400">
+                {scrapingJob.completedSeasons}/{scrapingJob.totalSeasons} temporadas
+              </span>
+              <span className="font-bold text-primary-400">{scrapingJob.progressPercent}%</span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-slate-800">
+              <div
+                className="h-full bg-primary-500 transition-[width] duration-300"
+                style={{ width: `${scrapingJob.progressPercent}%` }}
+              />
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-slate-500">
+              <span>Series: {scrapingJob.totalImported}</span>
+              <span>Reintentos: {scrapingJob.retryCount}</span>
+              <span>Errores: {scrapingJob.failedSeasons}</span>
+            </div>
+          </div>
         )}
       </section>
 

@@ -32,6 +32,61 @@ export function simplifyTitle(title: string): string {
 // Helper para pausar ejecuciones (respetar rate limit)
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+export interface SeasonSyncRetryInfo {
+  attempt: number;
+  delayMs: number;
+  status?: number;
+  message: string;
+}
+
+export interface SeasonSyncOptions {
+  requestDelayMs?: number;
+  maxRetries?: number;
+  sleep?: (ms: number) => Promise<void>;
+  onRetry?: (info: SeasonSyncRetryInfo) => void | Promise<void>;
+}
+
+function getExternalErrorStatus(error: any): number | undefined {
+  const status = Number(error?.response?.status || error?.status);
+  return Number.isInteger(status) ? status : undefined;
+}
+
+function isRetryableExternalError(error: any): boolean {
+  const status = getExternalErrorStatus(error);
+  const code = String(error?.code || '').toUpperCase();
+  const message = String(error?.message || '').toLowerCase();
+  return status === 429
+    || Boolean(status && status >= 500)
+    || ['ECONNRESET', 'ECONNABORTED', 'ETIMEDOUT', 'EAI_AGAIN'].includes(code)
+    || message.includes('too many request')
+    || message.includes('rate limit')
+    || message.includes('timeout');
+}
+
+function getRetryAfterMs(error: any): number {
+  const rawValue = error?.response?.headers?.['retry-after'];
+  const seconds = Number(rawValue);
+  if (Number.isFinite(seconds) && seconds > 0) {
+    return Math.min(120000, Math.ceil(seconds * 1000));
+  }
+  return 0;
+}
+
+function createAniListGraphQLError(response: any): Error | null {
+  const graphQLError = response?.data?.errors?.[0];
+  if (!graphQLError) return null;
+
+  const error = new Error(String(graphQLError.message || 'AniList devolvió un error GraphQL.'));
+  const reportedStatus = Number(
+    graphQLError?.status
+    || graphQLError?.extensions?.status
+    || graphQLError?.extensions?.code
+  );
+  const inferredStatus = /too many request|rate limit/i.test(error.message) ? 429 : undefined;
+  (error as any).status = Number.isInteger(reportedStatus) ? reportedStatus : inferredStatus;
+  return error;
+}
+
 // Registrar log de scraping en base de datos
 export async function logScraping(source: string, action: string, status: string, message: string) {
   try {
@@ -237,7 +292,11 @@ export async function getAniListAnimeById(externalId: number): Promise<Normalize
 }
 
 // --- SINCRONIZACIÓN POR AÑO Y TEMPORADA DESDE ANILIST ---
-export async function syncSeasonFromAniList(year: number, season: string): Promise<NormalizedAnime[]> {
+export async function syncSeasonFromAniList(
+  year: number,
+  season: string,
+  options: SeasonSyncOptions = {}
+): Promise<NormalizedAnime[]> {
   const url = 'https://graphql.anilist.co';
   const graphQLQuery = `
     query ($year: Int, $season: MediaSeason, $page: Int) {
@@ -308,6 +367,9 @@ export async function syncSeasonFromAniList(year: number, season: string): Promi
   `;
 
   try {
+    const requestDelayMs = Math.max(0, Math.floor(Number(options.requestDelayMs) || 0));
+    const maxRetries = Math.min(6, Math.max(0, Math.floor(Number(options.maxRetries) || 3)));
+    const sleep = options.sleep || delay;
     const seasonUpper = season.toUpperCase(); // AniList usa WINTER, SPRING, SUMMER, FALL
     await logScraping('AniList API', `Sincronizar temporada: ${year} ${season}`, 'started', `Iniciando sincronización para ${year}-${season}`);
 
@@ -316,34 +378,58 @@ export async function syncSeasonFromAniList(year: number, season: string): Promi
     let hasNextPage = true;
 
     while (hasNextPage && page <= 10) {
-      try {
-        const response = await axios.post(url, {
-          query: graphQLQuery,
-          variables: { year, season: seasonUpper, page }
-        }, {
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'User-Agent': 'MapleVault-Local-Client'
-          },
-          timeout: 8000,
-          maxRedirects: 0
-        });
+      let response: any;
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          response = await axios.post(url, {
+            query: graphQLQuery,
+            variables: { year, season: seasonUpper, page }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'User-Agent': 'MapleVault-Local-Client'
+            },
+            timeout: 8000,
+            maxRedirects: 0
+          });
 
-        const pageData = response.data?.data?.Page;
-        const mediaList = Array.isArray(pageData?.media) ? pageData.media : [];
-        for (const media of mediaList) {
-          if (Number.isInteger(Number(media?.id))) {
-            mediaById.set(Number(media.id), media);
-          }
+          const graphQLError = createAniListGraphQLError(response);
+          if (graphQLError) throw graphQLError;
+          break;
+        } catch (error: any) {
+          if (!isRetryableExternalError(error) || attempt >= maxRetries) throw error;
+
+          const retryDelayMs = Math.max(
+            getRetryAfterMs(error),
+            Math.min(60000, Math.max(5000, requestDelayMs * 3) * (2 ** attempt))
+          );
+          await options.onRetry?.({
+            attempt: attempt + 1,
+            delayMs: retryDelayMs,
+            status: getExternalErrorStatus(error),
+            message: String(error?.message || 'Error temporal de AniList')
+          });
+          await sleep(retryDelayMs);
         }
+      }
 
-        hasNextPage = pageData?.pageInfo?.hasNextPage === true;
-        page += 1;
-      } catch (error) {
-        if (mediaById.size === 0) throw error;
-        console.warn(`AniList no respondió al solicitar la página ${page}; se conservarán ${mediaById.size} resultados parciales.`);
-        break;
+      const pageData = response?.data?.data?.Page;
+      if (!pageData) {
+        throw new Error(`AniList no devolvió la página ${page} de ${year}-${season}.`);
+      }
+
+      const mediaList = Array.isArray(pageData.media) ? pageData.media : [];
+      for (const media of mediaList) {
+        if (Number.isInteger(Number(media?.id))) {
+          mediaById.set(Number(media.id), media);
+        }
+      }
+
+      hasNextPage = pageData?.pageInfo?.hasNextPage === true;
+      page += 1;
+      if (hasNextPage && requestDelayMs > 0) {
+        await sleep(requestDelayMs);
       }
     }
 
@@ -355,7 +441,7 @@ export async function syncSeasonFromAniList(year: number, season: string): Promi
     const errorMsg = err.response?.data?.errors?.[0]?.message || err.message;
     await logScraping('AniList API', `Sincronizar temporada: ${year} ${season}`, 'error', `Fallo: ${errorMsg}`);
     console.error('Error al sincronizar temporada:', errorMsg);
-    return [];
+    throw err;
   }
 }
 

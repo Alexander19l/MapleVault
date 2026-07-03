@@ -102,6 +102,29 @@ export interface ScrapingLog {
   created_at: string;
 }
 
+export interface ScrapingJobStatus {
+  jobId: string | null;
+  jobType: 'massive' | 'season' | null;
+  state: 'idle' | 'running' | 'completed' | 'completed_with_errors' | 'failed';
+  startYear: number | null;
+  endYear: number | null;
+  currentYear: number | null;
+  currentSeason: string | null;
+  completedSeasons: number;
+  totalSeasons: number;
+  successfulSeasons: number;
+  failedSeasons: number;
+  totalImported: number;
+  retryCount: number;
+  requestDelayMs: number;
+  progressPercent: number;
+  message: string;
+  lastError: string | null;
+  startedAt: string | null;
+  updatedAt: string | null;
+  completedAt: string | null;
+}
+
 export interface DatabaseBackup {
   name: string;
   path: string;

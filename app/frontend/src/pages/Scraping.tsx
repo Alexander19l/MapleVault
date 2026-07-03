@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
-import type { ScrapingSource, ScrapingLog } from '../types';
+import type { ScrapingSource, ScrapingLog, ScrapingJobStatus } from '../types';
 import { 
   Database, 
   Settings2, 
@@ -15,7 +15,9 @@ import {
 export const Scraping: React.FC = () => {
   const [sources, setSources] = useState<ScrapingSource[]>([]);
   const [logs, setLogs] = useState<ScrapingLog[]>([]);
+  const [jobStatus, setJobStatus] = useState<ScrapingJobStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const activityRefreshInFlight = useRef(false);
 
   // Formulario manual
   const [syncYear, setSyncYear] = useState(new Date().getFullYear());
@@ -31,13 +33,47 @@ export const Scraping: React.FC = () => {
     loadScrapingData();
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    const refreshActivity = async () => {
+      if (document.hidden || activityRefreshInFlight.current) return;
+      activityRefreshInFlight.current = true;
+      try {
+        const [logList, status] = await Promise.all([
+          api.getScrapingLogs(),
+          api.getScrapingStatus()
+        ]);
+        if (!active) return;
+        setLogs(logList);
+        setJobStatus(status);
+      } catch (err) {
+        console.error('Error al actualizar el progreso de scraping:', err);
+      } finally {
+        activityRefreshInFlight.current = false;
+      }
+    };
+
+    const interval = window.setInterval(
+      refreshActivity,
+      jobStatus?.state === 'running' ? 1000 : 4000
+    );
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [jobStatus?.state]);
+
   const loadScrapingData = async () => {
     try {
       setLoading(true);
-      const srcList = await api.getScrapingSources();
-      const logList = await api.getScrapingLogs();
+      const [srcList, logList, status] = await Promise.all([
+        api.getScrapingSources(),
+        api.getScrapingLogs(),
+        api.getScrapingStatus()
+      ]);
       setSources(srcList);
       setLogs(logList);
+      setJobStatus(status);
     } catch (err) {
       console.error('Error al cargar datos de scraping:', err);
     } finally {
@@ -74,9 +110,11 @@ export const Scraping: React.FC = () => {
       setSyncStatus('Iniciando sincronización de temporada...');
       const res = await api.syncSeason(syncYear, syncSeason);
       setSyncStatus(`¡Completado! ${res.message}`);
+      if (res.job) setJobStatus(res.job);
       loadScrapingData();
     } catch (err: any) {
       console.error('Error al sincronizar temporada:', err);
+      if (err.response?.data?.job) setJobStatus(err.response.data.job);
       setSyncStatus(`Error en la sincronización: ${err.response?.data?.error || err.message}`);
     } finally {
       setSyncing(false);
@@ -93,6 +131,22 @@ export const Scraping: React.FC = () => {
         return <AlertTriangle className="h-4 w-4 text-amber-400 animate-pulse" />;
     }
   };
+
+  const seasonLabel = (season: string | null) => ({
+    winter: 'Invierno',
+    spring: 'Primavera',
+    summer: 'Verano',
+    fall: 'Otoño'
+  }[season || ''] || season || 'Sin iniciar');
+
+  const jobRunning = jobStatus?.state === 'running';
+  const jobStateLabel = {
+    idle: 'En espera',
+    running: 'En proceso',
+    completed: 'Completado',
+    completed_with_errors: 'Completado con errores',
+    failed: 'Interrumpido'
+  }[jobStatus?.state || 'idle'];
 
   if (loading && sources.length === 0) {
     return (
@@ -243,37 +297,110 @@ export const Scraping: React.FC = () => {
           </section>
         </div>
 
-        {/* Columna Derecha: Logs de Consola */}
-        <section className="space-y-4">
-          <h3 className="text-sm font-bold text-slate-450 uppercase tracking-widest flex items-center">
-            <Terminal className="h-4 w-4 text-slate-500 mr-1.5" />
-            Consola de Logs
-          </h3>
+        {/* Columna Derecha: Progreso y Logs */}
+        <div className="space-y-6">
+          <section className="space-y-3" aria-live="polite">
+            <h3 className="flex items-center text-sm font-bold uppercase tracking-widest text-slate-450">
+              <RefreshCw className={`mr-1.5 h-4 w-4 text-slate-500 ${jobRunning ? 'animate-spin' : ''}`} />
+              Progreso de sincronización
+            </h3>
 
-          <div className="bg-slate-950 border border-dark-border p-4 rounded-2xl h-[400px] overflow-y-auto font-mono text-[10px] space-y-3">
-            {logs.length === 0 ? (
-              <p className="text-slate-600 italic">No hay logs en la base de datos.</p>
-            ) : (
-              logs.map((log) => (
-                <div key={log.id} className="border-b border-dark-border/40 pb-2 last:border-0">
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-500">
-                      {log.created_at ? new Date(log.created_at).toLocaleTimeString() : ''}
-                    </span>
-                    <span className="font-bold text-primary-400">{log.source}</span>
-                  </div>
-                  <div className="flex items-start space-x-1.5 mt-1">
-                    <span className="mt-0.5">{getLogStatusIcon(log.status)}</span>
-                    <div className="flex-1">
-                      <span className="text-slate-200 font-semibold">{log.action}: </span>
-                      <span className="text-slate-400 break-words">{log.message}</span>
+            <div className="rounded-lg border border-dark-border bg-dark-card p-4">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs font-semibold text-white">{jobStateLabel}</span>
+                <span className="text-xs font-bold text-primary-400">
+                  {jobStatus?.progressPercent || 0}%
+                </span>
+              </div>
+              <div
+                className="mt-3 h-2 overflow-hidden rounded-full bg-slate-800"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={jobStatus?.progressPercent || 0}
+              >
+                <div
+                  className="h-full bg-primary-500 transition-[width] duration-300"
+                  style={{ width: `${jobStatus?.progressPercent || 0}%` }}
+                />
+              </div>
+
+              <p className="mt-3 text-[11px] leading-relaxed text-slate-300">
+                {jobStatus?.message || 'No hay una sincronización en curso.'}
+              </p>
+
+              <dl className="mt-4 grid grid-cols-2 gap-x-3 gap-y-3 text-[10px]">
+                <div>
+                  <dt className="text-slate-500">Temporada actual</dt>
+                  <dd className="mt-0.5 font-semibold text-slate-200">
+                    {jobStatus?.currentYear || '—'} · {seasonLabel(jobStatus?.currentSeason || null)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">Temporadas</dt>
+                  <dd className="mt-0.5 font-semibold text-slate-200">
+                    {jobStatus?.completedSeasons || 0}/{jobStatus?.totalSeasons || 0}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">Series procesadas</dt>
+                  <dd className="mt-0.5 font-semibold text-slate-200">{jobStatus?.totalImported || 0}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">Reintentos</dt>
+                  <dd className="mt-0.5 font-semibold text-slate-200">{jobStatus?.retryCount || 0}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">Intervalo efectivo</dt>
+                  <dd className="mt-0.5 font-semibold text-slate-200">
+                    {jobStatus?.requestDelayMs ? `${jobStatus.requestDelayMs} ms` : '—'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">Temporadas con error</dt>
+                  <dd className="mt-0.5 font-semibold text-slate-200">{jobStatus?.failedSeasons || 0}</dd>
+                </div>
+              </dl>
+
+              {jobStatus?.lastError && (
+                <p className="mt-3 border-t border-rose-500/20 pt-3 text-[10px] text-rose-300">
+                  {jobStatus.lastError}
+                </p>
+              )}
+            </div>
+          </section>
+
+          <section className="space-y-4">
+            <h3 className="text-sm font-bold text-slate-450 uppercase tracking-widest flex items-center">
+              <Terminal className="h-4 w-4 text-slate-500 mr-1.5" />
+              Consola de Logs
+            </h3>
+
+            <div className="bg-slate-950 border border-dark-border p-4 rounded-lg h-[400px] overflow-y-auto font-mono text-[10px] space-y-3">
+              {logs.length === 0 ? (
+                <p className="text-slate-600 italic">No hay logs en la base de datos.</p>
+              ) : (
+                logs.map((log) => (
+                  <div key={log.id} className="border-b border-dark-border/40 pb-2 last:border-0">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">
+                        {log.created_at ? new Date(log.created_at).toLocaleTimeString() : ''}
+                      </span>
+                      <span className="font-bold text-primary-400">{log.source}</span>
+                    </div>
+                    <div className="flex items-start space-x-1.5 mt-1">
+                      <span className="mt-0.5">{getLogStatusIcon(log.status)}</span>
+                      <div className="flex-1">
+                        <span className="text-slate-200 font-semibold">{log.action}: </span>
+                        <span className="text-slate-400 break-words">{log.message}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))
-            )}
-          </div>
-        </section>
+                ))
+              )}
+            </div>
+          </section>
+        </div>
       </div>
     </div>
   );

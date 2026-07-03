@@ -3,14 +3,17 @@ import type { Server } from 'http';
 import type { AddressInfo } from 'net';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createScrapingRouter } from '../../src/routes/scrapingRoutes';
+import { ScrapingJobTracker } from '../../src/routes/scrapingJobTracker';
 import type { NormalizedAnime } from '../../src/scraping/scraper';
 
+const queryGetMock = vi.fn<(sql: string, params?: any[]) => Promise<any>>();
 const queryAllMock = vi.fn<(sql: string) => Promise<any[]>>();
 const queryRunMock = vi.fn<(sql: string, params?: any[]) => Promise<{ lastID: number; changes: number }>>();
 const syncSeasonMock = vi.fn<(year: number, season: string) => Promise<NormalizedAnime[]>>();
 const saveAnimeToLocalMock = vi.fn<(anime: NormalizedAnime) => Promise<number>>();
 const writeScrapingLogMock = vi.fn<(source: string, action: string, status: string, message: string) => Promise<void>>();
 const invalidateCachesMock = vi.fn();
+const jobTracker = new ScrapingJobTracker();
 
 let server: Server;
 let baseUrl: string;
@@ -35,6 +38,7 @@ describe('Scraping HTTP router', () => {
     app.use(express.json({ limit: '2mb' }));
     app.use(createScrapingRouter({
       queryClient: {
+        get: queryGetMock,
         all: queryAllMock,
         run: queryRunMock
       },
@@ -42,7 +46,9 @@ describe('Scraping HTTP router', () => {
       saveAnimeToLocal: saveAnimeToLocalMock,
       writeScrapingLog: writeScrapingLogMock,
       invalidateLibraryReadCaches: invalidateCachesMock,
-      getCurrentYear: () => 2026
+      getCurrentYear: () => 2026,
+      jobTracker,
+      sleep: async () => undefined
     }));
 
     await new Promise<void>(resolve => {
@@ -62,6 +68,8 @@ describe('Scraping HTTP router', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    if (jobTracker.isRunning()) jobTracker.fail(new Error('reinicio de prueba'));
+    queryGetMock.mockResolvedValue({ rate_limit: 1000 });
     queryAllMock.mockImplementation(async sql => {
       if (sql.includes('scraping_logs')) {
         return [
@@ -112,11 +120,19 @@ describe('Scraping HTTP router', () => {
     });
 
     expect(response.status).toBe(200);
-    expect(json).toEqual({
+    expect(json).toEqual(expect.objectContaining({
       message: 'Sincronización completada. Se añadieron o actualizaron 1 animes.',
-      count: 1
-    });
-    expect(syncSeasonMock).toHaveBeenCalledWith(2026, 'winter');
+      count: 1,
+      job: expect.objectContaining({
+        state: 'completed',
+        progressPercent: 100
+      })
+    }));
+    expect(syncSeasonMock).toHaveBeenCalledWith(
+      2026,
+      'winter',
+      expect.objectContaining({ requestDelayMs: 1500, maxRetries: 3 })
+    );
     expect(saveAnimeToLocalMock).toHaveBeenCalledWith(expect.objectContaining({
       title: 'Maple Season'
     }));
@@ -147,7 +163,11 @@ describe('Scraping HTTP router', () => {
     });
 
     expect(response.status).toBe(200);
-    expect(json.message).toContain('Scraping masivo iniciado en segundo plano desde el año 2026');
+    expect(json.message).toContain('Scraping masivo iniciado desde 2026');
+    expect(json.job).toEqual(expect.objectContaining({
+      jobType: 'massive',
+      requestDelayMs: 1500
+    }));
 
     await new Promise(resolve => setTimeout(resolve, 0));
     expect(writeScrapingLogMock).toHaveBeenCalledWith(
@@ -161,6 +181,7 @@ describe('Scraping HTTP router', () => {
   it('expone logs y fuentes de scraping', async () => {
     const logs = await requestJson('/scraping/logs');
     const sources = await requestJson('/scraping/sources');
+    const status = await requestJson('/scraping/status');
 
     expect(logs.response.status).toBe(200);
     expect(logs.json).toEqual([
@@ -176,6 +197,26 @@ describe('Scraping HTTP router', () => {
         rate_limit: 1000
       })
     ]);
+    expect(status.response.status).toBe(200);
+    expect(status.json).toEqual(expect.objectContaining({
+      state: expect.stringMatching(/running|completed|completed_with_errors/)
+    }));
+  });
+
+  it('rechaza una segunda sincronización mientras existe un trabajo activo', async () => {
+    jobTracker.startMassive(2020, 2026, 1500);
+
+    const duplicate = await requestJson('/scraping/sync-years', {
+      method: 'POST',
+      body: JSON.stringify({ startYear: 2024 })
+    });
+
+    expect(duplicate.response.status).toBe(409);
+    expect(duplicate.json.job).toEqual(expect.objectContaining({
+      state: 'running',
+      startYear: 2020
+    }));
+    jobTracker.fail(new Error('fin de prueba'));
   });
 
   it('actualiza fuentes validando id y rate limit', async () => {

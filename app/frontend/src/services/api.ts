@@ -188,6 +188,11 @@ export const api = {
     return response.data;
   },
 
+  getScrapingStatus: async () => {
+    const response = await client.get('/scraping/status');
+    return response.data;
+  },
+
   getScrapingSources: async () => {
     const response = await client.get('/scraping/sources');
     return response.data;
