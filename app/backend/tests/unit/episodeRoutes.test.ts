@@ -79,6 +79,10 @@ describe('Episode HTTP router', () => {
     scraperService.getAnimeAV1Media.mockResolvedValue({
       title: 'Maple Show',
       slug: 'maple-av1',
+      malId: null,
+      startDate: '2024-01-01',
+      endDate: null,
+      category: { name: 'TV Anime', slug: 'tv-anime' },
       episodes: [{ id: 1, number: 1 }]
     });
     scraperService.getAnimeAV1Embeds.mockResolvedValue([
@@ -102,6 +106,8 @@ describe('Episode HTTP router', () => {
       title: 'Maple Show',
       title_romaji: 'Maple Show',
       title_english: '',
+      year: 2024,
+      type: 'tv',
       animeav1_slug: ''
     });
 
@@ -114,7 +120,7 @@ describe('Episode HTTP router', () => {
       availability: 'available',
       sourceTitle: 'Maple Show'
     });
-    expect(scraperService.getAnimeAV1Slug).toHaveBeenCalledWith('Maple Show', 'Maple Show', '');
+    expect(scraperService.getAnimeAV1Slug).toHaveBeenCalledWith('Maple Show', 'Maple Show', '', []);
     expect(scraperService.getAnimeAV1Media).toHaveBeenCalledWith('maple-av1');
     expect(queryRunMock).toHaveBeenCalledWith('UPDATE anime SET animeav1_slug = ? WHERE id = ?', ['maple-av1', 10]);
   });
@@ -125,6 +131,8 @@ describe('Episode HTTP router', () => {
       title: 'My Hero Academia',
       title_romaji: 'Boku no Hero Academia',
       title_english: 'My Hero Academia',
+      year: 2016,
+      type: 'tv',
       animeav1_slug: 'vigilante-boku-no-hero-academia-illegals-2nd-season'
     });
     scraperService.getAnimeAV1Slug.mockResolvedValueOnce('boku-no-hero-academia');
@@ -132,11 +140,19 @@ describe('Episode HTTP router', () => {
       .mockResolvedValueOnce({
         title: 'Vigilante: Boku no Hero Academia Illegals 2nd Season',
         slug: 'vigilante-boku-no-hero-academia-illegals-2nd-season',
+        malId: null,
+        startDate: '2025-04-01',
+        endDate: null,
+        category: { name: 'TV Anime', slug: 'tv-anime' },
         episodes: [{ id: 10, number: 1 }]
       })
       .mockResolvedValueOnce({
         title: 'Boku no Hero Academia',
         slug: 'boku-no-hero-academia',
+        malId: null,
+        startDate: '2016-04-03',
+        endDate: '2016-06-26',
+        category: { name: 'TV Anime', slug: 'tv-anime' },
         episodes: [{ id: 20, number: 1 }]
       });
 
@@ -158,6 +174,12 @@ describe('Episode HTTP router', () => {
       2,
       'UPDATE anime SET animeav1_slug = ? WHERE id = ?',
       ['boku-no-hero-academia', 113]
+    );
+    expect(scraperService.getAnimeAV1Slug).toHaveBeenCalledWith(
+      'My Hero Academia',
+      'Boku no Hero Academia',
+      'My Hero Academia',
+      ['vigilante-boku-no-hero-academia-illegals-2nd-season']
     );
   });
 
@@ -201,7 +223,21 @@ describe('Episode HTTP router', () => {
   it('prioriza servidores fuertes al obtener reproductores de AnimeAV1', async () => {
     queryGetMock.mockResolvedValueOnce({
       id: 10,
+      title: 'Maple Show',
+      title_romaji: 'Maple Show',
+      title_english: '',
+      year: 2024,
+      type: 'tv',
       animeav1_slug: 'maple-av1'
+    });
+    scraperService.getAnimeAV1Media.mockResolvedValueOnce({
+      title: 'Maple Show',
+      slug: 'maple-av1',
+      malId: null,
+      startDate: '2024-01-01',
+      endDate: null,
+      category: { name: 'TV Anime', slug: 'tv-anime' },
+      episodes: [{ id: 2, number: 2 }]
     });
 
     const { response, json } = await requestJson('/anime/10/episodes/2');

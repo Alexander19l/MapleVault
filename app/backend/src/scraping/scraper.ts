@@ -119,6 +119,7 @@ export async function searchAniListPage(
         }
         media (search: $search, type: ANIME) {
           id
+          idMal
           title {
             romaji
             english
@@ -233,6 +234,7 @@ export async function getAniListAnimeById(externalId: number): Promise<Normalize
     query ($id: Int) {
       Media(id: $id, type: ANIME) {
         id
+        idMal
         title { romaji english native }
         description
         seasonYear
@@ -306,6 +308,7 @@ export async function syncSeasonFromAniList(
         }
         media (seasonYear: $year, season: $season, type: ANIME) {
           id
+          idMal
           title {
             romaji
             english
@@ -467,6 +470,7 @@ export async function searchJikanPage(
 
       return {
         external_id: m.mal_id,
+        mal_id: m.mal_id,
         source: 'MyAnimeList',
         title: m.title_english || m.title,
         title_romaji: m.title,
@@ -554,13 +558,13 @@ export async function saveNormalizedAnimeToLocal(anime: NormalizedAnime): Promis
     // Actualizar metadatos
     await query.run(`
       UPDATE anime
-      SET title_romaji = ?, title_english = ?, title_japanese = ?, synopsis = ?,
+      SET mal_id = COALESCE(?, mal_id), title_romaji = ?, title_english = ?, title_japanese = ?, synopsis = ?,
           status = ?, type = ?, episodes = ?, duration = ?, score = ?, popularity = ?,
           cover_image = ?, banner_image = ?, studio = ?, source_material = ?,
           start_date = ?, end_date = ?, is_adult = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `, [
-      anime.title_romaji, anime.title_english, anime.title_japanese, originalSynopsis,
+      anime.mal_id, anime.title_romaji, anime.title_english, anime.title_japanese, originalSynopsis,
       anime.status, anime.type, anime.episodes, anime.duration, anime.score, anime.popularity,
       anime.cover_image, anime.banner_image, anime.studio, anime.source_material,
       anime.start_date, anime.end_date, isAdult, animeId
@@ -569,12 +573,12 @@ export async function saveNormalizedAnimeToLocal(anime: NormalizedAnime): Promis
     // Insertar nuevo
     const res = await query.run(`
       INSERT INTO anime (
-        external_id, source, title, title_romaji, title_english, title_japanese, synopsis,
+        external_id, mal_id, source, title, title_romaji, title_english, title_japanese, synopsis,
         year, season, status, type, episodes, duration, score, popularity,
         cover_image, banner_image, studio, source_material, start_date, end_date, is_adult
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
-      anime.external_id, anime.source, anime.title, anime.title_romaji, anime.title_english, anime.title_japanese, originalSynopsis,
+      anime.external_id, anime.mal_id, anime.source, anime.title, anime.title_romaji, anime.title_english, anime.title_japanese, originalSynopsis,
       anime.year, anime.season, anime.status, anime.type, anime.episodes, anime.duration, anime.score, anime.popularity,
       anime.cover_image, anime.banner_image, anime.studio, anime.source_material, anime.start_date, anime.end_date, isAdult
     ]);
@@ -638,7 +642,12 @@ function deserializeSvelteKit(index: number, flatArray: any[], cache = new Map()
 }
 
 // Obtener slug de AnimeAV1 buscando en el catálogo por título(s)
-export async function getAnimeAV1Slug(title: string, romaji?: string, english?: string): Promise<string | null> {
+export async function getAnimeAV1Slug(
+  title: string,
+  romaji?: string,
+  english?: string,
+  excludedSlugs: string[] = []
+): Promise<string | null> {
   const aliases = [title, romaji, english]
     .filter((q): q is string => typeof q === 'string' && q.trim().length > 0);
   const queries = [...new Set(aliases)];
@@ -701,23 +710,16 @@ export async function getAnimeAV1Slug(title: string, romaji?: string, english?: 
         });
       }
       
-      const match = findBestAnimeTitleMatch(aliases, [...candidatesBySlug.values()]);
-      if (match?.score === 1) {
-        await logScraping(
-          'AnimeAV1 Scraping',
-          `Buscar slug para: "${q}"`,
-          'success',
-          `Coincidencia exacta: ${match.candidate.title} (${match.candidate.slug})`
-        );
-        return match.candidate.slug;
-      }
     } catch (err: any) {
       await logScraping('AnimeAV1 Scraping', `Buscar slug para: "${q}"`, 'error', `Fallo al buscar: ${err.message}`);
       console.error(`Error buscando slug en AnimeAV1 para "${q}":`, err.message);
     }
   }
 
-  const match = findBestAnimeTitleMatch(aliases, [...candidatesBySlug.values()]);
+  const excluded = new Set(excludedSlugs.map(slug => String(slug || '').trim()).filter(Boolean));
+  const candidates = [...candidatesBySlug.values()]
+    .filter(candidate => !excluded.has(candidate.slug));
+  const match = findBestAnimeTitleMatch(aliases, candidates);
   if (match) {
     await logScraping(
       'AnimeAV1 Scraping',
@@ -740,6 +742,13 @@ export async function getAnimeAV1Slug(title: string, romaji?: string, english?: 
 export interface AnimeAV1MediaData {
   title: string;
   slug: string;
+  malId: number | null;
+  startDate: string | null;
+  endDate: string | null;
+  category: {
+    name: string;
+    slug: string;
+  } | null;
   episodes: { id: number; number: number }[];
   declaredEpisodesCount: number | null;
   extractionSource: 'sveltekit' | 'html';
@@ -768,10 +777,20 @@ export function extractAnimeAV1MediaData(data: any, fallbackSlug: string): Anime
         .sort((left: { number: number }, right: { number: number }) => left.number - right.number)
       : [];
     const declaredEpisodesCount = Number(media.episodesCount);
+    const malId = Number(media.malId);
 
     return {
       title: String(media.title || '').trim(),
       slug: String(media.slug || fallbackSlug).trim(),
+      malId: Number.isInteger(malId) && malId > 0 ? malId : null,
+      startDate: media.startDate ? String(media.startDate) : null,
+      endDate: media.endDate ? String(media.endDate) : null,
+      category: media.category
+        ? {
+          name: String(media.category.name || ''),
+          slug: String(media.category.slug || '')
+        }
+        : null,
       episodes,
       declaredEpisodesCount: Number.isFinite(declaredEpisodesCount)
         ? Math.max(0, declaredEpisodesCount)
@@ -822,6 +841,10 @@ export function extractAnimeAV1MediaDataFromHtml(
   return {
     title,
     slug: fallbackSlug,
+    malId: null,
+    startDate: null,
+    endDate: null,
+    category: null,
     episodes,
     declaredEpisodesCount: episodes.length,
     extractionSource: 'html'
@@ -853,7 +876,11 @@ export async function getAnimeAV1Media(slug: string): Promise<AnimeAV1MediaData>
     if (mediaFromHtml.episodes.length > 0) {
       return {
         ...mediaFromHtml,
-        title: mediaFromData?.title || mediaFromHtml.title
+        title: mediaFromData?.title || mediaFromHtml.title,
+        malId: mediaFromData?.malId ?? null,
+        startDate: mediaFromData?.startDate ?? null,
+        endDate: mediaFromData?.endDate ?? null,
+        category: mediaFromData?.category ?? null
       };
     }
   } catch (htmlError) {

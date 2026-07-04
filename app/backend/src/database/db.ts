@@ -252,6 +252,7 @@ export async function initDb() {
     CREATE TABLE IF NOT EXISTS anime (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       external_id INTEGER,
+      mal_id INTEGER,
       source TEXT,
       title TEXT NOT NULL,
       title_romaji TEXT,
@@ -278,6 +279,12 @@ export async function initDb() {
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  try {
+    await query.run(`ALTER TABLE anime ADD COLUMN mal_id INTEGER`);
+  } catch (err) {
+    // La columna ya existe
+  }
 
   // Agregar columna animeav1_slug si no existe
   try {
@@ -516,6 +523,7 @@ export async function initDb() {
     `CREATE INDEX IF NOT EXISTS idx_anime_status_popularity ON anime(status, popularity DESC, score DESC, id DESC)`,
     `CREATE INDEX IF NOT EXISTS idx_anime_is_adult ON anime(is_adult)`,
     `CREATE INDEX IF NOT EXISTS idx_anime_source_external ON anime(source, external_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_anime_mal_id ON anime(mal_id)`,
     `CREATE INDEX IF NOT EXISTS idx_genres_name_nocase ON genres(name COLLATE NOCASE)`,
     `CREATE INDEX IF NOT EXISTS idx_anime_genres_genre_anime ON anime_genres(genre_id, anime_id)`,
     `CREATE INDEX IF NOT EXISTS idx_user_list_watch_status ON user_list(watch_status)`,

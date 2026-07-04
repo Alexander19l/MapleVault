@@ -24,7 +24,9 @@ export function getAnimeForSlugLookup(
 ): Promise<any> {
   assertValidSlugColumn(slugColumn);
   return queryClient.get(
-    `SELECT id, title, title_romaji, title_english, ${slugColumn} FROM anime WHERE id = ?`,
+    `SELECT id, external_id, mal_id, source, title, title_romaji, title_english,
+            year, type, start_date, status, ${slugColumn}
+     FROM anime WHERE id = ?`,
     [animeId]
   );
 }
@@ -58,6 +60,14 @@ export function clearAnimeSlug(
 ): Promise<{ lastID: number; changes: number }> {
   assertValidSlugColumn(slugColumn);
   return queryClient.run(`UPDATE anime SET ${slugColumn} = NULL WHERE id = ?`, [animeId]);
+}
+
+export function saveAnimeMalId(
+  queryClient: EpisodeQueryClient,
+  animeId: number,
+  malId: number
+): Promise<{ lastID: number; changes: number }> {
+  return queryClient.run('UPDATE anime SET mal_id = ? WHERE id = ?', [malId, animeId]);
 }
 
 export async function getWatchedEpisodeNumbers(
