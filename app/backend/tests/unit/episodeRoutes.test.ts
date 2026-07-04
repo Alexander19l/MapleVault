@@ -110,7 +110,9 @@ describe('Episode HTTP router', () => {
     expect(response.status).toBe(200);
     expect(json).toEqual({
       slug: 'maple-av1',
-      episodes: [{ id: 1, number: 1 }]
+      episodes: [{ id: 1, number: 1 }],
+      availability: 'available',
+      sourceTitle: 'Maple Show'
     });
     expect(scraperService.getAnimeAV1Slug).toHaveBeenCalledWith('Maple Show', 'Maple Show', '');
     expect(scraperService.getAnimeAV1Media).toHaveBeenCalledWith('maple-av1');
@@ -143,7 +145,9 @@ describe('Episode HTTP router', () => {
     expect(response.status).toBe(200);
     expect(json).toEqual({
       slug: 'boku-no-hero-academia',
-      episodes: [{ id: 20, number: 1 }]
+      episodes: [{ id: 20, number: 1 }],
+      availability: 'available',
+      sourceTitle: 'Boku no Hero Academia'
     });
     expect(queryRunMock).toHaveBeenNthCalledWith(
       1,

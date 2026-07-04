@@ -9,7 +9,7 @@ export interface AnimeTitleMatch {
   matchedAlias: string;
 }
 
-const LOW_SIGNAL_TOKENS = new Set(['a', 'an', 'no', 'of', 'the']);
+const LOW_SIGNAL_TOKENS = new Set(['a', 'an', 'mini', 'no', 'of', 'the', 'x']);
 
 function canonicalizeSeason(value: string): string {
   const ordinalWords: Record<string, string> = {
@@ -30,7 +30,7 @@ function canonicalizeSeason(value: string): string {
   if (trailingNumber) {
     const seasonNumber = Number(trailingNumber[2]);
     const prefix = trailingNumber[1].trim();
-    const isFormatNumber = /\b(?:season|temporada|movie|film|part|ova|ona|special)\s*$/i.test(prefix);
+    const isFormatNumber = /\b(?:season|temporada|movie|film|cour|part|ova|ona|special)\s*$/i.test(prefix);
     if (seasonNumber >= 2 && seasonNumber <= 20 && !isFormatNumber) {
       result = `${prefix} season ${seasonNumber}`;
     }
@@ -42,6 +42,7 @@ function canonicalizeSeason(value: string): string {
   );
   result = result.replace(/\b(\d+)(?:st|nd|rd|th)\s+season\b/g, 'season $1');
   result = result.replace(/\btemporada\s+(\d+)\b/g, 'season $1');
+  result = result.replace(/\bcour\s+(\d+)\b/g, 'part $1');
   return result.replace(/\bseason\s+(\d+)\b/g, 'season-$1');
 }
 
@@ -84,6 +85,9 @@ export function scoreAnimeTitleMatch(alias: string, candidateTitle: string): num
   if (!normalizedAlias || !normalizedCandidate) return 0;
   if (getSeasonNumber(normalizedAlias) !== getSeasonNumber(normalizedCandidate)) return 0;
   if (normalizedAlias === normalizedCandidate) return 1;
+  if (normalizedAlias.replace(/\s+/g, '') === normalizedCandidate.replace(/\s+/g, '')) {
+    return 0.99;
+  }
 
   const aliasTokens = getComparisonTokens(alias);
   const candidateTokens = getComparisonTokens(candidateTitle);

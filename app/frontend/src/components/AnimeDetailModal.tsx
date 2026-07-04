@@ -215,7 +215,15 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
         res = await api.getAnimeFLVEpisodes(currentAnimeId);
       }
       if (requestId === episodesRequestId.current) {
-        setEpisodes(res.episodes || []);
+        const extractedEpisodes = res.episodes || [];
+        setEpisodes(extractedEpisodes);
+        if (extractedEpisodes.length === 0 && provider === 'animeav1') {
+          setEpisodesError(
+            res.availability === 'not_published'
+              ? 'AnimeAV1 encontró la serie, pero todavía no publicó capítulos para reproducir.'
+              : 'AnimeAV1 encontró la serie, pero no devolvió una lista de capítulos válida.'
+          );
+        }
       }
     } catch (err: any) {
       console.error('Error al cargar episodios:', err);
@@ -419,31 +427,16 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
     }
   };
 
-  const getEpisodeAirDate = (startDateStr: string | undefined, episodeNumber: number) => {
-    if (!startDateStr) return null;
-    try {
-      const date = new Date(startDateStr);
-      if (isNaN(date.getTime())) return null;
-      date.setDate(date.getDate() + (episodeNumber - 1) * 7);
-      return date;
-    } catch (_) {
-      return null;
-    }
-  };
-
-  const getEpisodeStatus = (epNumber: number) => {
-    const airDate = getEpisodeAirDate(anime?.start_date, epNumber);
-    if (!airDate) return { label: 'Emitido', type: 'aired' };
-    const now = new Date();
-    if (airDate > now) {
-      return { 
-        label: `Próximamente: ${airDate.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}`, 
-        type: 'upcoming' 
-      };
-    }
-    return { 
-      label: `Emitido: ${airDate.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}`, 
-      type: 'aired' 
+  const getEpisodeStatus = () => {
+    const providerLabels = {
+      animeav1: 'AnimeAV1',
+      tioanime: 'TioAnime',
+      jkanime: 'JKAnime',
+      animeflv: 'AnimeFLV'
+    };
+    return {
+      label: `Disponible en ${providerLabels[provider]}`,
+      type: 'aired'
     };
   };
 
@@ -768,7 +761,7 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
                       ) : (
                         filteredEpisodes.map((ep) => {
                           const isWatched = watchedEpisodes.includes(ep.number);
-                          const statusInfo = getEpisodeStatus(ep.number);
+                          const statusInfo = getEpisodeStatus();
                           const isSelected = selectedEpisode === ep.number;
                           
                           return (
@@ -831,7 +824,7 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
                                     <span className={`font-semibold ${
                                       statusInfo.type === 'upcoming' ? 'text-amber-400' : 'text-emerald-400'
                                     }`}>
-                                      {statusInfo.type === 'upcoming' ? 'Upcoming' : 'Aired'}
+                                      {statusInfo.type === 'upcoming' ? 'Próximamente' : 'Disponible'}
                                     </span>
                                   </div>
 

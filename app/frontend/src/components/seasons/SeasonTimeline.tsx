@@ -8,13 +8,14 @@ import {
   Database,
   X
 } from 'lucide-react';
+import type { AnimeSeasonId } from '../../utils/animeSeason';
 
 interface SeasonTimelineProps {
   currentYear: number;
   selectedYear: number;
   setSelectedYear: (year: number) => void;
-  selectedSeason: string;
-  setSelectedSeason: (season: string) => void;
+  selectedSeason: AnimeSeasonId;
+  setSelectedSeason: (season: AnimeSeasonId) => void;
   totalAnimesCount?: number;
   availableYears?: number[];
   seasonCounts?: Record<string, number>;
@@ -76,7 +77,7 @@ export const SeasonTimeline: React.FC<SeasonTimelineProps> = ({
     };
   }, [isArchiveOpen]);
 
-  const handleSelect = (year: number, seasonId: string) => {
+  const handleSelect = (year: number, seasonId: AnimeSeasonId) => {
     setSelectedYear(year);
     setSelectedSeason(seasonId);
     setIsArchiveOpen(false);

@@ -203,7 +203,13 @@ export function createEpisodeRouter({
         return res.status(404).json({ error: 'No se encontro este anime en AnimeAV1' });
       }
 
-      res.json({ slug, episodes: media.episodes });
+      res.json({
+        slug,
+        episodes: media.episodes,
+        availability: media.episodes.length > 0 ? 'available' : 'not_published',
+        sourceTitle: media.title,
+        extractionSource: media.extractionSource
+      });
     } catch (error: unknown) {
       res.status(500).json({ error: getErrorMessage(error) });
     }

@@ -741,6 +741,8 @@ export interface AnimeAV1MediaData {
   title: string;
   slug: string;
   episodes: { id: number; number: number }[];
+  declaredEpisodesCount: number | null;
+  extractionSource: 'sveltekit' | 'html';
 }
 
 export function extractAnimeAV1MediaData(data: any, fallbackSlug: string): AnimeAV1MediaData {
@@ -765,26 +767,112 @@ export function extractAnimeAV1MediaData(data: any, fallbackSlug: string): Anime
         )
         .sort((left: { number: number }, right: { number: number }) => left.number - right.number)
       : [];
+    const declaredEpisodesCount = Number(media.episodesCount);
 
     return {
       title: String(media.title || '').trim(),
       slug: String(media.slug || fallbackSlug).trim(),
-      episodes
+      episodes,
+      declaredEpisodesCount: Number.isFinite(declaredEpisodesCount)
+        ? Math.max(0, declaredEpisodesCount)
+        : episodes.length,
+      extractionSource: 'sveltekit'
     };
   }
 
   throw new Error('AnimeAV1 no devolvió metadata de la serie');
 }
 
+export function extractAnimeAV1MediaDataFromHtml(
+  html: string,
+  fallbackSlug: string
+): AnimeAV1MediaData {
+  const cheerio = require('cheerio');
+  const $ = cheerio.load(String(html || ''));
+  const escapedSlug = fallbackSlug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const episodePath = new RegExp(`^/media/${escapedSlug}/(\\d+)/?$`);
+  const episodesByNumber = new Map<number, { id: number; number: number }>();
+
+  $('a[href]').each((_: any, element: any) => {
+    const href = String($(element).attr('href') || '').trim();
+    if (!href) return;
+
+    let pathname = href;
+    try {
+      pathname = new URL(href, 'https://animeav1.com').pathname;
+    } catch {
+      return;
+    }
+
+    const match = pathname.match(episodePath);
+    const episodeNumber = Number(match?.[1]);
+    if (!Number.isFinite(episodeNumber)) return;
+    episodesByNumber.set(episodeNumber, {
+      id: episodeNumber,
+      number: episodeNumber
+    });
+  });
+
+  const episodes = [...episodesByNumber.values()]
+    .sort((left, right) => left.number - right.number);
+  const title = $('h1').first().text().trim()
+    || $('meta[property="og:title"]').attr('content')?.trim()
+    || '';
+
+  return {
+    title,
+    slug: fallbackSlug,
+    episodes,
+    declaredEpisodesCount: episodes.length,
+    extractionSource: 'html'
+  };
+}
+
 export async function getAnimeAV1Media(slug: string): Promise<AnimeAV1MediaData> {
-  const url = `https://animeav1.com/media/${encodeURIComponent(slug)}/__data.json`;
-  const response = await axios.get(url, {
+  const baseUrl = `https://animeav1.com/media/${encodeURIComponent(slug)}`;
+  const requestConfig = {
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
     },
     timeout: 8000
-  });
-  return extractAnimeAV1MediaData(response.data, slug);
+  };
+  let mediaFromData: AnimeAV1MediaData | null = null;
+  let dataError: unknown = null;
+
+  try {
+    const response = await axios.get(`${baseUrl}/__data.json`, requestConfig);
+    mediaFromData = extractAnimeAV1MediaData(response.data, slug);
+    if (mediaFromData.episodes.length > 0) return mediaFromData;
+  } catch (error) {
+    dataError = error;
+  }
+
+  try {
+    const response = await axios.get(baseUrl, requestConfig);
+    const mediaFromHtml = extractAnimeAV1MediaDataFromHtml(response.data, slug);
+    if (mediaFromHtml.episodes.length > 0) {
+      return {
+        ...mediaFromHtml,
+        title: mediaFromData?.title || mediaFromHtml.title
+      };
+    }
+  } catch (htmlError) {
+    if (!mediaFromData) throw dataError || htmlError;
+  }
+
+  if (mediaFromData) {
+    if (
+      mediaFromData.declaredEpisodesCount !== null
+      && mediaFromData.declaredEpisodesCount > 0
+    ) {
+      throw new Error(
+        `AnimeAV1 informa ${mediaFromData.declaredEpisodesCount} capítulos, pero no fue posible extraerlos.`
+      );
+    }
+    return mediaFromData;
+  }
+
+  throw dataError || new Error('AnimeAV1 no devolvió metadata ni capítulos de la serie.');
 }
 
 // Obtener la lista de episodios de un anime por su slug

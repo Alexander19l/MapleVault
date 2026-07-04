@@ -21,7 +21,9 @@ describe('rutas de episodios de AnimeAV1', () => {
         return {
           title: 'Boku no Hero Academia',
           slug,
-          episodes: [{ id: 1, number: 1 }]
+          episodes: [{ id: 1, number: 1 }],
+          declaredEpisodesCount: 1,
+          extractionSource: 'sveltekit' as const
         };
       }
 
@@ -31,7 +33,9 @@ describe('rutas de episodios de AnimeAV1', () => {
         episodes: [
           { id: 201, number: 1 },
           { id: 202, number: 2 }
-        ]
+        ],
+        declaredEpisodesCount: 2,
+        extractionSource: 'sveltekit' as const
       };
     });
     const getAnimeAV1Slug = vi.fn(async () => 'boku-no-hero-academia-2nd-season');
@@ -66,6 +70,8 @@ describe('rutas de episodios de AnimeAV1', () => {
       const body = await response.json() as {
         slug: string;
         episodes: Array<{ id: number; number: number }>;
+        availability: string;
+        extractionSource: string;
       };
 
       expect(response.status).toBe(200);
@@ -74,6 +80,8 @@ describe('rutas de episodios de AnimeAV1', () => {
         { id: 201, number: 1 },
         { id: 202, number: 2 }
       ]);
+      expect(body.availability).toBe('available');
+      expect(body.extractionSource).toBe('sveltekit');
       expect(getAnimeAV1Media).toHaveBeenNthCalledWith(1, 'boku-no-hero-academia');
       expect(getAnimeAV1Media).toHaveBeenNthCalledWith(2, 'boku-no-hero-academia-2nd-season');
       expect(getAnimeAV1Slug).toHaveBeenCalledWith(
@@ -91,6 +99,66 @@ describe('rutas de episodios de AnimeAV1', () => {
         'UPDATE anime SET animeav1_slug = ? WHERE id = ?',
         ['boku-no-hero-academia-2nd-season', 9317]
       );
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close(error => error ? reject(error) : resolve());
+      });
+    }
+  });
+
+  it('distingue una serie encontrada que todavía no tiene capítulos publicados', async () => {
+    const queryClient = {
+      get: vi.fn(async () => ({
+        id: 20,
+        title: 'Upcoming Anime',
+        title_romaji: 'Upcoming Anime',
+        title_english: 'Upcoming Anime',
+        animeav1_slug: 'upcoming-anime'
+      })),
+      all: vi.fn(async () => []),
+      run: vi.fn(async () => ({ lastID: 0, changes: 0 }))
+    };
+    const unused = vi.fn(async () => []);
+    const scraperService = {
+      getAnimeAV1Slug: vi.fn(async () => null),
+      getAnimeAV1Episodes: unused,
+      getAnimeAV1Media: vi.fn(async () => ({
+        title: 'Upcoming Anime',
+        slug: 'upcoming-anime',
+        episodes: [],
+        declaredEpisodesCount: 0,
+        extractionSource: 'sveltekit' as const
+      })),
+      getAnimeAV1Embeds: unused,
+      getTioAnimeSlug: vi.fn(async () => null),
+      getTioAnimeEpisodes: unused,
+      getTioAnimeServers: unused,
+      getJKAnimeSlug: vi.fn(async () => null),
+      getJKAnimeEpisodes: unused,
+      getJKAnimeServers: unused,
+      getAnimeFLVSlug: vi.fn(async () => null),
+      getAnimeFLVEpisodes: unused,
+      getAnimeFLVServers: unused
+    };
+    const app = express();
+    app.use(createEpisodeRouter({
+      queryClient: queryClient as any,
+      scraperService: scraperService as any
+    }));
+    const server = app.listen(0, '127.0.0.1');
+
+    try {
+      await new Promise<void>(resolve => server.once('listening', resolve));
+      const { port } = server.address() as AddressInfo;
+      const response = await fetch(`http://127.0.0.1:${port}/anime/20/episodes`);
+      const body = await response.json() as {
+        availability: string;
+        episodes: unknown[];
+      };
+
+      expect(response.status).toBe(200);
+      expect(body.availability).toBe('not_published');
+      expect(body.episodes).toEqual([]);
     } finally {
       await new Promise<void>((resolve, reject) => {
         server.close(error => error ? reject(error) : resolve());

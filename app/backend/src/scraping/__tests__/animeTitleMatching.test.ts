@@ -50,6 +50,27 @@ describe('coincidencia segura de títulos para proveedores de episodios', () => 
     )).toBe(true);
   });
 
+  it('tolera el sufijo editorial Mini usado por AnimeAV1', () => {
+    expect(isAnimeTitleMatch(
+      ['Super no Ura de Yani Suu Futari'],
+      'Super no Ura de Yani Suu Futari Mini'
+    )).toBe(true);
+  });
+
+  it('tolera diferencias de espaciado sin relajar las palabras del título', () => {
+    expect(isAnimeTitleMatch(
+      ['Kimi no Koto ga Dai Dai Dai Dai Daisuki na 100-nin no Kanojo'],
+      'Kimi no Koto ga Daidaidaidaidaisuki na 100-nin no Kanojo'
+    )).toBe(true);
+  });
+
+  it('normaliza el separador tipográfico y Cour como Part', () => {
+    expect(isAnimeTitleMatch(
+      ['SPY×FAMILY Part 2', 'SPY x FAMILY Cour 2'],
+      'Spy x Family Part 2'
+    )).toBe(true);
+  });
+
   it('normaliza ordinales equivalentes sin mezclar temporadas distintas', () => {
     expect(normalizeAnimeTitle('Boku no Hero Academia 2nd Season'))
       .toBe(normalizeAnimeTitle('Boku no Hero Academia Season 2'));
