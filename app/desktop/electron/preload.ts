@@ -59,7 +59,8 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'app-get-startup-settings',
   'app-set-startup-settings',
   'app-get-close-behavior',
-  'app-set-close-behavior'
+  'app-set-close-behavior',
+  'player-open'
 ]);
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -103,6 +104,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   backend: {
     getConfig: (): Promise<{ baseUrl: string; token: string }> => {
       return ipcRenderer.invoke('app-get-api-config');
+    }
+  },
+
+  player: {
+    open: (request: { url: string; title?: string; server?: string }): Promise<{
+      opened: boolean;
+      error?: string;
+    }> => {
+      return ipcRenderer.invoke('player-open', request);
     }
   },
 

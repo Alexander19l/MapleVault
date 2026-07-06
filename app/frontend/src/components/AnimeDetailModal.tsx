@@ -8,7 +8,8 @@ import {
   Clock,
   ArrowUpDown,
   CheckCircle2,
-  Video
+  Video,
+  MonitorPlay
 } from 'lucide-react';
 import { showConfirm } from '../utils/dialog';
 import { api } from '../services/api';
@@ -438,6 +439,30 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
       label: `Disponible en ${providerLabels[provider]}`,
       type: 'aired'
     };
+  };
+
+  const handleOpenStandalonePlayer = async () => {
+    if (!selectedServer?.url) return;
+
+    const playerApi = (window as any).electronAPI?.player;
+    if (!playerApi?.open) {
+      handleOpenExternal(selectedServer.url);
+      return;
+    }
+
+    try {
+      const result = await playerApi.open({
+        url: selectedServer.url,
+        title: `${anime?.title || 'Anime'} - Capitulo ${selectedEpisode || ''}`.trim(),
+        server: selectedServer.server
+      });
+      if (!result?.opened) {
+        notifications.error(result?.error || 'No se pudo abrir el reproductor independiente.');
+      }
+    } catch (error) {
+      console.error('Error al abrir el reproductor independiente:', error);
+      notifications.error('No se pudo abrir el reproductor independiente.');
+    }
   };
 
   const filteredEpisodes = episodes
@@ -936,17 +961,27 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
 
                         {/* Bottom action panel for the current online server */}
                         {selectedServer && (
-                          <div className="flex justify-between items-center bg-slate-900/40 border border-[var(--border-light)]/60 p-2.5 rounded-lg">
+                          <div className="flex flex-wrap justify-between items-center gap-2 bg-slate-900/40 border border-[var(--border-light)]/60 p-2.5 rounded-lg">
                             <span className="text-[10px] text-[var(--text-dim)]">
                               Servidor actual: <span className="font-bold text-[var(--text-muted)]">{selectedServer.server}</span>
                             </span>
-                            <button
-                              type="button"
-                              onClick={() => handleOpenExternal(selectedServer.url)}
-                              className="text-[10px] text-[var(--accent-primary)] hover:text-violet-400 hover:underline flex items-center space-x-1 cursor-pointer font-bold transition-all"
-                            >
-                              <span>Ver en navegador externo</span>
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={handleOpenStandalonePlayer}
+                                className="h-8 px-3 text-[11px] text-white bg-[var(--accent-primary)] hover:bg-violet-500 flex items-center gap-1.5 cursor-pointer font-bold transition-colors rounded-md"
+                              >
+                                <MonitorPlay className="h-4 w-4 shrink-0" />
+                                <span>Reproductor independiente</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenExternal(selectedServer.url)}
+                                className="h-8 px-2 text-[10px] text-[var(--accent-primary)] hover:text-violet-400 hover:underline flex items-center cursor-pointer font-bold transition-colors"
+                              >
+                                <span>Ver en navegador</span>
+                              </button>
+                            </div>
                           </div>
                         )}
                       </div>

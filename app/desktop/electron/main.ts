@@ -16,8 +16,14 @@ import {
 } from './launcher';
 import { initPlayerProtection, setPlayerProtectionMainWindow } from './adblock/playerProtection';
 import { resolveDesktopAssetPath, resolveWindowIconPath } from './desktopAssets';
+import {
+  getSafePlayerUrl,
+  sanitizePlayerLabel,
+  type PlayerOpenRequest
+} from './playerRequest';
 
 let mainWindow: BrowserWindow | null = null;
+let playerWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcess | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
@@ -43,6 +49,60 @@ interface StartupSettings {
   supported: boolean;
   enabled: boolean;
   reason?: string;
+}
+
+async function openPlayerWindow(request: PlayerOpenRequest): Promise<{
+  opened: boolean;
+  error?: string;
+}> {
+  const url = getSafePlayerUrl(request?.url);
+  if (!url) {
+    return { opened: false, error: 'La URL del reproductor no es valida.' };
+  }
+
+  const animeTitle = sanitizePlayerLabel(request?.title, 'Anime');
+  const server = sanitizePlayerLabel(request?.server, 'Servidor');
+  const windowTitle = `MapleVault Player - ${animeTitle} - ${server}`;
+
+  if (!playerWindow || playerWindow.isDestroyed()) {
+    playerWindow = new BrowserWindow({
+      width: 960,
+      height: 540,
+      minWidth: 640,
+      minHeight: 360,
+      useContentSize: true,
+      title: windowTitle,
+      icon: resolveWindowIconPath(),
+      backgroundColor: '#000000',
+      show: false,
+      autoHideMenuBar: true,
+      fullscreenable: true,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true,
+        backgroundThrottling: false
+      }
+    });
+    playerWindow.setMenu(null);
+    playerWindow.on('closed', () => {
+      playerWindow = null;
+    });
+  }
+
+  playerWindow.hide();
+  playerWindow.setTitle(windowTitle);
+  await playerWindow.loadFile(path.join(__dirname, 'player.html'), {
+    query: {
+      url,
+      title: windowTitle
+    }
+  });
+
+  if (playerWindow.isMinimized()) playerWindow.restore();
+  playerWindow.show();
+  playerWindow.focus();
+  return { opened: true };
 }
 
 function normalizeCloseBehavior(value: unknown): CloseBehavior {
@@ -401,6 +461,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('app-set-startup-settings', (_event, enabled: boolean) => setStartupSettings(Boolean(enabled)));
   ipcMain.handle('app-get-close-behavior', () => getCloseBehavior());
   ipcMain.handle('app-set-close-behavior', (_event, value: unknown) => setCloseBehavior(value));
+  ipcMain.handle('player-open', (_event, request: PlayerOpenRequest) => openPlayerWindow(request));
 
   ipcMain.handle('show-confirm', async (_event, message: string) => {
     const options: MessageBoxOptions = {
