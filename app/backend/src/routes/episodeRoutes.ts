@@ -17,6 +17,11 @@ import {
   getTioAnimeSlug
 } from '../scraping/scraper';
 import { validateAnimeAV1Identity } from '../scraping/animeAV1Identity';
+import {
+  decoratePlaybackServers,
+  requiresStandaloneAnimeAV1Player,
+  type EpisodeSourceLanguage
+} from '../episodes/playbackServer';
 import { validateId } from '../security/validators';
 import {
   clearAnimeSlug,
@@ -28,6 +33,7 @@ import {
   setEpisodeWatchedState
 } from './episodeRepository';
 import { getErrorMessage as getSharedErrorMessage } from './routeUtils';
+import { createExternalEpisodeRouter } from './externalEpisodeRoutes';
 
 type QueryClient = Pick<typeof query, 'get' | 'all' | 'run'>;
 
@@ -54,8 +60,10 @@ interface EpisodeRouterDependencies {
 }
 
 interface ProviderRouteConfig {
+  providerId: string;
   routePrefix: string;
   sourceLabel: string;
+  language: EpisodeSourceLanguage;
   slugColumn: string;
   getSlug: EpisodeScraperService['getTioAnimeSlug'];
   getEpisodes: EpisodeScraperService['getTioAnimeEpisodes'];
@@ -155,7 +163,11 @@ function registerProviderRoutes(
 
       const episodeUrl = config.buildEpisodeUrl(anime[config.slugColumn], number);
       const servers = await config.getServers(episodeUrl);
-      res.json(prioritizeServers(servers));
+      res.json(prioritizeServers(decoratePlaybackServers(servers, {
+        providerId: config.providerId,
+        language: config.language,
+        referer: episodeUrl
+      })));
     } catch (error: unknown) {
       res.status(500).json({ error: getErrorMessage(error) });
     }
@@ -327,15 +339,23 @@ export function createEpisodeRouter({
       }
 
       const embeds = await scraperService.getAnimeAV1Embeds(anime.animeav1_slug, number);
-      res.json(prioritizeServers(embeds));
+      const episodeUrl = `https://animeav1.com/media/${anime.animeav1_slug}/${number}`;
+      res.json(prioritizeServers(decoratePlaybackServers(embeds, {
+        providerId: 'animeav1',
+        language: 'es',
+        referer: episodeUrl,
+        forceWindow: requiresStandaloneAnimeAV1Player
+      })));
     } catch (error: unknown) {
       res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
   registerProviderRoutes(router, queryClient, {
+    providerId: 'tioanime',
     routePrefix: 'tioanime',
     sourceLabel: 'TioAnime',
+    language: 'es',
     slugColumn: 'tioanime_slug',
     getSlug: scraperService.getTioAnimeSlug,
     getEpisodes: scraperService.getTioAnimeEpisodes,
@@ -344,8 +364,10 @@ export function createEpisodeRouter({
   });
 
   registerProviderRoutes(router, queryClient, {
+    providerId: 'jkanime',
     routePrefix: 'jkanime',
     sourceLabel: 'JKAnime',
+    language: 'es',
     slugColumn: 'jkanime_slug',
     getSlug: scraperService.getJKAnimeSlug,
     getEpisodes: scraperService.getJKAnimeEpisodes,
@@ -354,14 +376,18 @@ export function createEpisodeRouter({
   });
 
   registerProviderRoutes(router, queryClient, {
+    providerId: 'animeflv',
     routePrefix: 'animeflv',
     sourceLabel: 'AnimeFLV',
+    language: 'es',
     slugColumn: 'animeflv_slug',
     getSlug: scraperService.getAnimeFLVSlug,
     getEpisodes: scraperService.getAnimeFLVEpisodes,
     getServers: scraperService.getAnimeFLVServers,
     buildEpisodeUrl: (slug, episodeNumber) => `https://www3.animeflv.net/ver/${slug}-${episodeNumber}`
   });
+
+  router.use(createExternalEpisodeRouter({ queryClient }));
 
   return router;
 }

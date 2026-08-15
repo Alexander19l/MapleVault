@@ -321,6 +321,23 @@ export async function initDb() {
     // La columna ya existe
   }
 
+  // Asociaciones regenerables para fuentes de episodios externas.
+  // Evita ampliar la tabla anime con una columna por cada proveedor nuevo.
+  await query.run(`
+    CREATE TABLE IF NOT EXISTS anime_episode_sources (
+      anime_id INTEGER NOT NULL,
+      provider_id TEXT NOT NULL,
+      external_key TEXT NOT NULL,
+      source_title TEXT NOT NULL,
+      source_url TEXT NOT NULL,
+      verified_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (anime_id, provider_id),
+      FOREIGN KEY (anime_id) REFERENCES anime(id) ON DELETE CASCADE
+    )
+  `);
+
   // Tabla: genres
   await query.run(`
     CREATE TABLE IF NOT EXISTS genres (
@@ -603,8 +620,15 @@ export async function initDb() {
 
   const defaultMangaSources = [
     { name: 'AniList Manga', url: 'https://graphql.anilist.co', language: 'multi', type: 'metadata', risk: 'low', limit: 1000 },
-    { name: 'MangaDex API', url: 'https://api.mangadex.org', language: 'multi', type: 'api', risk: 'medium', limit: 2000 }
+    { name: 'MangaDex API', url: 'https://api.mangadex.org', language: 'es/en', type: 'api', risk: 'medium', limit: 2000 },
+    { name: 'ZonaTMO', url: 'https://zonatmo.org', language: 'es', type: 'web', risk: 'high', limit: 60 },
+    { name: 'ShadeManga', url: 'https://shademanga.com/api', language: 'es', type: 'api', risk: 'medium', limit: 600 }
   ];
+
+  await query.run(`
+    DELETE FROM manga_sources
+    WHERE name IN ('ManhwaWeb', 'NovelCool ES')
+  `);
 
   for (const src of defaultMangaSources) {
     await query.run(`
@@ -628,6 +652,7 @@ export async function initDb() {
     `CREATE INDEX IF NOT EXISTS idx_anime_is_adult ON anime(is_adult)`,
     `CREATE INDEX IF NOT EXISTS idx_anime_source_external ON anime(source, external_id)`,
     `CREATE INDEX IF NOT EXISTS idx_anime_mal_id ON anime(mal_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_anime_episode_sources_provider ON anime_episode_sources(provider_id, anime_id)`,
     `CREATE INDEX IF NOT EXISTS idx_manga_title_nocase ON manga(title COLLATE NOCASE)`,
     `CREATE INDEX IF NOT EXISTS idx_manga_title_romaji_nocase ON manga(title_romaji COLLATE NOCASE)`,
     `CREATE INDEX IF NOT EXISTS idx_manga_source_external ON manga(source, external_id)`,

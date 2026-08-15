@@ -60,6 +60,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'app-set-startup-settings',
   'app-get-close-behavior',
   'app-set-close-behavior',
+  'manga-save-archive',
   'player-open'
 ]);
 
@@ -101,6 +102,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }
   },
 
+  manga: {
+    saveArchive: (request: { series: string; fileName: string; data: Uint8Array }): Promise<{ saved: boolean; path?: string; error?: string }> => {
+      return ipcRenderer.invoke('manga-save-archive', request);
+    }
+  },
+
   backend: {
     getConfig: (): Promise<{ baseUrl: string; token: string }> => {
       return ipcRenderer.invoke('app-get-api-config');
@@ -108,7 +115,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   player: {
-    open: (request: { url: string; title?: string; server?: string }): Promise<{
+    open: (request: {
+      url: string;
+      title?: string;
+      server?: string;
+      referer?: string;
+      mode?: 'embedded' | 'direct';
+    }): Promise<{
       opened: boolean;
       error?: string;
     }> => {

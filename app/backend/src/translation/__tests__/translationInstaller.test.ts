@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LibreTranslateInstaller } from '../translationInstaller';
 
 function createChildProcess() {
@@ -15,6 +15,11 @@ function createChildProcess() {
 }
 
 describe('LibreTranslateInstaller', () => {
+  afterEach(() => {
+    delete process.env.MAPLEVAULT_API_TOKEN;
+    delete process.env.MAPLEVAULT_CREDENTIAL_KEY;
+  });
+
   it('no reinstala cuando el servicio ya responde correctamente', async () => {
     const spawnProcess = vi.fn();
     const installer = new LibreTranslateInstaller({
@@ -34,8 +39,10 @@ describe('LibreTranslateInstaller', () => {
   });
 
   it('ejecuta solamente el script incluido y verifica el servicio al terminar', async () => {
+    process.env.MAPLEVAULT_API_TOKEN = 'backend-session-secret';
+    process.env.MAPLEVAULT_CREDENTIAL_KEY = 'credential-secret';
     const child = createChildProcess();
-    const spawnProcess = vi.fn(() => child);
+    const spawnProcess = vi.fn((..._args: any[]) => child);
     const ensureRuntime = vi.fn().mockResolvedValue({
       state: 'running',
       url: 'http://localhost:5001'
@@ -68,6 +75,10 @@ describe('LibreTranslateInstaller', () => {
       ]),
       expect.objectContaining({ windowsHide: true })
     );
+    const spawnOptions = spawnProcess.mock.calls[0][2] as { env?: NodeJS.ProcessEnv };
+    expect(spawnOptions.env?.PYTHONUTF8).toBe('1');
+    expect(spawnOptions.env?.MAPLEVAULT_API_TOKEN).toBeUndefined();
+    expect(spawnOptions.env?.MAPLEVAULT_CREDENTIAL_KEY).toBeUndefined();
 
     child.stdout.emit('data', '[LibreTranslate] Instalando modelo...');
     child.emit('exit', 0);

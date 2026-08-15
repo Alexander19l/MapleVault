@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { ChildProcess, spawn, spawnSync } from 'child_process';
 import { DB_PATH } from '../database/db';
+import { createSanitizedChildProcessEnv } from './childProcessEnv';
 import { getLibreTranslateApiBaseUrl, getTranslationSettings, type TranslationSettings } from './translationService';
 
 type RuntimeState = 'disabled' | 'already_running' | 'starting' | 'running' | 'unavailable' | 'error';
@@ -262,10 +263,7 @@ export async function ensureLibreTranslateRunning(settings = getTranslationSetti
     const child = spawn(candidate.command, candidate.args, {
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
-      env: {
-        ...process.env,
-        PYTHONUTF8: '1'
-      }
+      env: createSanitizedChildProcessEnv({ PYTHONUTF8: '1' })
     });
 
     child.stdout?.on('data', chunk => {

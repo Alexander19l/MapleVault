@@ -86,18 +86,25 @@ describe('Episode HTTP router', () => {
       episodes: [{ id: 1, number: 1 }]
     });
     scraperService.getAnimeAV1Embeds.mockResolvedValue([
-      { server: 'StreamSB' },
-      { server: 'Mega' }
+      { server: 'StreamSB', url: 'https://streamsb.example/embed/maple-1' },
+      { server: 'Mega', url: 'https://mega.example/embed/maple-1' }
     ]);
     scraperService.getTioAnimeSlug.mockResolvedValue('maple-tio');
     scraperService.getTioAnimeEpisodes.mockResolvedValue([{ number: 1 }]);
-    scraperService.getTioAnimeServers.mockResolvedValue([{ server: 'Okru' }]);
+    scraperService.getTioAnimeServers.mockResolvedValue([
+      { server: 'Okru', url: 'https://okru.example/embed/maple-1' }
+    ]);
     scraperService.getJKAnimeSlug.mockResolvedValue('maple-jk');
     scraperService.getJKAnimeEpisodes.mockResolvedValue([{ number: 1 }]);
-    scraperService.getJKAnimeServers.mockResolvedValue([{ server: '1fichier' }, { server: 'Okru' }]);
+    scraperService.getJKAnimeServers.mockResolvedValue([
+      { server: '1fichier', url: 'https://1fichier.example/embed/maple-1' },
+      { server: 'Okru', url: 'https://okru.example/embed/maple-1' }
+    ]);
     scraperService.getAnimeFLVSlug.mockResolvedValue('maple-flv');
     scraperService.getAnimeFLVEpisodes.mockResolvedValue([{ number: 1 }]);
-    scraperService.getAnimeFLVServers.mockResolvedValue([{ server: 'Streamtape' }]);
+    scraperService.getAnimeFLVServers.mockResolvedValue([
+      { server: 'Streamtape', url: 'https://streamtape.example/embed/maple-1' }
+    ]);
   });
 
   it('resuelve y cachea slug de AnimeAV1 antes de listar episodios', async () => {

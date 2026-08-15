@@ -44,25 +44,9 @@ export const MAPLEVAULT_PLAYER_CAPABILITIES = {
   note: 'El reproductor actual abre URLs HTTP/HTTPS aisladas. HLS requiere un adaptador dedicado y los torrents no se ejecutan.'
 };
 
-// Shortlist deliberadamente acotada: cinco integraciones nuevas, con un máximo de dos en inglés.
+// Shortlist deliberadamente acotada: cuatro integraciones nuevas, con un máximo de dos en inglés.
 // Ninguna se activa hasta que exista un adaptador probado y una configuración explícita del usuario.
 export const RECOMMENDED_ANIME_SOURCE_INTEGRATIONS: RecommendedAnimeSourceIntegration[] = [
-  {
-    id: 'jellyfin-local',
-    name: 'Jellyfin local',
-    referenceUrl: 'https://jellyfin.org/docs/',
-    repository: 'https://github.com/jellyfin/jellyfin',
-    languages: ['multi'],
-    languageLabel: 'Multilenguaje',
-    category: 'local-media-server',
-    transports: ['direct-mp4', 'hls', 'local-file'],
-    playerSupport: 'partial',
-    integrationStatus: 'planned',
-    risk: 'low',
-    enabledByDefault: false,
-    requiresExternalService: true,
-    recommendation: 'Primera integración recomendada: biblioteca controlada por el usuario, API estable y reproducción directa o HLS.'
-  },
   {
     id: 'seanime-local-bridge',
     name: 'Seanime local',
@@ -171,7 +155,29 @@ export const MEDIA_SOURCE_CANDIDATES: MediaSourceCandidate[] = [
     use: ['metadata', 'manga-provider'],
     risk: 'medium',
     enabledByDefault: false,
-    notes: 'Candidato principal para manga por API pública; requiere manejo de idioma, scanlation y rate limits.'
+    notes: 'Proveedor principal por API pública; requiere manejo de idioma, scanlation y rate limits.'
+  },
+  {
+    id: 'zonatmo',
+    name: 'ZonaTMO',
+    url: 'https://zonatmo.org',
+    content: 'manga',
+    languages: ['es'],
+    use: ['manga-provider'],
+    risk: 'high',
+    enabledByDefault: false,
+    notes: 'Adaptador operativo en español con límites conservadores; requiere revisión periódica de permisos, términos y estabilidad.'
+  },
+  {
+    id: 'shademanga',
+    name: 'ShadeManga',
+    url: 'https://shademanga.com/api',
+    content: 'manga',
+    languages: ['es'],
+    use: ['metadata', 'manga-provider'],
+    risk: 'medium',
+    enabledByDefault: false,
+    notes: 'Adaptador operativo sobre endpoints JSON públicos; limita contenido adulto y valida la CDN de imágenes.'
   },
   {
     id: 'seanime-providers',

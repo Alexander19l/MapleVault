@@ -18,12 +18,27 @@ import { Modal } from './ui/Modal';
 import { AnimeDetailHero } from './anime/AnimeDetailHero';
 import { Button } from './ui/button';
 import { notifications } from '../utils/notify';
+import {
+  EpisodeLanguageFlag,
+  EpisodeProviderSelect,
+  getEpisodeProvider,
+  type EpisodeProviderId
+} from './anime/EpisodeProviderSelect';
 
 interface AnimeDetailModalProps {
   animeId: number | null;
   externalAnime?: any;
   onClose: () => void;
   onRefresh: () => void;
+}
+
+interface EpisodePlaybackServer {
+  server: string;
+  url: string;
+  referer?: string;
+  providerId?: string;
+  language?: 'es' | 'en';
+  playbackMode?: 'inline' | 'window' | 'direct-window';
 }
 
 const filterAnimeTimelineRelations = (items: any[] = []) => (
@@ -69,7 +84,7 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
   const [embeds, setEmbeds] = useState<any>(null);
   const [loadingEmbeds, setLoadingEmbeds] = useState(false);
   const [selectedVariant, setSelectedVariant] = useState<string>('SUB');
-  const [selectedServer, setSelectedServer] = useState<{ server: string; url: string } | null>(null);
+  const [selectedServer, setSelectedServer] = useState<EpisodePlaybackServer | null>(null);
 
   // Rich Episode detail states
   const [watchedEpisodes, setWatchedEpisodes] = useState<number[]>([]);
@@ -78,7 +93,7 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
   const [episodeFilter, setEpisodeFilter] = useState<'all' | 'watched' | 'pending'>('all');
   
   // Scraper source provider toggle
-  const [provider, setProvider] = useState<'animeav1' | 'tioanime' | 'jkanime' | 'animeflv'>('animeav1');
+  const [provider, setProvider] = useState<EpisodeProviderId>('animeav1');
 
   const loadAnimeDetails = useCallback(async (targetId: number) => {
     try {
@@ -212,8 +227,10 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
         res = await api.getTioAnimeEpisodes(currentAnimeId);
       } else if (provider === 'jkanime') {
         res = await api.getJKAnimeEpisodes(currentAnimeId);
-      } else {
+      } else if (provider === 'animeflv') {
         res = await api.getAnimeFLVEpisodes(currentAnimeId);
+      } else {
+        res = await api.getExternalSourceEpisodes(provider, currentAnimeId);
       }
       if (requestId === episodesRequestId.current) {
         const extractedEpisodes = res.episodes || [];
@@ -297,9 +314,11 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
       } else if (provider === 'jkanime') {
         res = await api.getJKAnimeServers(currentAnimeId, num);
         if (Array.isArray(res)) res = { SUB: res };
-      } else {
+      } else if (provider === 'animeflv') {
         res = await api.getAnimeFLVServers(currentAnimeId, num);
         if (Array.isArray(res)) res = { SUB: res };
+      } else {
+        res = await api.getExternalSourceServers(provider, currentAnimeId, num);
       }
       
       setEmbeds(res);
@@ -429,32 +448,29 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
   };
 
   const getEpisodeStatus = () => {
-    const providerLabels = {
-      animeav1: 'AnimeAV1',
-      tioanime: 'TioAnime',
-      jkanime: 'JKAnime',
-      animeflv: 'AnimeFLV'
-    };
     return {
-      label: `Disponible en ${providerLabels[provider]}`,
+      label: `Disponible en ${getEpisodeProvider(provider).label}`,
       type: 'aired'
     };
   };
 
-  const handleOpenStandalonePlayer = async () => {
-    if (!selectedServer?.url) return;
+  const handleOpenStandalonePlayer = async (serverOverride?: EpisodePlaybackServer) => {
+    const serverToOpen = serverOverride || selectedServer;
+    if (!serverToOpen?.url) return;
 
     const playerApi = (window as any).electronAPI?.player;
     if (!playerApi?.open) {
-      handleOpenExternal(selectedServer.url);
+      handleOpenExternal(serverToOpen.url);
       return;
     }
 
     try {
       const result = await playerApi.open({
-        url: selectedServer.url,
+        url: serverToOpen.url,
         title: `${anime?.title || 'Anime'} - Capitulo ${selectedEpisode || ''}`.trim(),
-        server: selectedServer.server
+        server: serverToOpen.server,
+        referer: serverToOpen.referer,
+        mode: serverToOpen.playbackMode === 'direct-window' ? 'direct' : 'embedded'
       });
       if (!result?.opened) {
         notifications.error(result?.error || 'No se pudo abrir el reproductor independiente.');
@@ -666,7 +682,7 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
                 <div className="flex flex-col items-center justify-center py-16 space-y-3">
                   <div className="h-9 w-9 border-3 border-[var(--accent-primary)] border-t-transparent rounded-full animate-spin"></div>
                   <p className="text-xs text-[var(--text-dim)] font-semibold flex items-center justify-center">
-                    Buscando capítulos en {provider.toUpperCase()}...
+                    Buscando capítulos en {getEpisodeProvider(provider).label}...
                   </p>
                 </div>
               ) : episodesError ? (
@@ -675,32 +691,24 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
                   
                   {/* Source Toggle inside error callout to allow easy recovery */}
                   <div className="flex justify-center pt-2">
-                    <select
+                    <EpisodeProviderSelect
                       value={provider}
-                      onChange={(e) => setProvider(e.target.value as any)}
-                      className="bg-[var(--bg-elevated)] border border-[var(--border-medium)] text-xs font-bold px-3 py-1.5 rounded-lg text-[var(--text-main)] focus:outline-none cursor-pointer"
-                    >
-                      <option value="animeav1">Buscar en AnimeAV1</option>
-                      <option value="tioanime">Buscar en TioAnime</option>
-                      <option value="jkanime">Buscar en JKAnime</option>
-                      <option value="animeflv">Buscar en AnimeFLV</option>
-                    </select>
+                      onChange={setProvider}
+                      actionLabel="Buscar en"
+                      className="w-full max-w-sm"
+                    />
                   </div>
                 </div>
               ) : episodes.length === 0 ? (
                 <div className="p-10 text-center text-[var(--text-dim)] text-xs border border-[var(--border-light)] border-dashed rounded-2xl bg-slate-900/10 space-y-3">
                   <p>No hay episodios disponibles para esta serie en este momento en la fuente seleccionada.</p>
                   <div className="flex justify-center pt-2">
-                    <select
+                    <EpisodeProviderSelect
                       value={provider}
-                      onChange={(e) => setProvider(e.target.value as any)}
-                      className="bg-[var(--bg-elevated)] border border-[var(--border-medium)] text-xs font-bold px-3 py-1.5 rounded-lg text-[var(--text-main)] focus:outline-none cursor-pointer"
-                    >
-                      <option value="animeav1">Cambiar a AnimeAV1</option>
-                      <option value="tioanime">Cambiar a TioAnime</option>
-                      <option value="jkanime">Cambiar a JKAnime</option>
-                      <option value="animeflv">Cambiar a AnimeFLV</option>
-                    </select>
+                      onChange={setProvider}
+                      actionLabel="Cambiar a"
+                      className="w-full max-w-sm"
+                    />
                   </div>
                 </div>
               ) : (
@@ -727,16 +735,10 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
                       <div className="flex items-center space-x-2">
                         {/* Provider Select */}
                         <div className="flex-1">
-                          <select
+                          <EpisodeProviderSelect
                             value={provider}
-                            onChange={(e) => setProvider(e.target.value as any)}
-                            className="w-full bg-[var(--bg-elevated)] border border-[var(--border-medium)] text-[10px] font-bold px-2 py-2 rounded-lg text-[var(--text-main)] focus:outline-none focus:border-[var(--accent-primary)] cursor-pointer"
-                          >
-                            <option value="animeav1">Fuente: AnimeAV1</option>
-                            <option value="tioanime">Fuente: TioAnime</option>
-                            <option value="jkanime">Fuente: JKAnime</option>
-                            <option value="animeflv">Fuente: AnimeFLV</option>
-                          </select>
+                            onChange={setProvider}
+                          />
                         </div>
                         {/* Sort Order Toggle */}
                         <button
@@ -801,11 +803,20 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
                             >
                               {/* Left side: Thumbnail preview layout */}
                               <div className="relative w-24 aspect-video rounded-lg overflow-hidden bg-black shrink-0 border border-[var(--border-medium)] mr-3">
-                                <img
-                                  src={anime.banner_image || anime.cover_image || ''}
-                                  alt={`Capítulo ${ep.number}`}
-                                  className="w-full h-full object-cover opacity-80"
-                                />
+                                {anime.banner_image || anime.cover_image ? (
+                                  <img
+                                    src={anime.banner_image || anime.cover_image}
+                                    alt={`Capítulo ${ep.number}`}
+                                    className="w-full h-full object-cover opacity-80"
+                                  />
+                                ) : (
+                                  <div
+                                    className="flex h-full w-full items-center justify-center bg-[var(--bg-elevated)] text-[var(--text-dim)]"
+                                    aria-hidden="true"
+                                  >
+                                    <MonitorPlay className="h-5 w-5" />
+                                  </div>
+                                )}
                                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-1">
                                   <span className="text-[9px] font-bold text-white bg-black/70 px-1 rounded">
                                     Cap. {ep.number}
@@ -865,8 +876,9 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
                                   </span>
 
                                   {/* Source Metadata */}
-                                  <span className="text-[9px] font-bold text-[var(--text-dim)] uppercase bg-slate-900/60 px-1.5 py-0.5 border border-[var(--border-soft)] rounded">
-                                    {provider === 'animeav1' ? 'AnimeAV1' : 'TioAnime'}
+                                  <span className="flex items-center gap-1.5 text-[9px] font-bold text-[var(--text-dim)] uppercase bg-slate-900/60 px-1.5 py-0.5 border border-[var(--border-soft)] rounded">
+                                    <EpisodeLanguageFlag language={getEpisodeProvider(provider).language} />
+                                    {getEpisodeProvider(provider).label}
                                   </span>
                                 </div>
                               </div>
@@ -889,7 +901,7 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
                               Capítulo {selectedEpisode}
                             </h4>
                             <p className="text-[10px] text-[var(--text-dim)] mt-0.5">
-                              Reproducción de video en línea ({provider === 'animeav1' ? 'AnimeAV1' : 'TioAnime'})
+                              Reproducción de video en línea ({getEpisodeProvider(provider).label})
                             </p>
                           </div>
 
@@ -923,7 +935,12 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
                                 <button
                                   key={idx}
                                   type="button"
-                                  onClick={() => setSelectedServer(srv)}
+                                  onClick={() => {
+                                    setSelectedServer(srv);
+                                    if (srv.playbackMode === 'window' || srv.playbackMode === 'direct-window') {
+                                      void handleOpenStandalonePlayer(srv);
+                                    }
+                                  }}
                                   className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-colors cursor-pointer ${
                                     selectedServer?.server === srv.server && selectedServer?.url === srv.url
                                       ? 'bg-[var(--accent-secondary)] text-slate-950 font-extrabold'
@@ -944,13 +961,32 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
                               <div className="h-8 w-8 border-3 border-[var(--accent-secondary)] border-t-transparent rounded-full animate-spin"></div>
                               <p className="text-xs text-[var(--text-dim)] font-semibold">Cargando servidores...</p>
                             </div>
+                          ) : selectedServer?.playbackMode === 'window' || selectedServer?.playbackMode === 'direct-window' ? (
+                            <div className="flex max-w-sm flex-col items-center gap-3 px-6 text-center">
+                              <MonitorPlay className="h-8 w-8 text-[var(--accent-secondary)]" />
+                              <div>
+                                <p className="text-sm font-bold text-[var(--text-main)]">
+                                  Reproductor protegido
+                                </p>
+                                <p className="mt-1 text-xs text-[var(--text-dim)]">
+                                  Este servidor se abre en una ventana aislada para conservar su origen de reproducción.
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => void handleOpenStandalonePlayer()}
+                                className="h-9 px-4 text-xs text-white bg-[var(--accent-primary)] hover:bg-violet-500 flex items-center gap-2 cursor-pointer font-bold transition-colors rounded-md"
+                              >
+                                <MonitorPlay className="h-4 w-4 shrink-0" />
+                                <span>Abrir reproductor</span>
+                              </button>
+                            </div>
                           ) : selectedServer ? (
                             <iframe
                               src={selectedServer.url}
                               className="absolute inset-0 w-full h-full border-none"
                               allowFullScreen
                               allow="autoplay; encrypted-media; picture-in-picture"
-                              referrerPolicy="no-referrer"
                             />
                           ) : (
                             <div className="text-[var(--text-dim)] text-xs text-center px-4">
@@ -968,7 +1004,7 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
                             <div className="flex items-center gap-2">
                               <button
                                 type="button"
-                                onClick={handleOpenStandalonePlayer}
+                                onClick={() => void handleOpenStandalonePlayer()}
                                 className="h-8 px-3 text-[11px] text-white bg-[var(--accent-primary)] hover:bg-violet-500 flex items-center gap-1.5 cursor-pointer font-bold transition-colors rounded-md"
                               >
                                 <MonitorPlay className="h-4 w-4 shrink-0" />

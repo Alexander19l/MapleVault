@@ -164,7 +164,7 @@ describe('System HTTP router', () => {
       httpsEmbed: 'supported',
       torrent: 'unsupported'
     });
-    expect(json.selected).toHaveLength(5);
+    expect(json.selected).toHaveLength(4);
     expect(json.selected.filter((source: any) => source.languages.includes('en'))).toHaveLength(2);
     expect(json.selected.every((source: any) => source.enabledByDefault === false)).toBe(true);
     expect(json.candidates).toEqual(

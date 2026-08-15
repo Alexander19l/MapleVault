@@ -5,11 +5,11 @@ import {
 } from '../../src/sources/mediaSourceCandidates';
 
 describe('selección de integraciones de anime', () => {
-  it('limita la shortlist a cinco fuentes nuevas y dos en inglés', () => {
+  it('limita la shortlist a cuatro fuentes nuevas y dos en inglés', () => {
     const sources = getRecommendedAnimeSourceIntegrations();
 
-    expect(sources).toHaveLength(5);
-    expect(new Set(sources.map(source => source.id)).size).toBe(5);
+    expect(sources).toHaveLength(4);
+    expect(new Set(sources.map(source => source.id)).size).toBe(4);
     expect(sources.filter(source => source.languages.includes('en'))).toHaveLength(2);
     expect(sources.every(source => source.enabledByDefault === false)).toBe(true);
   });

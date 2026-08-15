@@ -7,6 +7,7 @@ import {
   getLibreTranslateRuntimeStatus
 } from './translationRuntime';
 import { getTranslationSettings } from './translationService';
+import { createSanitizedChildProcessEnv } from './childProcessEnv';
 
 export type TranslationInstallState =
   | 'idle'
@@ -145,10 +146,7 @@ export class LibreTranslateInstaller {
       {
         stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true,
-        env: {
-          ...process.env,
-          PYTHONUTF8: '1'
-        }
+        env: createSanitizedChildProcessEnv({ PYTHONUTF8: '1' })
       }
     );
 

@@ -32,6 +32,8 @@ Al reinstalar, el instalador permite seleccionar **Iniciar con biblioteca y ajus
 - Importación normalizada desde AniList y fuentes de scraping configuradas.
 - Lista personal con estados: viendo, pendiente, completado y abandonado.
 - Seguimiento de episodios vistos, progreso y estados personales.
+- Manga con proveedores aislados, capítulos bajo demanda y lector interno configurable.
+- Lector de manga con modo página o continuo, dirección izquierda-derecha/derecha-izquierda, zoom, brillo, ajuste de ancho, pantalla completa y preferencias persistentes.
 - Maple Assistant con motor regex local y soporte opcional de Ollama.
 - Acciones del asistente protegidas por token de confirmación.
 - Endpoint `GET /chat/capabilities` para consultar funciones, acciones y ejemplos del asistente.

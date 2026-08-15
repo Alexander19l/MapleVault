@@ -285,6 +285,7 @@ export interface MangaItem {
 
 export interface MangaSourceOverview {
   policy: string;
+  providers: MangaOnlineProvider[];
   configured: Array<{
     id: number;
     name: string;
@@ -306,6 +307,46 @@ export interface MangaSourceOverview {
     enabledByDefault: boolean;
     notes: string;
   }>;
+}
+
+export interface MangaOnlineProvider {
+  id: 'mangadex' | 'zonatmo' | 'shademanga' | string;
+  label: string;
+  baseUrl: string;
+  languages: string[];
+  status: 'active';
+  enabled: boolean;
+  notes: string;
+}
+
+export interface MangaOnlineSearchItem {
+  id: string;
+  title: string;
+  titleEnglish?: string;
+  titleRomaji?: string;
+  synopsis?: string;
+  status?: string;
+  year?: number;
+  contentRating?: string;
+  coverUrl?: string;
+  sourceUrl: string;
+}
+
+export interface MangaOnlineChapter {
+  id: string;
+  number?: number;
+  volume?: string;
+  title?: string;
+  language: 'es' | 'en';
+  group?: string;
+  publishedAt?: string;
+  sourceUrl: string;
+}
+
+export interface MangaOnlinePages {
+  chapterId: string;
+  quality: 'data' | 'data-saver';
+  pages: string[];
 }
 
 export interface AgentSystemOverview {

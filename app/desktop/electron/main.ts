@@ -14,16 +14,24 @@ import {
   showErrorDiagnostics,
   getDatabasePaths
 } from './launcher';
-import { initPlayerProtection, setPlayerProtectionMainWindow } from './adblock/playerProtection';
+import {
+  initPlayerProtection,
+  PLAYER_SESSION_PARTITION,
+  setPlayerProtectionMainWindow,
+  setPlayerRequestContext
+} from './adblock/playerProtection';
 import { resolveDesktopAssetPath, resolveWindowIconPath } from './desktopAssets';
 import {
+  getSafePlayerReferer,
   getSafePlayerUrl,
+  getSafePlayerWindowMode,
   sanitizePlayerLabel,
   type PlayerOpenRequest
 } from './playerRequest';
 
 let mainWindow: BrowserWindow | null = null;
 let playerWindow: BrowserWindow | null = null;
+let playerDirectOrigin: string | null = null;
 let backendProcess: ChildProcess | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
@@ -62,6 +70,11 @@ async function openPlayerWindow(request: PlayerOpenRequest): Promise<{
 
   const animeTitle = sanitizePlayerLabel(request?.title, 'Anime');
   const server = sanitizePlayerLabel(request?.server, 'Servidor');
+  const referer = getSafePlayerReferer(request?.referer);
+  const mode = getSafePlayerWindowMode(request?.mode);
+  if (mode === 'direct' && !referer) {
+    return { opened: false, error: 'La fuente directa no proporcionó un origen válido.' };
+  }
   const windowTitle = `MapleVault Player - ${animeTitle} - ${server}`;
 
   if (!playerWindow || playerWindow.isDestroyed()) {
@@ -81,24 +94,54 @@ async function openPlayerWindow(request: PlayerOpenRequest): Promise<{
         nodeIntegration: false,
         contextIsolation: true,
         sandbox: true,
-        backgroundThrottling: false
+        backgroundThrottling: false,
+        partition: PLAYER_SESSION_PARTITION
       }
     });
     playerWindow.setMenu(null);
+    playerWindow.webContents.on('page-title-updated', event => event.preventDefault());
+    const keepPlayerOnAllowedOrigin = (event: Electron.Event, navigationUrl: string) => {
+      try {
+        const isAllowed = playerDirectOrigin
+          ? new URL(navigationUrl).origin === playerDirectOrigin
+          : navigationUrl.startsWith('file:');
+        if (!isAllowed) event.preventDefault();
+      } catch {
+        event.preventDefault();
+      }
+    };
+    playerWindow.webContents.on('will-navigate', keepPlayerOnAllowedOrigin);
+    playerWindow.webContents.on('will-redirect', keepPlayerOnAllowedOrigin);
     playerWindow.on('closed', () => {
+      setPlayerRequestContext(null);
+      playerDirectOrigin = null;
       playerWindow = null;
     });
   }
 
   playerWindow.hide();
   playerWindow.setTitle(windowTitle);
-  await playerWindow.loadFile(path.join(__dirname, 'player.html'), {
-    query: {
-      url,
-      title: windowTitle
+  setPlayerRequestContext(referer ? { targetUrl: url, referer } : null);
+  try {
+    if (mode === 'direct') {
+      playerDirectOrigin = new URL(url).origin;
+      await playerWindow.loadURL(url, { httpReferrer: referer! });
+    } else {
+      playerDirectOrigin = null;
+      await playerWindow.loadFile(path.join(__dirname, 'player.html'), {
+        query: {
+          url,
+          title: windowTitle
+        }
+      });
     }
-  });
+  } catch (error) {
+    setPlayerRequestContext(null);
+    playerDirectOrigin = null;
+    throw error;
+  }
 
+  playerWindow.setTitle(windowTitle);
   if (playerWindow.isMinimized()) playerWindow.restore();
   playerWindow.show();
   playerWindow.focus();
@@ -107,6 +150,41 @@ async function openPlayerWindow(request: PlayerOpenRequest): Promise<{
 
 function normalizeCloseBehavior(value: unknown): CloseBehavior {
   return value === 'minimize' || value === 'quit' || value === 'ask' ? value : 'ask';
+}
+
+function sanitizeMangaPathPart(value: unknown, fallback: string): string {
+  const cleaned = String(value || fallback)
+    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[. ]+$/g, '');
+  return (cleaned || fallback).slice(0, 120);
+}
+
+async function saveMangaArchive(request: {
+  series?: unknown;
+  fileName?: unknown;
+  data?: unknown;
+}): Promise<{ saved: boolean; path?: string; error?: string }> {
+  const rawData = request?.data;
+  if (!rawData || (!ArrayBuffer.isView(rawData) && !(rawData instanceof ArrayBuffer))) {
+    return { saved: false, error: 'El archivo de manga no es válido.' };
+  }
+
+  const data = rawData instanceof ArrayBuffer
+    ? Buffer.from(rawData)
+    : Buffer.from(rawData.buffer, rawData.byteOffset, rawData.byteLength);
+  if (data.length === 0 || data.length > 256 * 1024 * 1024) {
+    return { saved: false, error: 'El archivo de manga supera el tamaño permitido.' };
+  }
+
+  const series = sanitizeMangaPathPart(request.series, 'Manga');
+  const fileName = sanitizeMangaPathPart(request.fileName, 'capitulo.zip').replace(/\.zip$/i, '') + '.zip';
+  const targetDirectory = path.join(app.getPath('downloads'), 'MapleVault', 'Mangas', series);
+  const targetPath = path.join(targetDirectory, fileName);
+  await fs.promises.mkdir(targetDirectory, { recursive: true });
+  await fs.promises.writeFile(targetPath, data, { flag: 'w' });
+  return { saved: true, path: targetPath };
 }
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -461,6 +539,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('app-set-startup-settings', (_event, enabled: boolean) => setStartupSettings(Boolean(enabled)));
   ipcMain.handle('app-get-close-behavior', () => getCloseBehavior());
   ipcMain.handle('app-set-close-behavior', (_event, value: unknown) => setCloseBehavior(value));
+  ipcMain.handle('manga-save-archive', (_event, request) => saveMangaArchive(request));
   ipcMain.handle('player-open', (_event, request: PlayerOpenRequest) => openPlayerWindow(request));
 
   ipcMain.handle('show-confirm', async (_event, message: string) => {

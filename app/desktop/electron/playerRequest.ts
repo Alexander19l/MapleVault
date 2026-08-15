@@ -2,7 +2,11 @@ export interface PlayerOpenRequest {
   url?: unknown;
   title?: unknown;
   server?: unknown;
+  referer?: unknown;
+  mode?: unknown;
 }
+
+export type PlayerWindowMode = 'embedded' | 'direct';
 
 export function getSafePlayerUrl(value: unknown): string | null {
   if (typeof value !== 'string' || value.length === 0 || value.length > 4096) return null;
@@ -16,6 +20,14 @@ export function getSafePlayerUrl(value: unknown): string | null {
   } catch {
     return null;
   }
+}
+
+export function getSafePlayerReferer(value: unknown): string | null {
+  return getSafePlayerUrl(value);
+}
+
+export function getSafePlayerWindowMode(value: unknown): PlayerWindowMode {
+  return value === 'direct' ? 'direct' : 'embedded';
 }
 
 export function sanitizePlayerLabel(value: unknown, fallback: string): string {

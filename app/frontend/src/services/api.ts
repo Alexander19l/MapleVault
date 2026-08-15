@@ -9,6 +9,9 @@ import type {
   DatabaseBackup,
   AgentSystemOverview,
   MangaItem,
+  MangaOnlineChapter,
+  MangaOnlinePages,
+  MangaOnlineSearchItem,
   MangaSourceOverview,
   SourceCandidatesOverview
 } from '../types';
@@ -242,6 +245,57 @@ export const api = {
   getMangaSources: async (): Promise<MangaSourceOverview> => {
     const response = await client.get('/manga/sources');
     return response.data;
+  },
+
+  searchMangaOnline: async (q: string, limit = 20, source = 'mangadex'): Promise<{ results: MangaOnlineSearchItem[] }> => {
+    const response = await client.get('/manga/online/search', { params: { q, limit, source } });
+    return response.data;
+  },
+
+  getMangaOnlineDetails: async (
+    mangaId: string,
+    source = 'mangadex'
+  ): Promise<{ manga: MangaOnlineSearchItem }> => {
+    const response = await client.get(`/manga/online/${encodeURIComponent(mangaId)}/details`, {
+      params: { source }
+    });
+    return response.data;
+  },
+
+  getMangaOnlineChapters: async (
+    mangaId: string,
+    languages: Array<'es' | 'en'> = ['es', 'en'],
+    source = 'mangadex'
+  ): Promise<{ chapters: MangaOnlineChapter[] }> => {
+    const response = await client.get(`/manga/online/${encodeURIComponent(mangaId)}/chapters`, {
+      params: { languages: languages.join(','), source }
+    });
+    return response.data;
+  },
+
+  getMangaOnlinePages: async (
+    chapterId: string,
+    quality: 'data' | 'data-saver' = 'data-saver',
+    source = 'mangadex'
+  ): Promise<MangaOnlinePages> => {
+    const response = await client.get(`/manga/online/chapters/${encodeURIComponent(chapterId)}/pages`, {
+      params: { quality, source }
+    });
+    return response.data;
+  },
+
+  downloadMangaOnlineChapter: async (
+    chapterId: string,
+    series: string,
+    chapter: string,
+    quality: 'data' | 'data-saver' = 'data-saver',
+    source = 'mangadex'
+  ): Promise<Blob> => {
+    const response = await client.get(`/manga/online/chapters/${encodeURIComponent(chapterId)}/download`, {
+      params: { quality, series, chapter, source },
+      responseType: 'blob'
+    });
+    return response.data as Blob;
   },
 
   // Chatbot Maple Assistant
@@ -485,6 +539,23 @@ export const api = {
 
   getAnimeFLVServers: async (id: number, episodeNumber: number) => {
     const response = await client.get(`/animeflv/${id}/episodes/${episodeNumber}/servers`);
+    return response.data;
+  },
+
+  getExternalEpisodeSources: async () => {
+    const response = await client.get('/episode-sources');
+    return response.data;
+  },
+
+  getExternalSourceEpisodes: async (providerId: string, animeId: number) => {
+    const response = await client.get(`/episode-sources/${providerId}/anime/${animeId}/episodes`);
+    return response.data;
+  },
+
+  getExternalSourceServers: async (providerId: string, animeId: number, episodeNumber: number) => {
+    const response = await client.get(
+      `/episode-sources/${providerId}/anime/${animeId}/episodes/${episodeNumber}/servers`
+    );
     return response.data;
   },
 };
