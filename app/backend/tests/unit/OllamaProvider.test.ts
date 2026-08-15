@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+﻿import { describe, it, expect, vi, beforeEach } from 'vitest';
 import axios from 'axios';
 import { parseIntent } from '../../src/chatbot/nlpEngine';
 import { getAISettings } from '../../src/chatbot/aiSettings';
@@ -31,17 +31,26 @@ describe('OllamaProvider / NLPEngine', () => {
     });
   });
 
-  it('deberia conectarse a Ollama y retornar intencion valida', async () => {
+  it('resuelve intenciones claras por regex sin gastar una llamada a Ollama', async () => {
+    const result = await parseIntent('buscame algo de romance');
+
+    expect(mockedAxios.post).not.toHaveBeenCalled();
+    expect(result.intent).toBe('RECOMMEND_GENERAL');
+    expect(result.entities?.genre).toBe('romance');
+    expect(result.engine).toBe('regex');
+  });
+
+  it('usa Ollama solo cuando regex no reconoce la intencion', async () => {
     mockedAxios.post.mockResolvedValue({
       data: {
         response: JSON.stringify({
           intent: 'SEARCH_ANIME',
-          entities: { genre: 'romance' }
+          entities: { animeTitle: 'Naruto', query: 'Naruto' }
         })
       }
     });
 
-    const result = await parseIntent('buscame algo de romance');
+    const result = await parseIntent('naruto');
 
     expect(mockedAxios.post).toHaveBeenCalledWith(
       'http://localhost:11434/api/generate',
@@ -56,14 +65,17 @@ describe('OllamaProvider / NLPEngine', () => {
       })
     );
     expect(result.intent).toBe('SEARCH_ANIME');
-    expect(result.entities?.genre).toBe('romance');
+    expect(result.entities?.query).toBe('Naruto');
+    expect(result.engine).toBe('ollama');
   });
 
-  it('deberia caer a regex si Ollama no responde', async () => {
+  it('conserva el resultado regex si Ollama no responde', async () => {
     mockedAxios.post.mockRejectedValue(new Error('Connection refused'));
 
-    const result = await parseIntent('buscame algo');
+    const result = await parseIntent('naruto');
 
-    expect(result.intent).toBe('SEARCH_ANIME');
+    expect(mockedAxios.post).toHaveBeenCalled();
+    expect(result.intent).toBe('UNKNOWN');
+    expect(result.engine).toBe('regex');
   });
 });

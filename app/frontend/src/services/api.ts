@@ -1,4 +1,4 @@
-﻿import axios from 'axios';
+import axios from 'axios';
 
 import type {
   ChatActionExecutionResponse,
@@ -6,7 +6,11 @@ import type {
   ChatActionType,
   ChatCapabilities,
   ChatMessage,
-  DatabaseBackup
+  DatabaseBackup,
+  AgentSystemOverview,
+  MangaItem,
+  MangaSourceOverview,
+  SourceCandidatesOverview
 } from '../types';
 
 export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -210,6 +214,36 @@ export const api = {
     return response.data;
   },
 
+  // Manga: preparado sin scraping activo por defecto
+  getMangaListPage: async (filters: {
+    q?: string;
+    status?: string;
+    format?: string;
+    sort?: string;
+    limit: number;
+    offset: number;
+  }) => {
+    const response = await client.get('/manga', {
+      params: { ...filters, withTotal: true }
+    });
+    return response.data as {
+      rows: MangaItem[];
+      total: number;
+      limit: number;
+      offset: number;
+    };
+  },
+
+  getMangaDetail: async (id: number): Promise<MangaItem> => {
+    const response = await client.get(`/manga/${id}`);
+    return response.data;
+  },
+
+  getMangaSources: async (): Promise<MangaSourceOverview> => {
+    const response = await client.get('/manga/sources');
+    return response.data;
+  },
+
   // Chatbot Maple Assistant
   getChatCapabilities: async (): Promise<ChatCapabilities> => {
     const response = await client.get('/chat/capabilities');
@@ -340,6 +374,16 @@ export const api = {
 
   restoreDatabaseBackup: async (backupPath: string) => {
     const response = await client.post('/backup/restore', { backupPath });
+    return response.data;
+  },
+
+  getAgentSystem: async (): Promise<AgentSystemOverview> => {
+    const response = await client.get('/system/agents');
+    return response.data;
+  },
+
+  getSourceCandidates: async (): Promise<SourceCandidatesOverview> => {
+    const response = await client.get('/system/source-candidates');
     return response.data;
   },
 

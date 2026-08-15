@@ -249,3 +249,111 @@ export interface Settings {
     translateStatuses: boolean;
   };
 }
+
+export interface MangaItem {
+  id: number;
+  external_id?: number | null;
+  mal_id?: number | null;
+  source?: string | null;
+  title: string;
+  title_romaji?: string | null;
+  title_english?: string | null;
+  title_japanese?: string | null;
+  synopsis?: string | null;
+  year?: number | null;
+  status?: string | null;
+  format?: string | null;
+  chapters?: number | null;
+  volumes?: number | null;
+  score?: number | null;
+  popularity?: number | null;
+  cover_image?: string | null;
+  banner_image?: string | null;
+  author?: string | null;
+  artist?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  official_url?: string | null;
+  genres?: string[];
+  read_status?: 'reading' | 'plan_to_read' | 'completed' | 'dropped' | 'on_hold' | string | null;
+  favorite?: number | null;
+  user_score?: number | null;
+  chapters_read?: number | null;
+  volumes_read?: number | null;
+  notes?: string | null;
+}
+
+export interface MangaSourceOverview {
+  policy: string;
+  configured: Array<{
+    id: number;
+    name: string;
+    base_url: string;
+    language: string;
+    type: string;
+    enabled: number;
+    risk_level: string;
+    rate_limit: number;
+    last_sync?: string | null;
+  }>;
+  candidates: Array<{
+    id: string;
+    name: string;
+    url: string;
+    languages: string[];
+    use: string[];
+    risk: string;
+    enabledByDefault: boolean;
+    notes: string;
+  }>;
+}
+
+export interface AgentSystemOverview {
+  product: string;
+  mode: string;
+  leadAgent: {
+    id: string;
+    label: string;
+    purpose: string;
+  };
+  tokenReductionPolicy: string[];
+  subagents: Array<{
+    id: string;
+    label: string;
+    purpose: string;
+    scope: string[];
+    riskLevel: string;
+    tokenStrategy: string[];
+    guardrails: string[];
+  }>;
+}
+
+export interface RecommendedAnimeSourceIntegration {
+  id: string;
+  name: string;
+  referenceUrl: string;
+  repository?: string;
+  languages: string[];
+  languageLabel: string;
+  category: 'local-media-server' | 'local-bridge' | 'private-cloud' | 'community-stream' | 'torrent-index';
+  transports: Array<'https-embed' | 'direct-mp4' | 'hls' | 'torrent' | 'local-file'>;
+  playerSupport: 'supported' | 'partial' | 'unsupported';
+  integrationStatus: 'planned' | 'research-only';
+  risk: 'low' | 'medium' | 'high';
+  enabledByDefault: false;
+  requiresExternalService: boolean;
+  recommendation: string;
+}
+
+export interface SourceCandidatesOverview {
+  policy: string;
+  playerCapabilities: {
+    httpsEmbed: 'supported' | 'partial' | 'unsupported';
+    directMp4: 'supported' | 'partial' | 'unsupported';
+    hls: 'supported' | 'partial' | 'unsupported';
+    torrent: 'supported' | 'partial' | 'unsupported';
+    note: string;
+  };
+  selected: RecommendedAnimeSourceIntegration[];
+  candidates: MangaSourceOverview['candidates'];
+}

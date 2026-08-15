@@ -509,6 +509,110 @@ export async function initDb() {
     )
   `);
 
+  // Tablas de manga: preparadas para lectura/lista futura, sin fuentes activas por defecto.
+  await query.run(`
+    CREATE TABLE IF NOT EXISTS manga (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      external_id INTEGER,
+      mal_id INTEGER,
+      source TEXT,
+      title TEXT NOT NULL,
+      title_romaji TEXT,
+      title_english TEXT,
+      title_japanese TEXT,
+      synopsis TEXT,
+      year INTEGER,
+      status TEXT,
+      format TEXT,
+      chapters INTEGER,
+      volumes INTEGER,
+      score REAL,
+      popularity INTEGER,
+      cover_image TEXT,
+      banner_image TEXT,
+      author TEXT,
+      artist TEXT,
+      start_date TEXT,
+      end_date TEXT,
+      official_url TEXT,
+      is_adult INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await query.run(`
+    CREATE TABLE IF NOT EXISTS manga_genres (
+      manga_id INTEGER,
+      genre_id INTEGER,
+      PRIMARY KEY (manga_id, genre_id),
+      FOREIGN KEY (manga_id) REFERENCES manga(id) ON DELETE CASCADE,
+      FOREIGN KEY (genre_id) REFERENCES genres(id) ON DELETE CASCADE
+    )
+  `);
+
+  await query.run(`
+    CREATE TABLE IF NOT EXISTS manga_user_list (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      manga_id INTEGER UNIQUE,
+      read_status TEXT NOT NULL,
+      favorite INTEGER DEFAULT 0,
+      user_score REAL DEFAULT 0,
+      chapters_read INTEGER DEFAULT 0,
+      volumes_read INTEGER DEFAULT 0,
+      notes TEXT,
+      started_at TEXT,
+      completed_at TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (manga_id) REFERENCES manga(id) ON DELETE CASCADE
+    )
+  `);
+
+  await query.run(`
+    CREATE TABLE IF NOT EXISTS manga_chapters (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      manga_id INTEGER,
+      source TEXT NOT NULL,
+      source_chapter_id TEXT,
+      chapter_number REAL,
+      title TEXT,
+      url TEXT,
+      language TEXT DEFAULT 'es',
+      scanlator TEXT,
+      published_at TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(manga_id, source, source_chapter_id, language),
+      FOREIGN KEY (manga_id) REFERENCES manga(id) ON DELETE CASCADE
+    )
+  `);
+
+  await query.run(`
+    CREATE TABLE IF NOT EXISTS manga_sources (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL,
+      base_url TEXT,
+      language TEXT DEFAULT 'multi',
+      type TEXT DEFAULT 'metadata',
+      enabled INTEGER DEFAULT 0,
+      risk_level TEXT DEFAULT 'medium',
+      rate_limit INTEGER DEFAULT 3000,
+      last_sync TEXT
+    )
+  `);
+
+  const defaultMangaSources = [
+    { name: 'AniList Manga', url: 'https://graphql.anilist.co', language: 'multi', type: 'metadata', risk: 'low', limit: 1000 },
+    { name: 'MangaDex API', url: 'https://api.mangadex.org', language: 'multi', type: 'api', risk: 'medium', limit: 2000 }
+  ];
+
+  for (const src of defaultMangaSources) {
+    await query.run(`
+      INSERT OR IGNORE INTO manga_sources (name, base_url, language, type, enabled, risk_level, rate_limit)
+      VALUES (?, ?, ?, ?, 0, ?, ?)
+    `, [src.name, src.url, src.language, src.type, src.risk, src.limit]);
+  }
+
   const performanceIndexes = [
     `CREATE INDEX IF NOT EXISTS idx_anime_title_nocase ON anime(title COLLATE NOCASE)`,
     `CREATE INDEX IF NOT EXISTS idx_anime_title_romaji_nocase ON anime(title_romaji COLLATE NOCASE)`,
@@ -524,6 +628,16 @@ export async function initDb() {
     `CREATE INDEX IF NOT EXISTS idx_anime_is_adult ON anime(is_adult)`,
     `CREATE INDEX IF NOT EXISTS idx_anime_source_external ON anime(source, external_id)`,
     `CREATE INDEX IF NOT EXISTS idx_anime_mal_id ON anime(mal_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_manga_title_nocase ON manga(title COLLATE NOCASE)`,
+    `CREATE INDEX IF NOT EXISTS idx_manga_title_romaji_nocase ON manga(title_romaji COLLATE NOCASE)`,
+    `CREATE INDEX IF NOT EXISTS idx_manga_source_external ON manga(source, external_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_manga_mal_id ON manga(mal_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_manga_status ON manga(status)`,
+    `CREATE INDEX IF NOT EXISTS idx_manga_format ON manga(format)`,
+    `CREATE INDEX IF NOT EXISTS idx_manga_year ON manga(year)`,
+    `CREATE INDEX IF NOT EXISTS idx_manga_popularity ON manga(popularity)`,
+    `CREATE INDEX IF NOT EXISTS idx_manga_user_list_status ON manga_user_list(read_status)`,
+    `CREATE INDEX IF NOT EXISTS idx_manga_chapters_manga ON manga_chapters(manga_id)`,
     `CREATE INDEX IF NOT EXISTS idx_genres_name_nocase ON genres(name COLLATE NOCASE)`,
     `CREATE INDEX IF NOT EXISTS idx_anime_genres_genre_anime ON anime_genres(genre_id, anime_id)`,
     `CREATE INDEX IF NOT EXISTS idx_user_list_watch_status ON user_list(watch_status)`,

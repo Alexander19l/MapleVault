@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '../services/api';
 import { showConfirm } from '../utils/dialog';
-import type { ChatActionHistoryItem, DatabaseBackup, ScrapingJobStatus } from '../types';
+import type { ChatActionHistoryItem, DatabaseBackup, ScrapingJobStatus, SourceCandidatesOverview } from '../types';
 
 import { 
   Settings as SettingsIcon, 
@@ -23,7 +23,10 @@ import {
   Clock3,
   Power,
   RotateCcw,
-  LoaderCircle
+  LoaderCircle,
+  ExternalLink,
+  Link2,
+  Server
 } from 'lucide-react';
 
 interface SettingsProps {
@@ -60,6 +63,9 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
   const [translationInstallStatus, setTranslationInstallStatus] = useState<TranslationInstallStatus>({
     state: 'idle'
   });
+  const [sourceOverview, setSourceOverview] = useState<SourceCandidatesOverview | null>(null);
+  const [sourceOverviewLoading, setSourceOverviewLoading] = useState(false);
+  const [sourceOverviewError, setSourceOverviewError] = useState<string | null>(null);
 
   // Estados de backup e importación
   const [backupStatus, setBackupStatus] = useState<string | null>(null);
@@ -149,11 +155,24 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
     }
   }, [loadTranslationStatus]);
 
+  const loadSourceOverview = useCallback(async () => {
+    try {
+      setSourceOverviewLoading(true);
+      setSourceOverviewError(null);
+      setSourceOverview(await api.getSourceCandidates());
+    } catch (error: any) {
+      setSourceOverviewError(error.response?.data?.error || error.message || 'No se pudo cargar el catálogo de fuentes.');
+    } finally {
+      setSourceOverviewLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadSettings();
     loadActionHistory();
     loadTranslationStatus();
     loadTranslationInstallStatus();
+    loadSourceOverview();
     loadStartupSettings();
     loadDatabaseBackups();
 
@@ -162,7 +181,7 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
         window.clearTimeout(backupStatusTimerRef.current);
       }
     };
-  }, [loadTranslationInstallStatus, loadTranslationStatus]);
+  }, [loadSourceOverview, loadTranslationInstallStatus, loadTranslationStatus]);
 
   useEffect(() => {
     const isInstalling = ['installing', 'verifying'].includes(translationInstallStatus.state);
@@ -588,6 +607,15 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
     }
   };
 
+  const handleOpenSourceReference = (url: string) => {
+    const electronApi = (window as any).electronAPI;
+    if (electronApi?.openExternal) {
+      electronApi.openExternal(url);
+      return;
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
   return (
     <div className="p-8 space-y-8 max-w-4xl mx-auto">
       {/* Cabecera */}
@@ -871,6 +899,89 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
           )}
         </div>
       </form>
+
+      <section className="space-y-4 rounded-lg border border-dark-border/40 bg-dark-card p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h3 className="flex items-center text-sm font-bold uppercase tracking-widest text-slate-300">
+              <Link2 className="mr-2 h-4 w-4 text-cyan-400" />
+              Fuentes evaluadas
+            </h3>
+            <p className="mt-1 text-xs leading-relaxed text-slate-400">
+              Shortlist técnica de cinco integraciones nuevas. No modifica AnimeAV1, TioAnime, JKAnime ni AnimeFLV.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={loadSourceOverview}
+            disabled={sourceOverviewLoading}
+            className="inline-flex h-9 shrink-0 items-center justify-center gap-2 border border-dark-border bg-slate-900 px-3 text-[10px] font-bold text-slate-300 transition-colors hover:text-white disabled:cursor-wait disabled:opacity-60"
+          >
+            <RefreshCw className={sourceOverviewLoading ? 'h-3.5 w-3.5 animate-spin' : 'h-3.5 w-3.5'} />
+            Actualizar
+          </button>
+        </div>
+
+        {sourceOverviewError && (
+          <div className="border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300">
+            {sourceOverviewError}
+          </div>
+        )}
+
+        {sourceOverview && (
+          <>
+            <div className="grid grid-cols-2 gap-2 text-[10px] sm:grid-cols-4">
+              {[
+                ['Embeds HTTPS', sourceOverview.playerCapabilities.httpsEmbed],
+                ['MP4 directo', sourceOverview.playerCapabilities.directMp4],
+                ['HLS', sourceOverview.playerCapabilities.hls],
+                ['Torrent', sourceOverview.playerCapabilities.torrent]
+              ].map(([label, support]) => (
+                <div key={label} className="border border-dark-border/60 bg-slate-950/30 px-3 py-2">
+                  <span className="block font-bold text-slate-400">{label}</span>
+                  <span className={support === 'supported' ? 'text-emerald-300' : support === 'partial' ? 'text-amber-300' : 'text-rose-300'}>
+                    {support === 'supported' ? 'Compatible' : support === 'partial' ? 'Parcial' : 'No compatible'}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="divide-y divide-dark-border/60 border border-dark-border/60 bg-slate-950/20">
+              {sourceOverview.selected.map(source => (
+                <div key={source.id} className="grid gap-3 p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Server className="h-4 w-4 text-cyan-400" />
+                      <span className="text-xs font-bold text-slate-100">{source.name}</span>
+                      <span className="border border-slate-700 bg-slate-900 px-2 py-0.5 text-[9px] font-bold uppercase text-slate-300">
+                        {source.languageLabel}
+                      </span>
+                      <span className={source.integrationStatus === 'planned' ? 'border border-cyan-500/30 bg-cyan-500/10 px-2 py-0.5 text-[9px] font-bold uppercase text-cyan-300' : 'border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[9px] font-bold uppercase text-amber-300'}>
+                        {source.integrationStatus === 'planned' ? 'Planificada' : 'Solo investigación'}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-[10px] leading-relaxed text-slate-400">{source.recommendation}</p>
+                    <p className="mt-1 text-[9px] text-slate-500">
+                      Transporte: {source.transports.join(', ')} · Reproductor: {source.playerSupport === 'partial' ? 'parcial' : source.playerSupport === 'supported' ? 'compatible' : 'no compatible'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenSourceReference(source.referenceUrl)}
+                    className="inline-flex h-8 items-center justify-center gap-2 border border-dark-border bg-slate-900 px-3 text-[10px] font-bold text-slate-300 transition-colors hover:border-cyan-500/40 hover:text-cyan-200"
+                    aria-label={'Abrir referencia de ' + source.name}
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    Referencia
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <p className="text-[10px] leading-relaxed text-slate-500">{sourceOverview.playerCapabilities.note}</p>
+          </>
+        )}
+      </section>
 
       {/* Sección: Scraping Masivo */}
       <section className="p-6 bg-dark-card border border-dark-border/40 rounded-3xl space-y-4">

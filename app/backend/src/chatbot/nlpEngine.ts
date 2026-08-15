@@ -243,16 +243,22 @@ export const VALID_INTENTS = [
 ] as const;
 
 export async function parseIntent(message: string): Promise<NLPResult> {
+  const regexResult = parseIntentRegex(message);
+
+  if (regexResult.intent !== 'UNKNOWN') {
+    return regexResult;
+  }
+
   try {
     const settings = await getAISettings();
     if (settings.enabled) {
       return await parseIntentWithOllama(message, settings);
     }
   } catch (err) {
-    console.error('Error al usar Ollama local, cayendo a Regex:', err);
+    console.error('Error al usar Ollama local, conservando resultado Regex:', err);
   }
 
-  return parseIntentRegex(message);
+  return regexResult;
 }
 
 function extractJSON(str: string): string {

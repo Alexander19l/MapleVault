@@ -10,6 +10,7 @@ const Home = lazy(() => import('./pages/Home').then(module => ({ default: module
 const Catalog = lazy(() => import('./pages/Catalog').then(module => ({ default: module.Catalog })));
 const Seasons = lazy(() => import('./pages/Seasons').then(module => ({ default: module.Seasons })));
 const Mylist = lazy(() => import('./pages/Mylist').then(module => ({ default: module.Mylist })));
+const Manga = lazy(() => import('./pages/Manga').then(module => ({ default: module.Manga })));
 const Scraping = lazy(() => import('./pages/Scraping').then(module => ({ default: module.Scraping })));
 const Settings = lazy(() => import('./pages/Settings').then(module => ({ default: module.Settings })));
 const AdvancedSearch = lazy(() => import('./components/search/AdvancedSearch').then(module => ({ default: module.AdvancedSearch })));
@@ -114,6 +115,8 @@ function App() {
         );
       case 'seasons':
         return <Seasons onViewDetails={handleViewDetails} />;
+      case 'manga':
+        return <Manga refreshTrigger={refreshTrigger} />;
       case 'mylist':
         return (
           <Mylist 

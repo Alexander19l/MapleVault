@@ -11,6 +11,7 @@ import { createDataTransferRouter } from './routes/dataTransferRoutes';
 import { createEpisodeRouter } from './routes/episodeRoutes';
 import { invalidateLibraryReadCaches } from './routes/libraryCache';
 import { createLibraryRouter } from './routes/libraryRoutes';
+import { createMangaRouter } from './routes/mangaRoutes';
 import { createSettingsRouter } from './routes/settingsRoutes';
 import { createScrapingRouter } from './routes/scrapingRoutes';
 import { createSystemRouter } from './routes/systemRoutes';
@@ -65,6 +66,7 @@ app.use(createScrapingRouter({ invalidateLibraryReadCaches }));
 app.use(createAssistantRouter());
 app.use(createEpisodeRouter());
 app.use(createLibraryRouter());
+app.use(createMangaRouter());
 app.use(createSystemRouter());
 
 // GET /health - Sondeo de salud del servidor
