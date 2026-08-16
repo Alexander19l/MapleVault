@@ -112,7 +112,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     listOfflineChapters: (request: { series: string }): Promise<{ chapters: Array<{ key: string; label: string; pages: number }> }> => {
       return ipcRenderer.invoke('manga-list-offline-chapters', request);
     },
-    readChapter: (request: { series: string; chapter: string }): Promise<{ pages: string[] }> => {
+    readChapter: (request: { series: string; chapter: string; offset?: number; limit?: number }): Promise<{
+      pages: string[];
+      total: number;
+      offset: number;
+      hasMore: boolean;
+    }> => {
       return ipcRenderer.invoke('manga-read-offline-chapter', request);
     },
     openFolder: (): Promise<{ path: string; error?: string }> => {

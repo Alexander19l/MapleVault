@@ -375,6 +375,7 @@ export interface MangaOnlinePages {
   chapterId: string;
   quality: 'data' | 'data-saver';
   pages: string[];
+  totalPages?: number;
 }
 
 export interface AgentSystemOverview {

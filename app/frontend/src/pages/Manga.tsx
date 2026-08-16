@@ -39,6 +39,20 @@ interface MangaProps {
   refreshTrigger?: number;
 }
 
+type OfflineChapter = { key: string; label: string; pages: number };
+
+const findOfflineChapter = (chapter: MangaOnlineChapter, chapters: OfflineChapter[]) => {
+  const number = chapter.number === undefined || chapter.number === null ? '' : String(chapter.number).trim();
+  if (number) {
+    const escaped = number.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = new RegExp(`capitulo\\s+${escaped}(?:$|\\s|[-(])`, 'i');
+    const match = chapters.find(item => pattern.test(item.label));
+    if (match) return match;
+  }
+  const idPrefix = chapter.id.slice(0, 8).toLowerCase();
+  return chapters.find(item => item.label.toLowerCase().includes(idPrefix));
+};
+
 export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
   const [manga, setManga] = useState<MangaItem[]>([]);
   const [sources, setSources] = useState<MangaSourceOverview | null>(null);
@@ -52,7 +66,7 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
   const [selectedOnline, setSelectedOnline] = useState<MangaOnlineSearchItem | null>(null);
   const [selectedLocal, setSelectedLocal] = useState<MangaItem | null>(null);
   const [localChapters, setLocalChapters] = useState<MangaOnlineChapter[]>([]);
-  const [offlineChapters, setOfflineChapters] = useState<Array<{ key: string; label: string; pages: number }>>([]);
+  const [offlineChapters, setOfflineChapters] = useState<OfflineChapter[]>([]);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [chapterError, setChapterError] = useState('');
@@ -66,6 +80,7 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
   const [chaptersLoading, setChaptersLoading] = useState(false);
   const [reader, setReader] = useState<MangaOnlinePages | null>(null);
   const [readerChapter, setReaderChapter] = useState<MangaOnlineChapter | null>(null);
+  const [offlineReaderKey, setOfflineReaderKey] = useState('');
   const [readerLoading, setReaderLoading] = useState(false);
   const [downloadLoading, setDownloadLoading] = useState(false);
   const [selectedProviderId, setSelectedProviderId] = useState('mangadex');
@@ -282,6 +297,7 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
     setReaderLoading(true);
     setChapterError('');
     setReaderChapter(chapter);
+    setOfflineReaderKey('');
     setDetailOpen(false);
     try {
       setReader(await api.getMangaOnlinePages(chapter.id, 'data-saver', selectedProvider.id));
@@ -298,18 +314,32 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
   const handleOpenOfflineChapter = async (chapter: MangaOnlineChapter) => {
     const apiOffline = (window as any).electronAPI?.manga;
     if (!apiOffline?.readChapter || !selectedLocal) return;
+    const offlineChapter = findOfflineChapter(chapter, offlineChapters);
+    if (!offlineChapter) return;
     setReaderLoading(true);
     setChapterError('');
     setReaderChapter(chapter);
+    setOfflineReaderKey(offlineChapter.key);
     setDetailOpen(false);
     try {
-      const result = await apiOffline.readChapter({ series: selectedLocal.title, chapter: String(chapter.number ?? chapter.id) });
+      const result = await apiOffline.readChapter({
+        series: selectedLocal.title,
+        chapter: offlineChapter.key,
+        offset: 0,
+        limit: 1
+      });
       if (!result?.pages?.length) throw new Error('Capítulo offline vacío.');
-      setReader({ chapterId: chapter.id, quality: 'data', pages: result.pages });
+      setReader({
+        chapterId: chapter.id,
+        quality: 'data',
+        pages: result.pages,
+        totalPages: result.total
+      });
     } catch (error) {
       console.error('Error al abrir capítulo offline:', error);
       setReader(null);
       setReaderChapter(null);
+      setOfflineReaderKey('');
       setChapterError('No se pudo leer el capítulo descargado.');
     } finally {
       setReaderLoading(false);
@@ -322,6 +352,7 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
     setChapters([]);
     setReader(null);
     setReaderChapter(null);
+    setOfflineReaderKey('');
     setChapterError('');
     setSelectedLocal(null);
     setLocalChapters([]);
@@ -361,6 +392,18 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
       setDownloadLoading(false);
     }
   };
+
+  const loadOfflinePage = useCallback(async (index: number) => {
+    const apiOffline = (window as any).electronAPI?.manga;
+    if (!apiOffline?.readChapter || !selectedLocal || !offlineReaderKey) return null;
+    const result = await apiOffline.readChapter({
+      series: selectedLocal.title,
+      chapter: offlineReaderKey,
+      offset: index,
+      limit: 1
+    });
+    return result?.pages?.[0] || null;
+  }, [offlineReaderKey, selectedLocal]);
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 animate-fadeIn">
@@ -597,8 +640,10 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
               title={selectedOnline?.title || selectedLocal?.title || 'Manga'}
               chapterLabel={`Cap. ${readerChapter.number ?? 'S/N'}`}
               pages={reader.pages}
+              totalPages={reader.totalPages}
+              onPageRequest={selectedLocal && offlineReaderKey ? loadOfflinePage : undefined}
               downloadLoading={downloadLoading}
-              onClose={() => { setReader(null); setReaderChapter(null); }}
+              onClose={() => { setReader(null); setReaderChapter(null); setOfflineReaderKey(''); }}
               onDownload={selectedOnline ? () => handleDownloadChapter(readerChapter) : undefined}
             />
           )}
@@ -632,7 +677,7 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
             {selectedLocal.cover_image && <img src={selectedLocal.cover_image} alt="" referrerPolicy="no-referrer" className="h-40 w-28 rounded-md object-cover" />}
             <div className="min-w-0 flex-1"><h2 className="text-xl font-black text-[var(--text-main)]">{selectedLocal.title}</h2><p className="mt-1 text-xs text-[var(--text-muted)]">Biblioteca local · {selectedLocal.year || 'Año no disponible'}</p>{detailLoading ? <div className="mt-4 flex items-center gap-2 text-sm text-[var(--text-muted)]"><Loader2 className="h-4 w-4 animate-spin" /> Cargando información...</div> : <p className="mt-3 text-sm leading-6 text-[var(--text-muted)]">{selectedLocal.synopsis || 'Sinopsis no disponible.'}</p>}</div>
           </div>
-          <div className="mt-5 border-t border-[var(--border-soft)] pt-4"><h3 className="text-sm font-bold text-[var(--text-main)]">Capítulos de la biblioteca</h3>{localChapters.length === 0 ? <p className="py-5 text-sm text-[var(--text-muted)]">Esta obra todavía no tiene capítulos sincronizados.</p> : <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{localChapters.map(chapter => { const offline = offlineChapters.some(item => item.label.toLowerCase().includes(`capitulo ${String(chapter.number ?? '').toLowerCase()}`)); return <div key={`${chapter.id}-${chapter.language}`} className="flex items-center justify-between gap-3 rounded-md border border-[var(--border-soft)] bg-slate-950/45 px-3 py-2"><button type="button" disabled={!offline} onClick={() => void handleOpenOfflineChapter(chapter)} className="min-w-0 text-left text-sm font-bold text-[var(--text-main)] hover:text-[var(--accent-primary)] disabled:cursor-not-allowed disabled:opacity-50">Cap. {chapter.number ?? 'S/N'} {offline ? <span className="ml-1 text-[10px] text-emerald-300">offline</span> : <span className="ml-1 text-[10px] text-[var(--text-dim)]">descarga requerida</span>}</button></div>; })}</div>}</div>
+          <div className="mt-5 border-t border-[var(--border-soft)] pt-4"><h3 className="text-sm font-bold text-[var(--text-main)]">Capítulos de la biblioteca</h3>{localChapters.length === 0 ? <p className="py-5 text-sm text-[var(--text-muted)]">Esta obra todavía no tiene capítulos sincronizados.</p> : <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{localChapters.map(chapter => { const offline = Boolean(findOfflineChapter(chapter, offlineChapters)); return <div key={`${chapter.id}-${chapter.language}`} className="flex items-center justify-between gap-3 rounded-md border border-[var(--border-soft)] bg-slate-950/45 px-3 py-2"><button type="button" disabled={!offline} onClick={() => void handleOpenOfflineChapter(chapter)} className="min-w-0 text-left text-sm font-bold text-[var(--text-main)] hover:text-[var(--accent-primary)] disabled:cursor-not-allowed disabled:opacity-50">Cap. {chapter.number ?? 'S/N'} {offline ? <span className="ml-1 text-[10px] text-emerald-300">offline</span> : <span className="ml-1 text-[10px] text-[var(--text-dim)]">descarga requerida</span>}</button></div>; })}</div>}</div>
         </Modal>
       )}
 
@@ -641,7 +686,9 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
           title={selectedLocal.title}
           chapterLabel={`Cap. ${readerChapter.number ?? 'S/N'}`}
           pages={reader.pages}
-          onClose={() => { setReader(null); setReaderChapter(null); }}
+          totalPages={reader.totalPages}
+          onPageRequest={offlineReaderKey ? loadOfflinePage : undefined}
+          onClose={() => { setReader(null); setReaderChapter(null); setOfflineReaderKey(''); }}
         />
       )}
 

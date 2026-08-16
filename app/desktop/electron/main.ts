@@ -232,25 +232,40 @@ async function listOfflineMangaChapters(request: { series?: unknown }): Promise<
   return { chapters: chapters.sort((left, right) => left.label.localeCompare(right.label, undefined, { numeric: true })) };
 }
 
-async function readOfflineMangaChapter(request: { series?: unknown; chapter?: unknown }): Promise<{ pages: string[] }> {
+async function readOfflineMangaChapter(request: {
+  series?: unknown;
+  chapter?: unknown;
+  offset?: unknown;
+  limit?: unknown;
+}): Promise<{ pages: string[]; total: number; offset: number; hasMore: boolean }> {
   const directory = getSafeMangaSeriesDirectory(request?.series);
   const chapter = sanitizeMangaPathPart(request?.chapter, '');
-  if (!directory || !chapter || !fs.existsSync(directory)) return { pages: [] };
+  const offset = Math.max(0, Math.min(500, Number(request?.offset) || 0));
+  const limit = Math.max(1, Math.min(12, Number(request?.limit) || 1));
+  if (!directory || !chapter || !fs.existsSync(directory)) return { pages: [], total: 0, offset, hasMore: false };
   const entries = await fs.promises.readdir(directory, { withFileTypes: true });
-  const selected = entries.find(entry => entry.isDirectory() && entry.name.toLowerCase().includes(`capitulo ${chapter.toLowerCase()}`));
-  if (!selected) return { pages: [] };
+  const chapterLower = chapter.toLowerCase();
+  const selected = entries.find(entry => entry.isDirectory() && entry.name.toLowerCase() === chapterLower)
+    || entries.find(entry => entry.isDirectory() && entry.name.toLowerCase().includes(`capitulo ${chapterLower}`));
+  if (!selected) return { pages: [], total: 0, offset, hasMore: false };
   const chapterDirectory = path.join(directory, selected.name);
   const files = (await fs.promises.readdir(chapterDirectory, { withFileTypes: true }))
     .filter(file => file.isFile() && /\.(png|jpe?g|webp|gif)$/i.test(file.name))
     .sort((left, right) => left.name.localeCompare(right.name, undefined, { numeric: true }));
   const pages: string[] = [];
-  for (const file of files.slice(0, 500)) {
+  const boundedFiles = files.slice(0, 500);
+  for (const file of boundedFiles.slice(offset, offset + limit)) {
     const data = await fs.promises.readFile(path.join(chapterDirectory, file.name));
     const extension = path.extname(file.name).toLowerCase();
     const mime = extension === '.png' ? 'image/png' : extension === '.webp' ? 'image/webp' : extension === '.gif' ? 'image/gif' : 'image/jpeg';
     pages.push(`data:${mime};base64,${data.toString('base64')}`);
   }
-  return { pages };
+  return {
+    pages,
+    total: boundedFiles.length,
+    offset,
+    hasMore: offset + pages.length < boundedFiles.length
+  };
 }
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();

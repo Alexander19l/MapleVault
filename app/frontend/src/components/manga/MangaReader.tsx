@@ -36,6 +36,8 @@ interface MangaReaderProps {
   title: string;
   chapterLabel: string;
   pages: string[];
+  totalPages?: number;
+  onPageRequest?: (index: number) => Promise<string | null>;
   downloadLoading?: boolean;
   onClose: () => void;
   onDownload?: () => void;
@@ -94,6 +96,8 @@ export const MangaReader: React.FC<MangaReaderProps> = ({
   title,
   chapterLabel,
   pages,
+  totalPages,
+  onPageRequest,
   downloadLoading = false,
   onClose,
   onDownload
@@ -104,6 +108,61 @@ export const MangaReader: React.FC<MangaReaderProps> = ({
   const [pageIndex, setPageIndex] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [loadedPages, setLoadedPages] = useState<string[]>(pages);
+  const [pageLoading, setPageLoading] = useState(false);
+  const pageRequestId = useRef(0);
+  const pageCount = Math.max(totalPages ?? pages.length, pages.length);
+
+  useEffect(() => {
+    setLoadedPages(pages);
+    setPageIndex(0);
+  }, [chapterLabel, pages]);
+
+  const loadPage = useCallback(async (index: number) => {
+    if (index < 0 || index >= pageCount || loadedPages[index] || !onPageRequest) return;
+    const requestId = ++pageRequestId.current;
+    setPageLoading(true);
+    try {
+      const page = await onPageRequest(index);
+      if (page && requestId === pageRequestId.current) {
+        setLoadedPages(current => {
+          const next = [...current];
+          next[index] = page;
+          return next;
+        });
+      }
+    } finally {
+      if (requestId === pageRequestId.current) setPageLoading(false);
+    }
+  }, [loadedPages, onPageRequest, pageCount]);
+
+  useEffect(() => {
+    void loadPage(pageIndex);
+  }, [loadPage, pageIndex]);
+
+  useEffect(() => {
+    if (preferences.mode !== 'continuous' || !onPageRequest) return;
+    const missing = Array.from({ length: pageCount }, (_, index) => index)
+      .filter(index => !loadedPages[index]);
+    if (missing.length === 0) return;
+    let cancelled = false;
+    setPageLoading(true);
+    void Promise.all(missing.map(index => onPageRequest(index)))
+      .then(results => {
+        if (cancelled) return;
+        setLoadedPages(current => {
+          const next = [...current];
+          results.forEach((page, resultIndex) => {
+            if (page) next[missing[resultIndex]] = page;
+          });
+          return next;
+        });
+      })
+      .finally(() => {
+        if (!cancelled) setPageLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [loadedPages, onPageRequest, pageCount, preferences.mode]);
 
   const updatePreferences = useCallback((patch: Partial<ReaderPreferences>) => {
     setPreferences(current => ({ ...current, ...patch }));
@@ -127,9 +186,9 @@ export const MangaReader: React.FC<MangaReaderProps> = ({
   }, []);
 
   const movePage = useCallback((delta: number) => {
-    setPageIndex(current => clamp(current + delta, 0, Math.max(0, pages.length - 1)));
+    setPageIndex(current => clamp(current + delta, 0, Math.max(0, pageCount - 1)));
     viewportRef.current?.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
-  }, [pages.length]);
+  }, [pageCount]);
 
   const moveFromPhysicalSide = useCallback((side: 'left' | 'right') => {
     const previous = preferences.direction === 'ltr' ? side === 'left' : side === 'right';
@@ -160,22 +219,22 @@ export const MangaReader: React.FC<MangaReaderProps> = ({
         setPageIndex(0);
       } else if (event.key === 'End') {
         event.preventDefault();
-        setPageIndex(Math.max(0, pages.length - 1));
+        setPageIndex(Math.max(0, pageCount - 1));
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [moveFromPhysicalSide, movePage, pages.length, preferences.mode]);
+  }, [moveFromPhysicalSide, movePage, pageCount, preferences.mode]);
 
   useEffect(() => {
     if (preferences.mode !== 'page') return;
-    [pages[pageIndex - 1], pages[pageIndex + 1]].filter(Boolean).forEach(url => {
+    [loadedPages[pageIndex - 1], loadedPages[pageIndex + 1]].filter(Boolean).forEach(url => {
       const image = new Image();
       image.referrerPolicy = 'no-referrer';
       image.src = url;
     });
-  }, [pageIndex, pages, preferences.mode]);
+  }, [loadedPages, pageIndex, preferences.mode]);
 
   const toggleFullscreen = async () => {
     try {
@@ -213,12 +272,12 @@ export const MangaReader: React.FC<MangaReaderProps> = ({
     });
   };
 
-  const currentPage = pages[pageIndex];
+  const currentPage = loadedPages[pageIndex];
   const leftSideDisabled = preferences.direction === 'ltr'
     ? pageIndex === 0
-    : pageIndex >= pages.length - 1;
+    : pageIndex >= pageCount - 1;
   const rightSideDisabled = preferences.direction === 'ltr'
-    ? pageIndex >= pages.length - 1
+    ? pageIndex >= pageCount - 1
     : pageIndex === 0;
 
   const pageImageStyle = useMemo<React.CSSProperties>(() => {
@@ -289,9 +348,9 @@ export const MangaReader: React.FC<MangaReaderProps> = ({
                 className="max-w-16 bg-transparent font-bold text-white outline-none"
                 aria-label="Ir a página"
               >
-                {pages.map((_, index) => <option key={index} value={index} className="bg-slate-950">{index + 1}</option>)}
+                {Array.from({ length: pageCount }, (_, index) => <option key={index} value={index} className="bg-slate-950">{index + 1}</option>)}
               </select>
-              <span className="whitespace-nowrap text-slate-500">/ {pages.length}</span>
+              <span className="whitespace-nowrap text-slate-500">/ {pageCount}</span>
             </label>
           )}
         </div>
@@ -400,7 +459,7 @@ export const MangaReader: React.FC<MangaReaderProps> = ({
               <img
                 key={currentPage}
                 src={currentPage}
-                alt={`Página ${pageIndex + 1} de ${pages.length}`}
+                alt={`Página ${pageIndex + 1} de ${pageCount}`}
                 referrerPolicy="no-referrer"
                 draggable={false}
                 className="block shrink-0 animate-fadeIn select-none object-contain shadow-2xl"
@@ -408,6 +467,7 @@ export const MangaReader: React.FC<MangaReaderProps> = ({
                 data-testid="manga-reader-current-page"
               />
             )}
+            {!currentPage && pageLoading && <p className="absolute inset-x-0 top-1/2 text-center text-sm text-slate-400">Cargando página {pageIndex + 1}...</p>}
             <button type="button" onClick={() => moveFromPhysicalSide('left')} disabled={leftSideDisabled} className="group absolute inset-y-0 left-0 z-10 w-1/2 cursor-w-resize disabled:cursor-default" aria-label={preferences.direction === 'ltr' ? 'Página anterior' : 'Página siguiente'}>
               <span className="absolute left-3 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/65 text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 group-disabled:hidden"><ChevronLeft className="h-6 w-6" /></span>
             </button>
@@ -418,11 +478,11 @@ export const MangaReader: React.FC<MangaReaderProps> = ({
         ) : (
           <div className="mx-auto min-h-full max-w-5xl px-2 py-3 sm:px-4" style={{ width: stripWidth }} data-testid="manga-reader-continuous">
             <div className="flex flex-col items-center" style={{ gap: `${preferences.gap}px` }}>
-              {pages.map((page, index) => (
+              {loadedPages.map((page, index) => page && (
                 <img
                   key={`${page}-${index}`}
                   src={page}
-                  alt={`Página ${index + 1} de ${pages.length}`}
+                  alt={`Página ${index + 1} de ${pageCount}`}
                   loading={index < 2 ? 'eager' : 'lazy'}
                   referrerPolicy="no-referrer"
                   draggable={false}

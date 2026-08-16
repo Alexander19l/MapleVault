@@ -9,7 +9,7 @@ Este documento es el punto de entrada para continuar el desarrollo cuando una se
 ## Estado de la versión
 
 - Producto: MapleVault.
-- Versión empaquetada actual: `1.0.16`.
+- Versión empaquetada actual: `1.0.17`.
 - Repositorio: `https://github.com/Alexander19l/MapleVault`.
 - Rama de trabajo publicada: `codex/safe-sqlite-restore`.
 - Último checkpoint publicado antes de esta fase: commit `1628cfbd`; esta fase queda pendiente de publicar.
@@ -442,9 +442,8 @@ compatibilidad.
 - El lector local carga las imágenes como data URLs y no habilita descarga duplicada.
 - Ajustes abre directamente la carpeta de mangas descargados mediante IPC.
 
-El retorno completo de páginas en base64 es intencionalmente acotado para esta primera fase,
-pero no es la solución definitiva para capítulos muy grandes. La siguiente mejora debe ser
-carga por página o streaming controlado para reducir el pico de memoria del proceso Electron.
+La primera implementación devolvía el capítulo completo en base64. La versión 1.0.17 sustituye
+ese comportamiento por carga paginada cuando se usa el lector offline.
 
 ### Pruebas ejecutadas en esta fase
 
@@ -453,7 +452,7 @@ carga por página o streaming controlado para reducir el pico de memoria del pro
 - TypeScript backend, desktop y frontend: aprobado.
 - ESLint frontend: aprobado.
 - Instalador Windows x64 generado: `MapleVault-Setup-1.0.16-x64.exe`.
-- SHA-256 del instalador: `D9E5925A5EB4AD9283A5BF424BB64117646AFEBF888AEA0C4EBD84AB0F9D9DF0`.
+- SHA-256 del instalador: `FE57D18E8D677E93A2C3EF3F34BC2E1F54CD38C979C5547A420803C204DA8546`.
 
 Estas pruebas son deterministas y usan contratos/fixtures. No deben presentarse como prueba
 de disponibilidad permanente de MangaDex, ZonaTMO o ShadeManga. La aceptación final requiere
@@ -471,3 +470,33 @@ debe verificar versión, contenido de `dist`, hash y LFS.
 Ningún agente debe ejecutar descargas masivas, traducir resultados completos o enviar URLs
 arbitrarias al navegador. Los cambios de scraping deben mantener límites, allowlist de hosts,
 timeouts, deduplicación, orden estable y degradación sin bloquear la interfaz.
+
+## Implementación 1.0.17: carga paginada del lector offline
+
+- `manga-read-offline-chapter` acepta `offset` y `limit`, con límite de 12 páginas por llamada
+  y un máximo de 500 páginas por capítulo.
+- La respuesta incluye `total`, `offset` y `hasMore`, permitiendo que React conozca el tamaño
+  real sin cargar todas las imágenes en memoria.
+- `MangaReader` conserva las páginas ya cargadas y solicita únicamente la página actual en
+  modo página. El modo continuo solicita las restantes solo cuando el usuario lo elige.
+- La carpeta del capítulo se identifica primero por su clave exacta y solo después mediante
+  compatibilidad por coincidencia parcial.
+- La asociación UI entre capítulos y carpetas usa una expresión delimitada para que el capítulo
+  `1` no se confunda con `10`; cuando no existe número se usa el prefijo del ID externo.
+
+### Riesgos y límites conocidos
+
+- El modo continuo puede volver a consumir memoria proporcional al tamaño del capítulo porque
+  necesita mostrar todas las páginas; debe reservarse para capítulos razonables.
+- Si un usuario renombra manualmente carpetas descargadas, la clave exacta deja de coincidir y
+  solo funcionará la compatibilidad parcial.
+- Las pruebas actuales validan contratos y tipado. Sigue pendiente una prueba visual con un
+  capítulo real descargado y medición de memoria en Windows.
+
+### Verificación 1.0.17
+
+- `npm run check`: aprobado.
+- Suite backend: `82` archivos y `677` pruebas aprobadas.
+- Typecheck backend, desktop y frontend: aprobado.
+- ESLint frontend: aprobado.
+- Instalador 1.0.17 generado y verificado antes de publicar esta fase.
