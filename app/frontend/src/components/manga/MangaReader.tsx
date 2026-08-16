@@ -38,7 +38,7 @@ interface MangaReaderProps {
   pages: string[];
   downloadLoading?: boolean;
   onClose: () => void;
-  onDownload: () => void;
+  onDownload?: () => void;
 }
 
 const STORAGE_KEY = 'maplevault:manga-reader-preferences:v1';
@@ -317,7 +317,7 @@ export const MangaReader: React.FC<MangaReaderProps> = ({
           <TooltipIconButton tooltip={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'} onClick={toggleFullscreen} className="size-9 text-slate-300 hover:bg-white/10 hover:text-white">
             {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
           </TooltipIconButton>
-          <TooltipIconButton tooltip="Descargar capítulo" onClick={onDownload} disabled={downloadLoading} className="size-9 bg-violet-600 text-white hover:bg-violet-500">
+          <TooltipIconButton tooltip="Descargar capítulo" onClick={onDownload || (() => undefined)} disabled={!onDownload || downloadLoading} className="size-9 bg-violet-600 text-white hover:bg-violet-500">
             <Download className={`h-4 w-4 ${downloadLoading ? 'animate-pulse' : ''}`} />
           </TooltipIconButton>
         </div>

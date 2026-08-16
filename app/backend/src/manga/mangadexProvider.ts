@@ -6,6 +6,7 @@ const MANGADEX_UPLOADS_HOST = 'uploads.mangadex.org';
 const MANGADEX_AT_HOME_HOST_SUFFIX = '.mangadex.network';
 const MAX_SEARCH_LIMIT = 24;
 const MAX_CHAPTER_LIMIT = 100;
+const MAX_TOTAL_CHAPTERS = 2000;
 const MAX_PAGE_COUNT = 500;
 const MAX_DOWNLOAD_BYTES = 256 * 1024 * 1024;
 const REQUEST_INTERVAL_MS = 250;
@@ -271,6 +272,7 @@ export class MangaDexProvider {
     if (!normalizedQuery && !filters.recent) return [];
     const params: Record<string, unknown> = {
       limit: Math.min(Math.max(Math.floor(limit), 1), MAX_SEARCH_LIMIT),
+      offset: Math.min(Math.max(Math.floor(filters.page || 0), 0), 100) * Math.min(Math.max(Math.floor(limit), 1), MAX_SEARCH_LIMIT),
       'contentRating[]': ['safe', 'suggestive'],
       'includes[]': ['cover_art']
     };
@@ -281,7 +283,7 @@ export class MangaDexProvider {
       params['includedTags[]'] = includedTags;
       params.includedTagsMode = 'AND';
     }
-    if (filters.status) params.status = filters.status;
+    if (filters.status) params['status[]'] = [filters.status];
     const response = await this.gate(() => this.http.get<MangaDexResponse<MangaDexEntity>>('/manga', {
       params
     }));
@@ -320,19 +322,33 @@ export class MangaDexProvider {
 
   async getChapters(mangaId: string, languages: Array<'es' | 'en'> = ['es', 'en']): Promise<MangaDexChapter[]> {
     if (!/^[0-9a-f-]{36}$/i.test(mangaId)) throw new Error('Identificador de manga inválido.');
-    const response = await this.gate(() => this.http.get<MangaDexResponse<MangaDexEntity>>('/chapter', {
-      params: {
-        manga: mangaId,
-        'translatedLanguage[]': [...new Set(languages)],
-        'contentRating[]': ['safe', 'suggestive'],
-        'includes[]': ['scanlation_group'],
-        'order[chapter]': 'asc',
-        limit: MAX_CHAPTER_LIMIT,
-        offset: 0
+    const chapters: MangaDexEntity[] = [];
+    const uniqueIds = new Set<string>();
+    const translatedLanguages = [...new Set(languages)];
+
+    for (let offset = 0; offset < MAX_TOTAL_CHAPTERS; offset += MAX_CHAPTER_LIMIT) {
+      const response = await this.gate(() => this.http.get<MangaDexResponse<MangaDexEntity>>('/chapter', {
+        params: {
+          manga: mangaId,
+          'translatedLanguage[]': translatedLanguages,
+          'contentRating[]': ['safe', 'suggestive'],
+          'includes[]': ['scanlation_group'],
+          'order[chapter]': 'asc',
+          limit: MAX_CHAPTER_LIMIT,
+          offset
+        }
+      }));
+      const page = response.data?.result === 'ok' && Array.isArray(response.data.data) ? response.data.data : [];
+      for (const entity of page) {
+        if (entity.id && !uniqueIds.has(entity.id)) {
+          uniqueIds.add(entity.id);
+          chapters.push(entity);
+        }
       }
-    }));
-    if (response.data?.result !== 'ok' || !Array.isArray(response.data.data)) return [];
-    return response.data.data
+      if (page.length < MAX_CHAPTER_LIMIT) break;
+    }
+
+    return chapters
       .map(toChapter)
       .filter((chapter): chapter is MangaDexChapter => Boolean(chapter))
       .sort((left, right) => {

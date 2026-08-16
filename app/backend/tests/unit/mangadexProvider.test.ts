@@ -46,6 +46,48 @@ describe('MangaDexProvider', () => {
     }));
   });
 
+  it('envía filtros oficiales de estado y etiquetas a MangaDex', async () => {
+    const get = vi.fn().mockResolvedValue({ data: { result: 'ok', data: [] } });
+    const provider = new MangaDexProvider({ get } as any);
+
+    await provider.search('blue', 20, {
+      genres: ['genre-id'],
+      tags: ['theme-id'],
+      status: 'ongoing'
+    });
+
+    expect(get).toHaveBeenCalledWith('/manga', expect.objectContaining({
+      params: expect.objectContaining({
+        'includedTags[]': ['genre-id', 'theme-id'],
+        includedTagsMode: 'AND',
+        'status[]': ['ongoing']
+      })
+    }));
+  });
+
+  it('pagina capítulos hasta recuperar todos los resultados disponibles', async () => {
+    const firstPage = Array.from({ length: 100 }, (_, index) => ({
+      id: `chapter-${index}`,
+      type: 'chapter',
+      attributes: { translatedLanguage: 'es', chapter: String(index + 1) }
+    }));
+    const secondPage = Array.from({ length: 25 }, (_, index) => ({
+      id: `chapter-${index + 100}`,
+      type: 'chapter',
+      attributes: { translatedLanguage: 'es', chapter: String(index + 101) }
+    }));
+    const get = vi.fn()
+      .mockResolvedValueOnce({ data: { result: 'ok', data: firstPage } })
+      .mockResolvedValueOnce({ data: { result: 'ok', data: secondPage } });
+    const provider = new MangaDexProvider({ get } as any);
+
+    const result = await provider.getChapters(mangaId);
+
+    expect(result).toHaveLength(125);
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(get.mock.calls[1][1].params.offset).toBe(100);
+  });
+
   it('descarta capítulos fuera de español e inglés', async () => {
     const get = vi.fn().mockResolvedValue({
       data: {

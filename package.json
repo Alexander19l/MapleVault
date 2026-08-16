@@ -1,6 +1,6 @@
 {
   "name": "maplevault-local",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "description": "Local desktop application for managing, discovering, and organizing anime series (MapleVault).",
   "author": "MapleVault Contributors",
   "repository": {
@@ -53,6 +53,7 @@
   "dependencies": {
     "@ghostery/adblocker-electron": "^2.18.0",
     "axios": "^1.17.0",
-    "cross-fetch": "^4.1.0"
+    "cross-fetch": "^4.1.0",
+    "unzipper": "^0.12.3"
   }
 }

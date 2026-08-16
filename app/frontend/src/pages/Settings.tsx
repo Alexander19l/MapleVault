@@ -9,6 +9,7 @@ import {
   Upload, 
   Save, 
   FolderLock, 
+  FolderOpen,
   Moon,
   Globe,
   Database,
@@ -43,6 +44,7 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
   const [selectedLang, setSelectedLang] = useState<'es' | 'en'>('es');
   const [closeBehavior, setCloseBehavior] = useState<'ask' | 'minimize' | 'quit'>('ask');
   const [startupEnabled, setStartupEnabled] = useState(false);
+  const [mangaFolderMessage, setMangaFolderMessage] = useState('');
   const [startupSupported, setStartupSupported] = useState(false);
   const [startupReason, setStartupReason] = useState<string | null>(null);
   const [translationSettings, setTranslationSettings] = useState({
@@ -616,6 +618,12 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
+  const handleOpenMangaFolder = async () => {
+    const result = await (window as any).electronAPI?.manga?.openFolder?.();
+    setMangaFolderMessage(result?.error ? `No se pudo abrir la carpeta: ${result.error}` : 'Carpeta de capítulos abierta.');
+    window.setTimeout(() => setMangaFolderMessage(''), 5000);
+  };
+
   return (
     <div className="p-8 space-y-8 max-w-4xl mx-auto">
       {/* Cabecera */}
@@ -631,6 +639,18 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
 
       <form onSubmit={handleSaveSettings} className="space-y-8">
         {/* Sección 2: Apariencia e Idioma */}
+        <section className="p-6 bg-dark-card border border-dark-border/40 rounded-3xl space-y-4">
+          <h3 className="text-sm font-bold text-slate-350 uppercase tracking-widest flex items-center">
+            <FolderOpen className="h-4.5 w-4.5 text-violet-400 mr-2" />
+            Capítulos de manga descargados
+          </h3>
+          <p className="text-xs text-slate-400">Abre directamente la carpeta local donde MapleVault guarda los capítulos empaquetados y sus páginas offline.</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <button type="button" onClick={() => void handleOpenMangaFolder()} className="inline-flex items-center gap-2 border border-violet-500/40 bg-violet-500/10 px-3 py-2 text-xs font-bold text-violet-200 hover:bg-violet-500/20"><FolderOpen className="h-4 w-4" /> Abrir carpeta de mangas</button>
+            {mangaFolderMessage && <span className="text-xs text-emerald-300">{mangaFolderMessage}</span>}
+          </div>
+        </section>
+
         <section className="p-6 bg-dark-card border border-dark-border/40 rounded-3xl space-y-4">
           <h3 className="text-sm font-bold text-slate-350 uppercase tracking-widest flex items-center">
             <Globe className="h-4.5 w-4.5 text-secondary-400 mr-2" />

@@ -13,6 +13,7 @@ import type {
   MangaOnlinePages,
   MangaOnlineSearchItem,
   MangaOnlineTag,
+  MangaLibrarySavePayload,
   MangaSourceOverview,
   SourceCandidatesOverview
 } from '../types';
@@ -248,13 +249,24 @@ export const api = {
     return response.data;
   },
 
-  searchMangaOnline: async (q: string, limit = 20, source = 'mangadex', filters?: { genres?: string[]; tags?: string[]; status?: string }): Promise<{ results: MangaOnlineSearchItem[] }> => {
+  searchMangaOnline: async (q: string, limit = 20, source = 'mangadex', filters?: { genres?: string[]; tags?: string[]; status?: string; page?: number }): Promise<{ results: MangaOnlineSearchItem[]; page: number; hasMore: boolean }> => {
     const response = await client.get('/manga/online/search', { params: {
       q, limit, source,
       genres: filters?.genres?.join(','),
       tags: filters?.tags?.join(','),
-      status: filters?.status
+      status: filters?.status,
+      page: filters?.page
     } });
+    return response.data;
+  },
+
+  saveMangaToLibrary: async (payload: MangaLibrarySavePayload): Promise<{ saved: boolean; mangaId: number }> => {
+    const response = await client.post('/manga/library', payload);
+    return response.data;
+  },
+
+  getMangaChapters: async (mangaId: number): Promise<{ chapters: MangaOnlineChapter[] }> => {
+    const response = await client.get(`/manga/${mangaId}/chapters`);
     return response.data;
   },
 

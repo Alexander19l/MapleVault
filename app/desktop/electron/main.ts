@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import axios from 'axios';
+import unzipper from 'unzipper';
 import net from 'net';
 import { spawn, ChildProcess } from 'child_process';
 import { 
@@ -165,7 +166,7 @@ async function saveMangaArchive(request: {
   series?: unknown;
   fileName?: unknown;
   data?: unknown;
-}): Promise<{ saved: boolean; path?: string; error?: string }> {
+}): Promise<{ saved: boolean; path?: string; extractedPages?: number; error?: string }> {
   const rawData = request?.data;
   if (!rawData || (!ArrayBuffer.isView(rawData) && !(rawData instanceof ArrayBuffer))) {
     return { saved: false, error: 'El archivo de manga no es válido.' };
@@ -184,7 +185,72 @@ async function saveMangaArchive(request: {
   const targetPath = path.join(targetDirectory, fileName);
   await fs.promises.mkdir(targetDirectory, { recursive: true });
   await fs.promises.writeFile(targetPath, data, { flag: 'w' });
-  return { saved: true, path: targetPath };
+  const chapterDirectory = path.join(targetDirectory, fileName.replace(/\.zip$/i, ''));
+  const archive = await unzipper.Open.buffer(data);
+  let extractedPages = 0;
+  let extractedBytes = 0;
+  for (const entry of archive.files) {
+    if (entry.type !== 'File' || extractedPages >= 500) continue;
+    const relative = entry.path.replace(/\\/g, '/').replace(/^\/+/, '');
+    const extension = path.extname(relative).toLowerCase();
+    if (!/^\.(png|jpe?g|webp|gif)$/.test(extension) || relative.split('/').some((part: string) => part === '..')) continue;
+    const destination = path.resolve(chapterDirectory, relative);
+    if (!destination.startsWith(`${path.resolve(chapterDirectory)}${path.sep}`)) continue;
+    const pageData = await entry.buffer();
+    extractedBytes += pageData.length;
+    if (extractedBytes > 256 * 1024 * 1024) break;
+    await fs.promises.mkdir(path.dirname(destination), { recursive: true });
+    await fs.promises.writeFile(destination, pageData, { flag: 'w' });
+    extractedPages += 1;
+  }
+  return { saved: true, path: targetPath, extractedPages };
+}
+
+function getMangaDownloadRoot(): string {
+  return path.join(app.getPath('downloads'), 'MapleVault', 'Mangas');
+}
+
+function getSafeMangaSeriesDirectory(series: unknown): string | null {
+  const normalized = sanitizeMangaPathPart(series, 'Manga');
+  const root = path.resolve(getMangaDownloadRoot());
+  const target = path.resolve(root, normalized);
+  return target.startsWith(`${root}${path.sep}`) ? target : null;
+}
+
+async function listOfflineMangaChapters(request: { series?: unknown }): Promise<{ chapters: Array<{ key: string; label: string; pages: number }> }> {
+  const directory = getSafeMangaSeriesDirectory(request?.series);
+  if (!directory || !fs.existsSync(directory)) return { chapters: [] };
+  const entries = await fs.promises.readdir(directory, { withFileTypes: true });
+  const chapters: Array<{ key: string; label: string; pages: number }> = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const chapterDirectory = path.join(directory, entry.name);
+    const files = await fs.promises.readdir(chapterDirectory, { withFileTypes: true });
+    const pages = files.filter(file => file.isFile() && /\.(png|jpe?g|webp|gif)$/i.test(file.name)).length;
+    if (pages > 0) chapters.push({ key: entry.name, label: entry.name, pages });
+  }
+  return { chapters: chapters.sort((left, right) => left.label.localeCompare(right.label, undefined, { numeric: true })) };
+}
+
+async function readOfflineMangaChapter(request: { series?: unknown; chapter?: unknown }): Promise<{ pages: string[] }> {
+  const directory = getSafeMangaSeriesDirectory(request?.series);
+  const chapter = sanitizeMangaPathPart(request?.chapter, '');
+  if (!directory || !chapter || !fs.existsSync(directory)) return { pages: [] };
+  const entries = await fs.promises.readdir(directory, { withFileTypes: true });
+  const selected = entries.find(entry => entry.isDirectory() && entry.name.toLowerCase().includes(`capitulo ${chapter.toLowerCase()}`));
+  if (!selected) return { pages: [] };
+  const chapterDirectory = path.join(directory, selected.name);
+  const files = (await fs.promises.readdir(chapterDirectory, { withFileTypes: true }))
+    .filter(file => file.isFile() && /\.(png|jpe?g|webp|gif)$/i.test(file.name))
+    .sort((left, right) => left.name.localeCompare(right.name, undefined, { numeric: true }));
+  const pages: string[] = [];
+  for (const file of files.slice(0, 500)) {
+    const data = await fs.promises.readFile(path.join(chapterDirectory, file.name));
+    const extension = path.extname(file.name).toLowerCase();
+    const mime = extension === '.png' ? 'image/png' : extension === '.webp' ? 'image/webp' : extension === '.gif' ? 'image/gif' : 'image/jpeg';
+    pages.push(`data:${mime};base64,${data.toString('base64')}`);
+  }
+  return { pages };
 }
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -540,6 +606,9 @@ app.whenReady().then(async () => {
   ipcMain.handle('app-get-close-behavior', () => getCloseBehavior());
   ipcMain.handle('app-set-close-behavior', (_event, value: unknown) => setCloseBehavior(value));
   ipcMain.handle('manga-save-archive', (_event, request) => saveMangaArchive(request));
+  ipcMain.handle('manga-list-offline-chapters', (_event, request) => listOfflineMangaChapters(request));
+  ipcMain.handle('manga-read-offline-chapter', (_event, request) => readOfflineMangaChapter(request));
+  ipcMain.handle('manga-open-folder', async () => ({ path: getMangaDownloadRoot(), error: await shell.openPath(getMangaDownloadRoot()) || undefined }));
   ipcMain.handle('player-open', (_event, request: PlayerOpenRequest) => openPlayerWindow(request));
 
   ipcMain.handle('show-confirm', async (_event, message: string) => {

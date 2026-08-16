@@ -252,7 +252,7 @@ export interface Settings {
 
 export interface MangaItem {
   id: number;
-  external_id?: number | null;
+  external_id?: number | string | null;
   mal_id?: number | null;
   source?: string | null;
   title: string;
@@ -337,6 +337,21 @@ export interface MangaOnlineSearchItem {
     cached?: boolean;
     status?: string;
   };
+}
+
+export interface MangaLibrarySavePayload {
+  source: string;
+  externalId: string;
+  title: string;
+  titleRomaji?: string;
+  titleEnglish?: string;
+  synopsis?: string;
+  year?: number;
+  status?: string;
+  coverUrl?: string;
+  sourceUrl?: string;
+  genres?: string[];
+  chapters?: MangaOnlineChapter[];
 }
 
 export interface MangaOnlineTag {

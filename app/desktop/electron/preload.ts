@@ -61,6 +61,9 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'app-get-close-behavior',
   'app-set-close-behavior',
   'manga-save-archive',
+  'manga-list-offline-chapters',
+  'manga-read-offline-chapter',
+  'manga-open-folder',
   'player-open'
 ]);
 
@@ -103,8 +106,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   manga: {
-    saveArchive: (request: { series: string; fileName: string; data: Uint8Array }): Promise<{ saved: boolean; path?: string; error?: string }> => {
+    saveArchive: (request: { series: string; fileName: string; data: Uint8Array }): Promise<{ saved: boolean; path?: string; extractedPages?: number; error?: string }> => {
       return ipcRenderer.invoke('manga-save-archive', request);
+    },
+    listOfflineChapters: (request: { series: string }): Promise<{ chapters: Array<{ key: string; label: string; pages: number }> }> => {
+      return ipcRenderer.invoke('manga-list-offline-chapters', request);
+    },
+    readChapter: (request: { series: string; chapter: string }): Promise<{ pages: string[] }> => {
+      return ipcRenderer.invoke('manga-read-offline-chapter', request);
+    },
+    openFolder: (): Promise<{ path: string; error?: string }> => {
+      return ipcRenderer.invoke('manga-open-folder');
     }
   },
 

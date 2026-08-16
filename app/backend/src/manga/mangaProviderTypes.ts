@@ -9,6 +9,7 @@ export interface MangaSearchFilters {
   tags?: string[];
   status?: string;
   recent?: boolean;
+  page?: number;
 }
 
 export interface MangaTagOption {
