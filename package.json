@@ -39,6 +39,7 @@
     "test:security": "npm --prefix app/backend run test:security",
     "test:backend": "npm --prefix app/backend run test",
     "test:chatbot": "npm --prefix app/backend run test:chatbot",
+    "test:e2e": "playwright test",
     "test": "npm run test:backend",
     "check": "npm run typecheck && npm run typecheck:frontend && npm run lint:frontend && npm run test:backend"
   },

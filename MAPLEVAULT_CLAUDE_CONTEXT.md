@@ -500,3 +500,28 @@ timeouts, deduplicación, orden estable y degradación sin bloquear la interfaz.
 - Typecheck backend, desktop y frontend: aprobado.
 - ESLint frontend: aprobado.
 - Instalador 1.0.17 generado y verificado antes de publicar esta fase.
+
+## Prueba E2E del lector
+
+El archivo `tests/manga-reader.spec.ts` usa un backend HTTP mockeado y un `electronAPI` de
+fixture para verificar el flujo local sin depender de una fuente externa ni de una instalación
+de Electron. La prueba cubre:
+
+- apertura de la biblioteca y ficha local;
+- detección del capítulo descargado;
+- primera lectura con una sola página solicitada;
+- navegación que solicita el siguiente `offset` en una llamada separada;
+- contador total de páginas;
+- zoom;
+- cambio de dirección izquierda-derecha a derecha-izquierda;
+- presencia del control de pantalla completa.
+
+Comando:
+
+```text
+npm run test:e2e -- tests/manga-reader.spec.ts --project=chromium
+```
+
+Resultado de esta iteración: `1 passed` en Chromium. La prueba no valida la CDN real de
+MangaDex, el comportamiento nativo de pantalla completa de Windows ni la extracción de ZIP;
+esas verificaciones siguen siendo manuales o requieren una suite Electron específica.
