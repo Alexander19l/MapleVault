@@ -1,6 +1,20 @@
-﻿import axios from 'axios';
+import axios from 'axios';
 
-import type { ChatActionHistoryItem, ChatCapabilities, ChatMessage, DatabaseBackup } from '../types';
+import type {
+  ChatActionExecutionResponse,
+  ChatActionHistoryItem,
+  ChatActionType,
+  ChatCapabilities,
+  ChatMessage,
+  DatabaseBackup,
+  AgentSystemOverview,
+  MangaItem,
+  MangaOnlineChapter,
+  MangaOnlinePages,
+  MangaOnlineSearchItem,
+  MangaSourceOverview,
+  SourceCandidatesOverview
+} from '../types';
 
 export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -188,6 +202,11 @@ export const api = {
     return response.data;
   },
 
+  getScrapingStatus: async () => {
+    const response = await client.get('/scraping/status');
+    return response.data;
+  },
+
   getScrapingSources: async () => {
     const response = await client.get('/scraping/sources');
     return response.data;
@@ -196,6 +215,87 @@ export const api = {
   updateScrapingSource: async (id: number, data: { enabled: boolean; rate_limit: number }) => {
     const response = await client.put(`/scraping/sources/${id}`, data);
     return response.data;
+  },
+
+  // Manga: preparado sin scraping activo por defecto
+  getMangaListPage: async (filters: {
+    q?: string;
+    status?: string;
+    format?: string;
+    sort?: string;
+    limit: number;
+    offset: number;
+  }) => {
+    const response = await client.get('/manga', {
+      params: { ...filters, withTotal: true }
+    });
+    return response.data as {
+      rows: MangaItem[];
+      total: number;
+      limit: number;
+      offset: number;
+    };
+  },
+
+  getMangaDetail: async (id: number): Promise<MangaItem> => {
+    const response = await client.get(`/manga/${id}`);
+    return response.data;
+  },
+
+  getMangaSources: async (): Promise<MangaSourceOverview> => {
+    const response = await client.get('/manga/sources');
+    return response.data;
+  },
+
+  searchMangaOnline: async (q: string, limit = 20, source = 'mangadex'): Promise<{ results: MangaOnlineSearchItem[] }> => {
+    const response = await client.get('/manga/online/search', { params: { q, limit, source } });
+    return response.data;
+  },
+
+  getMangaOnlineDetails: async (
+    mangaId: string,
+    source = 'mangadex'
+  ): Promise<{ manga: MangaOnlineSearchItem }> => {
+    const response = await client.get(`/manga/online/${encodeURIComponent(mangaId)}/details`, {
+      params: { source }
+    });
+    return response.data;
+  },
+
+  getMangaOnlineChapters: async (
+    mangaId: string,
+    languages: Array<'es' | 'en'> = ['es', 'en'],
+    source = 'mangadex'
+  ): Promise<{ chapters: MangaOnlineChapter[] }> => {
+    const response = await client.get(`/manga/online/${encodeURIComponent(mangaId)}/chapters`, {
+      params: { languages: languages.join(','), source }
+    });
+    return response.data;
+  },
+
+  getMangaOnlinePages: async (
+    chapterId: string,
+    quality: 'data' | 'data-saver' = 'data-saver',
+    source = 'mangadex'
+  ): Promise<MangaOnlinePages> => {
+    const response = await client.get(`/manga/online/chapters/${encodeURIComponent(chapterId)}/pages`, {
+      params: { quality, source }
+    });
+    return response.data;
+  },
+
+  downloadMangaOnlineChapter: async (
+    chapterId: string,
+    series: string,
+    chapter: string,
+    quality: 'data' | 'data-saver' = 'data-saver',
+    source = 'mangadex'
+  ): Promise<Blob> => {
+    const response = await client.get(`/manga/online/chapters/${encodeURIComponent(chapterId)}/download`, {
+      params: { quality, series, chapter, source },
+      responseType: 'blob'
+    });
+    return response.data as Blob;
   },
 
   // Chatbot Maple Assistant
@@ -209,7 +309,11 @@ export const api = {
     return response.data;
   },
 
-  executeChatAction: async (type: string, data: any, confirmToken?: string) => {
+  executeChatAction: async (
+    type: ChatActionType,
+    data: Record<string, unknown>,
+    confirmToken?: string
+  ): Promise<ChatActionExecutionResponse> => {
     const response = await client.post('/chat/execute-action', { type, data, confirmToken });
     return response.data;
   },
@@ -327,6 +431,16 @@ export const api = {
     return response.data;
   },
 
+  getAgentSystem: async (): Promise<AgentSystemOverview> => {
+    const response = await client.get('/system/agents');
+    return response.data;
+  },
+
+  getSourceCandidates: async (): Promise<SourceCandidatesOverview> => {
+    const response = await client.get('/system/source-candidates');
+    return response.data;
+  },
+
   getSystemHealth: async () => {
     const response = await client.get('/system/health');
     return response.data;
@@ -425,6 +539,23 @@ export const api = {
 
   getAnimeFLVServers: async (id: number, episodeNumber: number) => {
     const response = await client.get(`/animeflv/${id}/episodes/${episodeNumber}/servers`);
+    return response.data;
+  },
+
+  getExternalEpisodeSources: async () => {
+    const response = await client.get('/episode-sources');
+    return response.data;
+  },
+
+  getExternalSourceEpisodes: async (providerId: string, animeId: number) => {
+    const response = await client.get(`/episode-sources/${providerId}/anime/${animeId}/episodes`);
+    return response.data;
+  },
+
+  getExternalSourceServers: async (providerId: string, animeId: number, episodeNumber: number) => {
+    const response = await client.get(
+      `/episode-sources/${providerId}/anime/${animeId}/episodes/${episodeNumber}/servers`
+    );
     return response.data;
   },
 };

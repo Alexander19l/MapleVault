@@ -3,6 +3,7 @@ import { api } from '../services/api';
 import type { Anime } from '../types';
 import { AnimeCard } from '../components/anime/AnimeCard';
 import { SeasonTimeline } from '../components/seasons/SeasonTimeline';
+import { useCurrentAnimeSeason } from '../hooks/useCurrentAnimeSeason';
 import { 
   Calendar, 
   RefreshCw, 
@@ -21,11 +22,10 @@ interface SeasonsProps {
 const SEASON_PAGE_SIZE = 36;
 
 export const Seasons: React.FC<SeasonsProps> = ({ onViewDetails }) => {
-  const currentYear = new Date().getFullYear();
-  const currentMonth = new Date().getMonth() + 1;
-  const currentSeason = currentMonth <= 3 ? 'winter' : currentMonth <= 6 ? 'spring' : currentMonth <= 9 ? 'summer' : 'fall';
-  const [selectedYear, setSelectedYear] = useState(currentYear);
-  const [selectedSeason, setSelectedSeason] = useState(currentSeason);
+  const currentAnimeSeason = useCurrentAnimeSeason();
+  const previousCurrentSeason = useRef(currentAnimeSeason);
+  const [selectedYear, setSelectedYear] = useState(currentAnimeSeason.year);
+  const [selectedSeason, setSelectedSeason] = useState(currentAnimeSeason.season);
   const [animes, setAnimes] = useState<Anime[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -117,6 +117,19 @@ export const Seasons: React.FC<SeasonsProps> = ({ onViewDetails }) => {
   }, [loadComparisons]);
 
   useEffect(() => {
+    const previous = previousCurrentSeason.current;
+    if (selectedYear === previous.year && selectedSeason === previous.season) {
+      setSelectedYear(currentAnimeSeason.year);
+      setSelectedSeason(currentAnimeSeason.season);
+    }
+    previousCurrentSeason.current = currentAnimeSeason;
+  }, [
+    currentAnimeSeason,
+    selectedSeason,
+    selectedYear
+  ]);
+
+  useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting) {
@@ -194,7 +207,7 @@ export const Seasons: React.FC<SeasonsProps> = ({ onViewDetails }) => {
       {/* Línea de Tiempo de Temporadas */}
       <div className="space-y-4">
         <SeasonTimeline
-          currentYear={new Date().getFullYear()}
+          currentYear={currentAnimeSeason.year}
           selectedYear={selectedYear}
           setSelectedYear={setSelectedYear}
           selectedSeason={selectedSeason}

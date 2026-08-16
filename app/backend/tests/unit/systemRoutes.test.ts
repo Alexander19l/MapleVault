@@ -140,6 +140,40 @@ describe('System HTTP router', () => {
     ]);
   });
 
+  it('expone el inventario de subagentes de desarrollo', async () => {
+    const { response, json } = await requestJson('/system/agents');
+
+    expect(response.status).toBe(200);
+    expect(json.product).toBe('MapleVault');
+    expect(json.tokenReductionPolicy.length).toBeGreaterThan(0);
+    expect(json.subagents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'security-reviewer' }),
+        expect.objectContaining({ id: 'scraping-analyst' }),
+        expect.objectContaining({ id: 'manga-planner' })
+      ])
+    );
+  });
+
+  it('expone fuentes candidatas desactivadas por defecto', async () => {
+    const { response, json } = await requestJson('/system/source-candidates');
+
+    expect(response.status).toBe(200);
+    expect(json.policy).toContain('desactivados por defecto');
+    expect(json.playerCapabilities).toMatchObject({
+      httpsEmbed: 'supported',
+      torrent: 'unsupported'
+    });
+    expect(json.selected).toHaveLength(4);
+    expect(json.selected.filter((source: any) => source.languages.includes('en'))).toHaveLength(2);
+    expect(json.selected.every((source: any) => source.enabledByDefault === false)).toBe(true);
+    expect(json.candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'anilist', risk: 'low', enabledByDefault: false }),
+        expect.objectContaining({ id: 'mangadex', enabledByDefault: false })
+      ])
+    );
+  });
   it('convierte fallos de lectura en respuesta 500 sin filtrar stack traces', async () => {
     queryGetMock.mockRejectedValueOnce(new Error('fallo de sqlite'));
 

@@ -1,7 +1,15 @@
-import React, { useMemo, useState } from 'react';
+import React, {
+  Component,
+  type ErrorInfo,
+  type ReactNode,
+  useMemo,
+  useRef,
+  useState
+} from 'react';
 import { BookOpen, Check, ChevronLeft, ChevronRight, Eye, Plus, RefreshCw, ShieldCheck } from 'lucide-react';
 import { useAssistantRuntime } from '@assistant-ui/react';
 import { api } from '../../services/api';
+import type { ChatActionType } from '../../types';
 import { notifications } from '../../utils/notify';
 
 type ImportState = 'idle' | 'loading' | 'success' | 'error';
@@ -88,22 +96,50 @@ const actionLabels: Record<string, string> = {
   sync_all: 'Sincronizar catálogo'
 };
 
+const getActionResponseText = (result: unknown): string => {
+  const normalize = (value: string) => value.replace(/\*\*/g, '').trim();
+
+  if (typeof result === 'string' && result.trim()) return normalize(result);
+  if (!result || typeof result !== 'object') return 'Acción confirmada.';
+
+  const response = result as Record<string, unknown>;
+  if (typeof response.text === 'string' && response.text.trim()) return normalize(response.text);
+  if (typeof response.message === 'string' && response.message.trim()) return normalize(response.message);
+  return 'Acción confirmada.';
+};
+
 const MapleActionCard: React.FC<{ args: any }> = ({ args }) => {
   const [status, setStatus] = useState<ImportState>('idle');
   const [message, setMessage] = useState('');
+  const inFlightRef = useRef(false);
 
   const handleConfirm = async () => {
-    if (status === 'loading' || status === 'success') return;
+    if (inFlightRef.current || status === 'loading' || status === 'success') return;
 
     try {
+      inFlightRef.current = true;
       setStatus('loading');
-      const result = await api.executeChatAction(args.type, args.data, args.confirmToken);
-      setMessage(result?.message || result || 'Acción confirmada.');
+      const result = await api.executeChatAction(
+        args.type as ChatActionType,
+        args.data || {},
+        args.confirmToken
+      );
+      const responseText = getActionResponseText(result);
+      setMessage(responseText);
       setStatus('success');
+      notifications.success('La acción se completó correctamente.');
+      window.dispatchEvent(new CustomEvent('maplevault:data-changed', {
+        detail: {
+          source: 'chatbot',
+          actionType: args.type
+        }
+      }));
     } catch (err) {
       console.error(err);
       setMessage('No se pudo ejecutar la acción. Inténtalo nuevamente.');
       setStatus('error');
+    } finally {
+      inFlightRef.current = false;
     }
   };
 
@@ -148,6 +184,7 @@ const MapleActionCard: React.FC<{ args: any }> = ({ args }) => {
       )}
 
       <button
+        type="button"
         onClick={handleConfirm}
         disabled={status === 'loading' || status === 'success'}
         className="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-emerald-600 py-1.5 text-[10.5px] font-bold text-white transition-colors hover:bg-emerald-700 disabled:cursor-default disabled:bg-slate-700 disabled:text-slate-300"
@@ -538,6 +575,41 @@ const MapleVisualCard: React.FC<{ args: any }> = ({ args }) => {
   return null;
 };
 
+interface MapleToolErrorBoundaryProps {
+  children: ReactNode;
+}
+
+interface MapleToolErrorBoundaryState {
+  hasError: boolean;
+}
+
+class MapleToolErrorBoundary extends Component<MapleToolErrorBoundaryProps, MapleToolErrorBoundaryState> {
+  state: MapleToolErrorBoundaryState = { hasError: false };
+
+  static getDerivedStateFromError(): MapleToolErrorBoundaryState {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('[Maple Assistant] Error al renderizar una tarjeta:', error, info);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div
+          role="alert"
+          className="mt-2 rounded-lg border border-rose-500/35 bg-rose-500/10 px-3 py-2 text-[10px] text-rose-200"
+        >
+          No se pudo mostrar esta tarjeta. El resto de MapleVault continúa disponible.
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 export interface MapleToolCallProps {
   toolName?: string;
   args?: any;
@@ -548,11 +620,19 @@ export const MapleToolCall: React.FC<MapleToolCallProps> = ({ toolName, args, ar
   const parsedArgs = useMemo(() => parseArgs(args, argsText), [args, argsText]);
 
   if (toolName === 'maple_action') {
-    return <MapleActionCard args={parsedArgs} />;
+    return (
+      <MapleToolErrorBoundary>
+        <MapleActionCard args={parsedArgs} />
+      </MapleToolErrorBoundary>
+    );
   }
 
   if (toolName === 'maple_visual') {
-    return <MapleVisualCard args={parsedArgs} />;
+    return (
+      <MapleToolErrorBoundary>
+        <MapleVisualCard args={parsedArgs} />
+      </MapleToolErrorBoundary>
+    );
   }
 
   return null;

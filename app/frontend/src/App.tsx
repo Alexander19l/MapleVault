@@ -10,6 +10,7 @@ const Home = lazy(() => import('./pages/Home').then(module => ({ default: module
 const Catalog = lazy(() => import('./pages/Catalog').then(module => ({ default: module.Catalog })));
 const Seasons = lazy(() => import('./pages/Seasons').then(module => ({ default: module.Seasons })));
 const Mylist = lazy(() => import('./pages/Mylist').then(module => ({ default: module.Mylist })));
+const Manga = lazy(() => import('./pages/Manga').then(module => ({ default: module.Manga })));
 const Scraping = lazy(() => import('./pages/Scraping').then(module => ({ default: module.Scraping })));
 const Settings = lazy(() => import('./pages/Settings').then(module => ({ default: module.Settings })));
 const AdvancedSearch = lazy(() => import('./components/search/AdvancedSearch').then(module => ({ default: module.AdvancedSearch })));
@@ -39,10 +40,15 @@ function App() {
     const handleOpenDetail = (e: any) => {
       handleViewDetails(e.detail.isExternal ? e.detail.data : e.detail.id);
     };
+    const handleDataChanged = () => {
+      setRefreshTrigger(current => current + 1);
+    };
     window.addEventListener('openAnimeDetail', handleOpenDetail);
+    window.addEventListener('maplevault:data-changed', handleDataChanged);
 
     return () => {
       window.removeEventListener('openAnimeDetail', handleOpenDetail);
+      window.removeEventListener('maplevault:data-changed', handleDataChanged);
     };
   }, []);
 
@@ -99,7 +105,7 @@ function App() {
   const renderPage = () => {
     switch (activePage) {
       case 'home':
-        return <Home onViewDetails={handleViewDetails} onNavigate={setActivePage} />;
+        return <Home onViewDetails={handleViewDetails} onNavigate={setActivePage} refreshTrigger={refreshTrigger} />;
       case 'catalog':
         return (
           <Catalog 
@@ -109,6 +115,8 @@ function App() {
         );
       case 'seasons':
         return <Seasons onViewDetails={handleViewDetails} />;
+      case 'manga':
+        return <Manga refreshTrigger={refreshTrigger} />;
       case 'mylist':
         return (
           <Mylist 
@@ -149,7 +157,7 @@ function App() {
       case 'settings':
         return <Settings onRefreshData={handleRefreshData} />;
       default:
-        return <Home onViewDetails={handleViewDetails} onNavigate={setActivePage} />;
+        return <Home onViewDetails={handleViewDetails} onNavigate={setActivePage} refreshTrigger={refreshTrigger} />;
     }
   };
 

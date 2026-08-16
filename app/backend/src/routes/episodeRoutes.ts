@@ -1,8 +1,10 @@
 import { Router } from 'express';
 import { query } from '../database/db';
 import {
+  getAniListAnimeById,
   getAnimeAV1Embeds,
   getAnimeAV1Episodes,
+  getAnimeAV1Media,
   getAnimeAV1Slug,
   getAnimeFLVEpisodes,
   getAnimeFLVServers,
@@ -14,21 +16,32 @@ import {
   getTioAnimeServers,
   getTioAnimeSlug
 } from '../scraping/scraper';
+import { validateAnimeAV1Identity } from '../scraping/animeAV1Identity';
+import {
+  decoratePlaybackServers,
+  requiresStandaloneAnimeAV1Player,
+  type EpisodeSourceLanguage
+} from '../episodes/playbackServer';
 import { validateId } from '../security/validators';
 import {
+  clearAnimeSlug,
   getAnimeForSlugLookup,
   getAnimeSlug,
   getWatchedEpisodeNumbers,
+  saveAnimeMalId,
   saveAnimeSlug,
   setEpisodeWatchedState
 } from './episodeRepository';
 import { getErrorMessage as getSharedErrorMessage } from './routeUtils';
+import { createExternalEpisodeRouter } from './externalEpisodeRoutes';
 
 type QueryClient = Pick<typeof query, 'get' | 'all' | 'run'>;
 
 interface EpisodeScraperService {
+  getAniListAnimeById: typeof getAniListAnimeById;
   getAnimeAV1Slug: typeof getAnimeAV1Slug;
   getAnimeAV1Episodes: typeof getAnimeAV1Episodes;
+  getAnimeAV1Media: typeof getAnimeAV1Media;
   getAnimeAV1Embeds: typeof getAnimeAV1Embeds;
   getTioAnimeSlug: typeof getTioAnimeSlug;
   getTioAnimeEpisodes: typeof getTioAnimeEpisodes;
@@ -47,8 +60,10 @@ interface EpisodeRouterDependencies {
 }
 
 interface ProviderRouteConfig {
+  providerId: string;
   routePrefix: string;
   sourceLabel: string;
+  language: EpisodeSourceLanguage;
   slugColumn: string;
   getSlug: EpisodeScraperService['getTioAnimeSlug'];
   getEpisodes: EpisodeScraperService['getTioAnimeEpisodes'];
@@ -57,8 +72,10 @@ interface ProviderRouteConfig {
 }
 
 const defaultScraperService: EpisodeScraperService = {
+  getAniListAnimeById,
   getAnimeAV1Slug,
   getAnimeAV1Episodes,
+  getAnimeAV1Media,
   getAnimeAV1Embeds,
   getTioAnimeSlug,
   getTioAnimeEpisodes,
@@ -146,7 +163,11 @@ function registerProviderRoutes(
 
       const episodeUrl = config.buildEpisodeUrl(anime[config.slugColumn], number);
       const servers = await config.getServers(episodeUrl);
-      res.json(prioritizeServers(servers));
+      res.json(prioritizeServers(decoratePlaybackServers(servers, {
+        providerId: config.providerId,
+        language: config.language,
+        referer: episodeUrl
+      })));
     } catch (error: unknown) {
       res.status(500).json({ error: getErrorMessage(error) });
     }
@@ -159,6 +180,32 @@ export function createEpisodeRouter({
 }: EpisodeRouterDependencies = {}) {
   const router = Router();
 
+  async function hydrateMalId(anime: any): Promise<void> {
+    if (Number.isInteger(Number(anime.mal_id)) && Number(anime.mal_id) > 0) return;
+    if (String(anime.source || '').toLowerCase() !== 'anilist') return;
+
+    const externalId = Number(anime.external_id);
+    if (!Number.isInteger(externalId) || externalId <= 0) return;
+
+    const refreshed = await scraperService.getAniListAnimeById(externalId);
+    const malId = Number(refreshed?.mal_id);
+    if (!Number.isInteger(malId) || malId <= 0) return;
+
+    anime.mal_id = malId;
+    await saveAnimeMalId(queryClient, anime.id, malId);
+  }
+
+  async function isVerifiedAnimeAV1Media(anime: any, media: any): Promise<boolean> {
+    await hydrateMalId(anime);
+    const validation = validateAnimeAV1Identity(anime, media);
+    if (!validation.matches) {
+      console.warn(
+        `[MapleVault] AnimeAV1 rechazo la asociacion anime=${anime.id} slug=${media.slug}: ${validation.reason}`
+      );
+    }
+    return validation.matches;
+  }
+
   router.get('/anime/:id/episodes', async (req, res) => {
     try {
       const id = parseInt(req.params.id, 10);
@@ -169,19 +216,65 @@ export function createEpisodeRouter({
       }
 
       let slug = anime.animeav1_slug;
-      if (!slug) {
-        slug = await scraperService.getAnimeAV1Slug(anime.title, anime.title_romaji, anime.title_english);
-        if (slug) {
-          await saveAnimeSlug(queryClient, id, 'animeav1_slug', slug);
+      let media = null;
+      const rejectedSlugs = new Set<string>();
+
+      if (slug) {
+        try {
+          media = await scraperService.getAnimeAV1Media(slug);
+        } catch {
+          media = null;
+        }
+        if (!media || !await isVerifiedAnimeAV1Media(anime, media)) {
+          rejectedSlugs.add(slug);
+          await clearAnimeSlug(queryClient, id, 'animeav1_slug');
+          slug = null;
+          media = null;
         }
       }
 
       if (!slug) {
-        return res.status(404).json({ error: 'No se encontro este anime en AnimeAV1' });
+        for (let attempt = 0; attempt < 5 && !slug; attempt += 1) {
+          const candidateSlug = await scraperService.getAnimeAV1Slug(
+            anime.title,
+            anime.title_romaji,
+            anime.title_english,
+            [...rejectedSlugs]
+          );
+          if (!candidateSlug || rejectedSlugs.has(candidateSlug)) break;
+
+          let candidateMedia;
+          try {
+            candidateMedia = await scraperService.getAnimeAV1Media(candidateSlug);
+          } catch {
+            rejectedSlugs.add(candidateSlug);
+            continue;
+          }
+          if (!await isVerifiedAnimeAV1Media(anime, candidateMedia)) {
+            rejectedSlugs.add(candidateSlug);
+            continue;
+          }
+
+          slug = candidateSlug;
+          media = candidateMedia;
+          await saveAnimeSlug(queryClient, id, 'animeav1_slug', slug);
+        }
       }
 
-      const episodes = await scraperService.getAnimeAV1Episodes(slug);
-      res.json({ slug, episodes });
+      if (!slug || !media) {
+        return res.status(404).json({
+          error: 'No se encontro una coincidencia verificada para este anime en AnimeAV1',
+          code: 'ANIMEAV1_IDENTITY_NOT_VERIFIED'
+        });
+      }
+
+      res.json({
+        slug,
+        episodes: media.episodes,
+        availability: media.episodes.length > 0 ? 'available' : 'not_published',
+        sourceTitle: media.title,
+        extractionSource: media.extractionSource
+      });
     } catch (error: unknown) {
       res.status(500).json({ error: getErrorMessage(error) });
     }
@@ -222,7 +315,7 @@ export function createEpisodeRouter({
     try {
       const id = parseInt(req.params.id, 10);
       const number = parseInt(req.params.number, 10);
-      const anime = await getAnimeSlug(queryClient, id, 'animeav1_slug');
+      const anime = await getAnimeForSlugLookup(queryClient, id, 'animeav1_slug');
 
       if (!anime) {
         return res.status(404).json({ error: 'Anime no encontrado' });
@@ -232,16 +325,37 @@ export function createEpisodeRouter({
         return res.status(404).json({ error: 'Anime no tiene un slug de AnimeAV1 asociado' });
       }
 
+      const media = await scraperService.getAnimeAV1Media(anime.animeav1_slug);
+      if (!await isVerifiedAnimeAV1Media(anime, media)) {
+        await clearAnimeSlug(queryClient, id, 'animeav1_slug');
+        return res.status(404).json({
+          error: 'La fuente guardada no corresponde a esta serie o temporada',
+          code: 'ANIMEAV1_IDENTITY_NOT_VERIFIED'
+        });
+      }
+
+      if (!media.episodes.some(episode => episode.number === number)) {
+        return res.status(404).json({ error: 'El capitulo solicitado no esta publicado para esta serie' });
+      }
+
       const embeds = await scraperService.getAnimeAV1Embeds(anime.animeav1_slug, number);
-      res.json(prioritizeServers(embeds));
+      const episodeUrl = `https://animeav1.com/media/${anime.animeav1_slug}/${number}`;
+      res.json(prioritizeServers(decoratePlaybackServers(embeds, {
+        providerId: 'animeav1',
+        language: 'es',
+        referer: episodeUrl,
+        forceWindow: requiresStandaloneAnimeAV1Player
+      })));
     } catch (error: unknown) {
       res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
   registerProviderRoutes(router, queryClient, {
+    providerId: 'tioanime',
     routePrefix: 'tioanime',
     sourceLabel: 'TioAnime',
+    language: 'es',
     slugColumn: 'tioanime_slug',
     getSlug: scraperService.getTioAnimeSlug,
     getEpisodes: scraperService.getTioAnimeEpisodes,
@@ -250,8 +364,10 @@ export function createEpisodeRouter({
   });
 
   registerProviderRoutes(router, queryClient, {
+    providerId: 'jkanime',
     routePrefix: 'jkanime',
     sourceLabel: 'JKAnime',
+    language: 'es',
     slugColumn: 'jkanime_slug',
     getSlug: scraperService.getJKAnimeSlug,
     getEpisodes: scraperService.getJKAnimeEpisodes,
@@ -260,14 +376,18 @@ export function createEpisodeRouter({
   });
 
   registerProviderRoutes(router, queryClient, {
+    providerId: 'animeflv',
     routePrefix: 'animeflv',
     sourceLabel: 'AnimeFLV',
+    language: 'es',
     slugColumn: 'animeflv_slug',
     getSlug: scraperService.getAnimeFLVSlug,
     getEpisodes: scraperService.getAnimeFLVEpisodes,
     getServers: scraperService.getAnimeFLVServers,
     buildEpisodeUrl: (slug, episodeNumber) => `https://www3.animeflv.net/ver/${slug}-${episodeNumber}`
   });
+
+  router.use(createExternalEpisodeRouter({ queryClient }));
 
   return router;
 }

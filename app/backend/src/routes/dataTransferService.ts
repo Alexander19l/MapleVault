@@ -89,6 +89,7 @@ export async function importUserData(
 function toImportedNormalizedAnime(safeAnime: Record<string, any>): NormalizedAnime {
   return {
     external_id: safeAnime.external_id || safeAnime.id || null,
+    mal_id: safeAnime.mal_id || undefined,
     source: safeAnime.source || 'Import',
     title: safeAnime.title,
     title_romaji: safeAnime.title_romaji,

@@ -11,6 +11,7 @@ const queryRunMock = vi.fn<(sql: string, params?: unknown[]) => Promise<any>>();
 const scraperService = {
   getAnimeAV1Slug: vi.fn(),
   getAnimeAV1Episodes: vi.fn(),
+  getAnimeAV1Media: vi.fn(),
   getAnimeAV1Embeds: vi.fn(),
   getTioAnimeSlug: vi.fn(),
   getTioAnimeEpisodes: vi.fn(),
@@ -75,19 +76,35 @@ describe('Episode HTTP router', () => {
     queryRunMock.mockResolvedValue({ changes: 1 });
     scraperService.getAnimeAV1Slug.mockResolvedValue('maple-av1');
     scraperService.getAnimeAV1Episodes.mockResolvedValue([{ number: 1, title: 'Inicio' }]);
+    scraperService.getAnimeAV1Media.mockResolvedValue({
+      title: 'Maple Show',
+      slug: 'maple-av1',
+      malId: null,
+      startDate: '2024-01-01',
+      endDate: null,
+      category: { name: 'TV Anime', slug: 'tv-anime' },
+      episodes: [{ id: 1, number: 1 }]
+    });
     scraperService.getAnimeAV1Embeds.mockResolvedValue([
-      { server: 'StreamSB' },
-      { server: 'Mega' }
+      { server: 'StreamSB', url: 'https://streamsb.example/embed/maple-1' },
+      { server: 'Mega', url: 'https://mega.example/embed/maple-1' }
     ]);
     scraperService.getTioAnimeSlug.mockResolvedValue('maple-tio');
     scraperService.getTioAnimeEpisodes.mockResolvedValue([{ number: 1 }]);
-    scraperService.getTioAnimeServers.mockResolvedValue([{ server: 'Okru' }]);
+    scraperService.getTioAnimeServers.mockResolvedValue([
+      { server: 'Okru', url: 'https://okru.example/embed/maple-1' }
+    ]);
     scraperService.getJKAnimeSlug.mockResolvedValue('maple-jk');
     scraperService.getJKAnimeEpisodes.mockResolvedValue([{ number: 1 }]);
-    scraperService.getJKAnimeServers.mockResolvedValue([{ server: '1fichier' }, { server: 'Okru' }]);
+    scraperService.getJKAnimeServers.mockResolvedValue([
+      { server: '1fichier', url: 'https://1fichier.example/embed/maple-1' },
+      { server: 'Okru', url: 'https://okru.example/embed/maple-1' }
+    ]);
     scraperService.getAnimeFLVSlug.mockResolvedValue('maple-flv');
     scraperService.getAnimeFLVEpisodes.mockResolvedValue([{ number: 1 }]);
-    scraperService.getAnimeFLVServers.mockResolvedValue([{ server: 'Streamtape' }]);
+    scraperService.getAnimeFLVServers.mockResolvedValue([
+      { server: 'Streamtape', url: 'https://streamtape.example/embed/maple-1' }
+    ]);
   });
 
   it('resuelve y cachea slug de AnimeAV1 antes de listar episodios', async () => {
@@ -96,6 +113,8 @@ describe('Episode HTTP router', () => {
       title: 'Maple Show',
       title_romaji: 'Maple Show',
       title_english: '',
+      year: 2024,
+      type: 'tv',
       animeav1_slug: ''
     });
 
@@ -104,10 +123,71 @@ describe('Episode HTTP router', () => {
     expect(response.status).toBe(200);
     expect(json).toEqual({
       slug: 'maple-av1',
-      episodes: [{ number: 1, title: 'Inicio' }]
+      episodes: [{ id: 1, number: 1 }],
+      availability: 'available',
+      sourceTitle: 'Maple Show'
     });
-    expect(scraperService.getAnimeAV1Slug).toHaveBeenCalledWith('Maple Show', 'Maple Show', '');
+    expect(scraperService.getAnimeAV1Slug).toHaveBeenCalledWith('Maple Show', 'Maple Show', '', []);
+    expect(scraperService.getAnimeAV1Media).toHaveBeenCalledWith('maple-av1');
     expect(queryRunMock).toHaveBeenCalledWith('UPDATE anime SET animeav1_slug = ? WHERE id = ?', ['maple-av1', 10]);
+  });
+
+  it('descarta y repara un slug AV1 persistido que pertenece a un spin-off', async () => {
+    queryGetMock.mockResolvedValueOnce({
+      id: 113,
+      title: 'My Hero Academia',
+      title_romaji: 'Boku no Hero Academia',
+      title_english: 'My Hero Academia',
+      year: 2016,
+      type: 'tv',
+      animeav1_slug: 'vigilante-boku-no-hero-academia-illegals-2nd-season'
+    });
+    scraperService.getAnimeAV1Slug.mockResolvedValueOnce('boku-no-hero-academia');
+    scraperService.getAnimeAV1Media
+      .mockResolvedValueOnce({
+        title: 'Vigilante: Boku no Hero Academia Illegals 2nd Season',
+        slug: 'vigilante-boku-no-hero-academia-illegals-2nd-season',
+        malId: null,
+        startDate: '2025-04-01',
+        endDate: null,
+        category: { name: 'TV Anime', slug: 'tv-anime' },
+        episodes: [{ id: 10, number: 1 }]
+      })
+      .mockResolvedValueOnce({
+        title: 'Boku no Hero Academia',
+        slug: 'boku-no-hero-academia',
+        malId: null,
+        startDate: '2016-04-03',
+        endDate: '2016-06-26',
+        category: { name: 'TV Anime', slug: 'tv-anime' },
+        episodes: [{ id: 20, number: 1 }]
+      });
+
+    const { response, json } = await requestJson('/anime/113/episodes');
+
+    expect(response.status).toBe(200);
+    expect(json).toEqual({
+      slug: 'boku-no-hero-academia',
+      episodes: [{ id: 20, number: 1 }],
+      availability: 'available',
+      sourceTitle: 'Boku no Hero Academia'
+    });
+    expect(queryRunMock).toHaveBeenNthCalledWith(
+      1,
+      'UPDATE anime SET animeav1_slug = NULL WHERE id = ?',
+      [113]
+    );
+    expect(queryRunMock).toHaveBeenNthCalledWith(
+      2,
+      'UPDATE anime SET animeav1_slug = ? WHERE id = ?',
+      ['boku-no-hero-academia', 113]
+    );
+    expect(scraperService.getAnimeAV1Slug).toHaveBeenCalledWith(
+      'My Hero Academia',
+      'Boku no Hero Academia',
+      'My Hero Academia',
+      ['vigilante-boku-no-hero-academia-illegals-2nd-season']
+    );
   });
 
   it('devuelve episodios vistos y actualiza progreso al alternar visto', async () => {
@@ -150,7 +230,21 @@ describe('Episode HTTP router', () => {
   it('prioriza servidores fuertes al obtener reproductores de AnimeAV1', async () => {
     queryGetMock.mockResolvedValueOnce({
       id: 10,
+      title: 'Maple Show',
+      title_romaji: 'Maple Show',
+      title_english: '',
+      year: 2024,
+      type: 'tv',
       animeav1_slug: 'maple-av1'
+    });
+    scraperService.getAnimeAV1Media.mockResolvedValueOnce({
+      title: 'Maple Show',
+      slug: 'maple-av1',
+      malId: null,
+      startDate: '2024-01-01',
+      endDate: null,
+      category: { name: 'TV Anime', slug: 'tv-anime' },
+      episodes: [{ id: 2, number: 2 }]
     });
 
     const { response, json } = await requestJson('/anime/10/episodes/2');

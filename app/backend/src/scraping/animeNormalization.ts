@@ -60,6 +60,7 @@ export function normalizeAniListMedia(media: any): NormalizedAnime {
 
   return {
     external_id: media.id,
+    mal_id: media.idMal,
     source: 'AniList',
     title: media.title?.english || media.title?.romaji || media.title?.native || 'Título no disponible',
     title_romaji: media.title?.romaji,

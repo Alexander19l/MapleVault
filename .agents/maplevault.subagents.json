@@ -1,0 +1,54 @@
+{
+  "project": "MapleVault",
+  "version": 1,
+  "goal": "Reducir carga de contexto y tokens en trabajos largos manteniendo estabilidad, seguridad y eficacia.",
+  "contextPolicy": {
+    "defaultMaxFilesPerAgent": 12,
+    "preferRipgrep": true,
+    "avoidLargeAssets": true,
+    "avoidNodeModules": true,
+    "requireRiskNotesForWrites": true
+  },
+  "leadAgent": {
+    "id": "maplevault-architect",
+    "role": "Coordina decisiones, integra parches y conserva la coherencia de arquitectura."
+  },
+  "subagents": [
+    {
+      "id": "security-reviewer",
+      "scope": ["app/backend/src/security", "app/backend/src/routes", "app/desktop/electron"],
+      "purpose": "Revisar sanitización, IPC, CORS, confirmaciones del chatbot, rutas y exposición de datos.",
+      "output": "Hallazgos con archivo, riesgo, impacto y verificación."
+    },
+    {
+      "id": "code-optimizer",
+      "scope": ["app/backend/src", "app/frontend/src"],
+      "purpose": "Detectar código muerto evidente, consultas costosas, estados grandes y duplicación segura de remover.",
+      "output": "Cambios propuestos por prioridad sin alterar comportamiento."
+    },
+    {
+      "id": "scraping-analyst",
+      "scope": ["app/backend/src/scraping", "app/backend/src/routes/episodeRoutes.ts", "app/backend/src/routes/scrapingSyncService.ts"],
+      "purpose": "Validar proveedores, identidad de episodios, rate limits, cache y degradación ante fallos externos.",
+      "output": "Matriz de proveedor, estabilidad, límites y pruebas adversariales."
+    },
+    {
+      "id": "chatbot-evaluator",
+      "scope": ["app/backend/src/chatbot", "app/backend/src/chatbot/__tests__"],
+      "purpose": "Fortalecer intents, memoria, capacidades, confirmaciones y pruebas semánticas.",
+      "output": "Casos de prueba y riesgos de falsos positivos."
+    },
+    {
+      "id": "manga-planner",
+      "scope": ["app/backend/src/manga", "app/backend/src/routes/mangaRoutes.ts", "app/frontend/src/pages/Manga.tsx"],
+      "purpose": "Preparar manga sin mezclar dominio con anime ni activar fuentes no revisadas.",
+      "output": "Contrato de datos, rutas y pendientes para scraping futuro."
+    },
+    {
+      "id": "test-runner",
+      "scope": ["package.json", "app/backend/package.json", "app/frontend/package.json", "tests"],
+      "purpose": "Ejecutar verificación incremental y reportar fallos reproducibles.",
+      "output": "Comandos ejecutados, resultado y logs relevantes."
+    }
+  ]
+}

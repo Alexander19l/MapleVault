@@ -3,6 +3,7 @@ import { api } from '../services/api';
 import type { Anime } from '../types';
 import { AnimeCard } from '../components/anime/AnimeCard';
 import mapleMascot from '../assets/maple-mascot.png';
+import { useCurrentAnimeSeason } from '../hooks/useCurrentAnimeSeason';
 import { 
   Bookmark, 
   CalendarDays,
@@ -18,17 +19,11 @@ import {
 interface HomeProps {
   onViewDetails: (id: number) => void;
   onNavigate: (page: string) => void;
+  refreshTrigger: number;
 }
 
-const getCurrentSeasonLabel = () => {
-  const month = new Date().getMonth() + 1;
-  if (month <= 3) return 'Invierno';
-  if (month <= 6) return 'Primavera';
-  if (month <= 9) return 'Verano';
-  return 'Otoño';
-};
-
-export const Home: React.FC<HomeProps> = ({ onViewDetails, onNavigate }) => {
+export const Home: React.FC<HomeProps> = ({ onViewDetails, onNavigate, refreshTrigger }) => {
+  const currentAnimeSeason = useCurrentAnimeSeason();
   const [stats, setStats] = useState({
     total: 0,
     watching: 0,
@@ -44,7 +39,7 @@ export const Home: React.FC<HomeProps> = ({ onViewDetails, onNavigate }) => {
 
   useEffect(() => {
     loadHomeData();
-  }, []);
+  }, [refreshTrigger]);
 
   const loadHomeData = async () => {
     try {
@@ -113,7 +108,7 @@ export const Home: React.FC<HomeProps> = ({ onViewDetails, onNavigate }) => {
                   Temporada actual
                 </span>
                 <strong className="text-sm text-white">
-                  {getCurrentSeasonLabel()} {new Date().getFullYear()}
+                  {currentAnimeSeason.label} {currentAnimeSeason.year}
                 </strong>
               </div>
             </div>

@@ -24,7 +24,12 @@ const REQUIRED_TABLES = [
   'assistant_memory',
   'watched_episodes',
   'anime_relations',
-  'anime_translations'
+  'anime_translations',
+  'manga',
+  'manga_genres',
+  'manga_user_list',
+  'manga_chapters',
+  'manga_sources'
 ] as const;
 
 /**

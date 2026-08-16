@@ -24,6 +24,17 @@ import {
 let protectionEnabled = true;
 let mainWindowRef: BrowserWindow | null = null;
 
+export const PLAYER_SESSION_PARTITION = 'maplevault-player';
+
+interface PlayerRequestContext {
+  targetUrl: string;
+  referer: string;
+}
+
+let playerRequestContext: PlayerRequestContext | null = null;
+let playerRequestHeadersInstalled = false;
+let playerSessionSafeguardsInstalled = false;
+
 // Caches de dominios para búsqueda rápida O(1)
 const blacklistSet = new Set(AD_DOMAIN_BLACKLIST);
 const whitelistSet = new Set(DEFAULT_WHITELIST);
@@ -190,12 +201,17 @@ export async function initPlayerProtection(mainWindow: BrowserWindow | null): Pr
   console.log('[PlayerProtection] Inicializando sistema de protección del reproductor...');
 
   // 1. Instalar Ghostery Adblocker
+  installPlayerSessionSafeguards();
   await installGhosteryAdblocker();
 
-  // 2. Registrar protección global para nuevas WebContents (pop-ups y navegaciones extras)
+  // 2. Restaurar el origen requerido por reproductores que validan hotlinking.
+  // Se registra aunque Ghostery no haya podido inicializarse.
+  installPlayerRequestHeaders();
+
+  // 3. Registrar protección global para nuevas WebContents (pop-ups y navegaciones extras)
   installWebContentsProtection();
 
-  // 3. Registrar canales IPC para UI
+  // 4. Registrar canales IPC para UI
   registerIPCHandlers();
 
   console.log('[PlayerProtection] Sistema de protección inicializado completamente.');
@@ -203,6 +219,10 @@ export async function initPlayerProtection(mainWindow: BrowserWindow | null): Pr
 
 export function setPlayerProtectionMainWindow(mainWindow: BrowserWindow | null): void {
   mainWindowRef = mainWindow;
+}
+
+export function setPlayerRequestContext(context: PlayerRequestContext | null): void {
+  playerRequestContext = context;
 }
 
 async function installGhosteryAdblocker() {
@@ -218,6 +238,8 @@ async function installGhosteryAdblocker() {
     blocker.config.loadCosmeticFilters = false;
     
     blocker.enableBlockingInSession(session.defaultSession);
+    const playerSession = session.fromPartition(PLAYER_SESSION_PARTITION);
+    blocker.enableBlockingInSession(playerSession);
     console.log('[PlayerProtection] Ghostery Adblocker inicializado correctamente.');
     
     // Podemos seguir eliminando Referer manualmente para privacidad extra si se desea
@@ -232,6 +254,41 @@ async function installGhosteryAdblocker() {
   } catch (err) {
     console.error('[PlayerProtection] Fallo al inicializar Ghostery:', err);
   }
+}
+
+function installPlayerRequestHeaders(): void {
+  if (playerRequestHeadersInstalled) return;
+
+  const playerSession = session.fromPartition(PLAYER_SESSION_PARTITION);
+  playerSession.webRequest.onBeforeSendHeaders((details, callback) => {
+    const requestHeaders = { ...details.requestHeaders };
+    const context = playerRequestContext;
+
+    if (context && details.resourceType === 'subFrame') {
+      try {
+        const requested = new URL(details.url);
+        const target = new URL(context.targetUrl);
+        if (requested.origin === target.origin) {
+          requestHeaders.Referer = context.referer;
+        }
+      } catch {
+        // La validación principal ya rechazó URLs malformadas.
+      }
+    }
+
+    callback({ requestHeaders });
+  });
+  playerRequestHeadersInstalled = true;
+}
+
+function installPlayerSessionSafeguards(): void {
+  if (playerSessionSafeguardsInstalled) return;
+
+  const playerSession = session.fromPartition(PLAYER_SESSION_PARTITION);
+  playerSession.setPermissionCheckHandler(() => false);
+  playerSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+  playerSession.on('will-download', event => event.preventDefault());
+  playerSessionSafeguardsInstalled = true;
 }
 
 /**

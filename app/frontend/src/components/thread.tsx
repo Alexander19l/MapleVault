@@ -1,5 +1,6 @@
 import { lazy, Suspense, type FC } from "react";
 import { LazyMarkdownText } from "@/components/lazy-markdown-text";
+import { AssistantLoadingIndicator } from "@/components/chatbot/AssistantLoadingIndicator";
 import {
   Reasoning,
   ReasoningContent,
@@ -50,11 +51,9 @@ const ToolFallback = lazy(() => import("@/components/tool-fallback").then(module
 })));
 
 const ToolLoadingFallback: FC = () => (
-  <div
-    role="status"
-    className="my-2 min-h-14 animate-pulse rounded-lg border border-slate-700/50 bg-slate-900/40"
-    aria-label="Cargando contenido del asistente"
-  />
+  <div className="my-2 rounded-lg border border-slate-700/50 bg-slate-900/40 px-2 py-1">
+    <AssistantLoadingIndicator compact label="Preparando el contenido..." />
+  </div>
 );
 
 export const Thread: FC = () => {
@@ -70,9 +69,9 @@ export const Thread: FC = () => {
       <ThreadPrimitive.Viewport
         turnAnchor="top"
         data-slot="aui_thread-viewport"
-        className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto scroll-smooth"
+        className="relative min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto scroll-smooth [scrollbar-gutter:stable]"
       >
-        <div className="mx-auto flex min-w-0 w-full max-w-(--thread-max-width) flex-1 flex-col px-2 pt-3 @md:px-3">
+        <div className="mx-auto flex min-h-full min-w-0 w-full max-w-(--thread-max-width) flex-col px-2 pb-4 pt-3 @md:px-3">
           <AuiIf condition={(s) => s.thread.isEmpty}>
             <ThreadWelcome />
           </AuiIf>
@@ -86,12 +85,26 @@ export const Thread: FC = () => {
             </ThreadPrimitive.Messages>
           </div>
 
-          <ThreadPrimitive.ViewportFooter className="aui-thread-viewport-footer bg-background sticky bottom-0 mt-auto flex min-w-0 flex-col gap-2 overflow-visible rounded-t-(--composer-radius) pb-2">
-            <ThreadScrollToBottom />
-            <Composer />
-          </ThreadPrimitive.ViewportFooter>
+          <AuiIf condition={(s) => s.thread.isRunning}>
+            <div
+              data-slot="maple_assistant-working"
+              className="mt-auto min-w-0 border-t border-white/5 pt-2"
+            >
+              <AssistantLoadingIndicator />
+            </div>
+          </AuiIf>
         </div>
       </ThreadPrimitive.Viewport>
+
+      <div
+        data-slot="aui_composer-region"
+        className="relative z-10 shrink-0 border-t border-white/10 bg-[var(--bg-secondary)] px-2 pb-2 pt-2 shadow-[0_-10px_24px_rgba(0,0,0,0.18)] @md:px-3"
+      >
+        <div className="relative mx-auto flex min-w-0 w-full max-w-(--thread-max-width) flex-col">
+          <ThreadScrollToBottom />
+          <Composer />
+        </div>
+      </div>
     </ThreadPrimitive.Root>
   );
 };
@@ -150,10 +163,13 @@ const ThreadSuggestionItem: FC = () => {
 const Composer: FC = () => {
   return (
     <ComposerPrimitive.Root className="aui-composer-root relative flex min-w-0 w-full flex-col">
-      <div data-slot="aui_composer-shell" className="bg-background focus-within:border-ring/75 focus-within:ring-ring/20 flex min-w-0 w-full items-end gap-1.5 rounded-(--composer-radius) border p-(--composer-padding) transition-shadow focus-within:ring-2">
+      <div
+        data-slot="aui_composer-shell"
+        className="flex min-h-11 min-w-0 w-full items-end gap-2 rounded-(--composer-radius) border border-[var(--border-medium)] bg-[var(--bg-panel)] p-(--composer-padding) shadow-sm transition-[border-color,box-shadow] focus-within:border-[var(--accent-primary)]/70 focus-within:shadow-[0_0_0_2px_color-mix(in_srgb,var(--accent-primary)_18%,transparent)]"
+      >
         <ComposerPrimitive.Input
-          placeholder="Escribe un mensaje..."
-          className="aui-composer-input placeholder:text-muted-foreground/80 max-h-24 min-h-8 flex-1 resize-none bg-transparent px-1.5 py-1.5 text-xs leading-5 outline-none"
+          placeholder="Escribe un comando o una consulta..."
+          className="aui-composer-input placeholder:text-muted-foreground/80 max-h-24 min-h-8 min-w-0 flex-1 resize-none bg-transparent px-2 py-1.5 text-xs leading-5 outline-none"
           rows={1}
           autoFocus
           aria-label="Entrada de mensaje"
@@ -168,10 +184,10 @@ const ComposerAction: FC = () => {
   return (
     <div className="aui-composer-action-wrapper relative flex shrink-0 items-center pb-0.5">
       <AuiIf condition={(s) => !s.thread.isRunning}>
-        <ComposerPrimitive.Send render={<TooltipIconButton tooltip="Enviar mensaje" side="bottom" type="button" variant="default" size="icon" className="aui-composer-send size-7 rounded-lg" aria-label="Enviar mensaje" />}><ArrowUpIcon className="aui-composer-send-icon size-3.5" /></ComposerPrimitive.Send>
+        <ComposerPrimitive.Send render={<TooltipIconButton tooltip="Enviar mensaje" side="bottom" type="button" variant="default" size="icon" className="aui-composer-send size-8 shrink-0 rounded-lg" aria-label="Enviar mensaje" />}><ArrowUpIcon className="aui-composer-send-icon size-4" /></ComposerPrimitive.Send>
       </AuiIf>
       <AuiIf condition={(s) => s.thread.isRunning}>
-        <ComposerPrimitive.Cancel render={<Button type="button" variant="default" size="icon" className="aui-composer-cancel size-7 rounded-lg" aria-label="Detener respuesta" />}><SquareIcon className="aui-composer-cancel-icon size-2.5 fill-current" /></ComposerPrimitive.Cancel>
+        <ComposerPrimitive.Cancel render={<Button type="button" variant="default" size="icon" className="aui-composer-cancel size-8 shrink-0 rounded-lg" aria-label="Detener respuesta" />}><SquareIcon className="aui-composer-cancel-icon size-2.5 fill-current" /></ComposerPrimitive.Cancel>
       </AuiIf>
     </div>
   );

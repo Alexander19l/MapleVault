@@ -58,11 +58,15 @@ describe('translationRuntime', () => {
       return realExistsSync(target);
     });
     delete process.env.LIBRETRANSLATE_AUTOSTART_COMMAND;
+    process.env.MAPLEVAULT_API_TOKEN = 'backend-session-secret';
+    process.env.MAPLEVAULT_CREDENTIAL_KEY = 'credential-secret';
   });
 
   afterEach(() => {
     resetLibreTranslateRuntimeForTests();
     delete process.env.LIBRETRANSLATE_AUTOSTART_COMMAND;
+    delete process.env.MAPLEVAULT_API_TOKEN;
+    delete process.env.MAPLEVAULT_CREDENTIAL_KEY;
     vi.restoreAllMocks();
   });
 
@@ -138,5 +142,9 @@ describe('translationRuntime', () => {
       ['--host', '127.0.0.1', '--port', '5001'],
       expect.objectContaining({ windowsHide: true })
     );
+    const spawnOptions = vi.mocked(spawn).mock.calls[0][2] as { env?: NodeJS.ProcessEnv };
+    expect(spawnOptions.env?.PYTHONUTF8).toBe('1');
+    expect(spawnOptions.env?.MAPLEVAULT_API_TOKEN).toBeUndefined();
+    expect(spawnOptions.env?.MAPLEVAULT_CREDENTIAL_KEY).toBeUndefined();
   });
 });

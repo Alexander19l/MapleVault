@@ -10,7 +10,8 @@ import {
   Search,
   Database,
   Settings as SettingsIcon,
-  BrainCircuit
+  BrainCircuit,
+  BookOpen
 } from 'lucide-react';
 import { api } from '../../services/api';
 import mapleMascot from '../../assets/maple-mascot.png';
@@ -49,6 +50,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
     { id: 'catalog', name: 'Catálogo', icon: Compass },
     { id: 'seasons', name: 'Temporadas', icon: CalendarDays },
     { id: 'mylist', name: 'Mi Lista', icon: UserRound },
+    { id: 'manga', name: 'Manga', icon: BookOpen },
   ];
 
   const filterItems = [

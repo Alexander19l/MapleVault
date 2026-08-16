@@ -1,5 +1,6 @@
 export interface NormalizedAnime {
   external_id: number;
+  mal_id?: number;
   source: string;
   title: string;
   title_romaji?: string;

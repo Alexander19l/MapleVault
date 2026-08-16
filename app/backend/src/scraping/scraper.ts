@@ -11,6 +11,9 @@ import type {
   ExternalSearchPage,
   NormalizedAnime
 } from './animeTypes';
+import {
+  findBestAnimeTitleMatch
+} from './animeTitleMatching';
 
 export { normalizeAniListRelations };
 export type { ExternalSearchOptions, ExternalSearchPage, NormalizedAnime };
@@ -28,6 +31,61 @@ export function simplifyTitle(title: string): string {
 
 // Helper para pausar ejecuciones (respetar rate limit)
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+export interface SeasonSyncRetryInfo {
+  attempt: number;
+  delayMs: number;
+  status?: number;
+  message: string;
+}
+
+export interface SeasonSyncOptions {
+  requestDelayMs?: number;
+  maxRetries?: number;
+  sleep?: (ms: number) => Promise<void>;
+  onRetry?: (info: SeasonSyncRetryInfo) => void | Promise<void>;
+}
+
+function getExternalErrorStatus(error: any): number | undefined {
+  const status = Number(error?.response?.status || error?.status);
+  return Number.isInteger(status) ? status : undefined;
+}
+
+function isRetryableExternalError(error: any): boolean {
+  const status = getExternalErrorStatus(error);
+  const code = String(error?.code || '').toUpperCase();
+  const message = String(error?.message || '').toLowerCase();
+  return status === 429
+    || Boolean(status && status >= 500)
+    || ['ECONNRESET', 'ECONNABORTED', 'ETIMEDOUT', 'EAI_AGAIN'].includes(code)
+    || message.includes('too many request')
+    || message.includes('rate limit')
+    || message.includes('timeout');
+}
+
+function getRetryAfterMs(error: any): number {
+  const rawValue = error?.response?.headers?.['retry-after'];
+  const seconds = Number(rawValue);
+  if (Number.isFinite(seconds) && seconds > 0) {
+    return Math.min(120000, Math.ceil(seconds * 1000));
+  }
+  return 0;
+}
+
+function createAniListGraphQLError(response: any): Error | null {
+  const graphQLError = response?.data?.errors?.[0];
+  if (!graphQLError) return null;
+
+  const error = new Error(String(graphQLError.message || 'AniList devolvió un error GraphQL.'));
+  const reportedStatus = Number(
+    graphQLError?.status
+    || graphQLError?.extensions?.status
+    || graphQLError?.extensions?.code
+  );
+  const inferredStatus = /too many request|rate limit/i.test(error.message) ? 429 : undefined;
+  (error as any).status = Number.isInteger(reportedStatus) ? reportedStatus : inferredStatus;
+  return error;
+}
 
 // Registrar log de scraping en base de datos
 export async function logScraping(source: string, action: string, status: string, message: string) {
@@ -61,6 +119,7 @@ export async function searchAniListPage(
         }
         media (search: $search, type: ANIME) {
           id
+          idMal
           title {
             romaji
             english
@@ -175,6 +234,7 @@ export async function getAniListAnimeById(externalId: number): Promise<Normalize
     query ($id: Int) {
       Media(id: $id, type: ANIME) {
         id
+        idMal
         title { romaji english native }
         description
         seasonYear
@@ -234,7 +294,11 @@ export async function getAniListAnimeById(externalId: number): Promise<Normalize
 }
 
 // --- SINCRONIZACIÓN POR AÑO Y TEMPORADA DESDE ANILIST ---
-export async function syncSeasonFromAniList(year: number, season: string): Promise<NormalizedAnime[]> {
+export async function syncSeasonFromAniList(
+  year: number,
+  season: string,
+  options: SeasonSyncOptions = {}
+): Promise<NormalizedAnime[]> {
   const url = 'https://graphql.anilist.co';
   const graphQLQuery = `
     query ($year: Int, $season: MediaSeason, $page: Int) {
@@ -244,6 +308,7 @@ export async function syncSeasonFromAniList(year: number, season: string): Promi
         }
         media (seasonYear: $year, season: $season, type: ANIME) {
           id
+          idMal
           title {
             romaji
             english
@@ -305,6 +370,9 @@ export async function syncSeasonFromAniList(year: number, season: string): Promi
   `;
 
   try {
+    const requestDelayMs = Math.max(0, Math.floor(Number(options.requestDelayMs) || 0));
+    const maxRetries = Math.min(6, Math.max(0, Math.floor(Number(options.maxRetries) || 3)));
+    const sleep = options.sleep || delay;
     const seasonUpper = season.toUpperCase(); // AniList usa WINTER, SPRING, SUMMER, FALL
     await logScraping('AniList API', `Sincronizar temporada: ${year} ${season}`, 'started', `Iniciando sincronización para ${year}-${season}`);
 
@@ -313,34 +381,58 @@ export async function syncSeasonFromAniList(year: number, season: string): Promi
     let hasNextPage = true;
 
     while (hasNextPage && page <= 10) {
-      try {
-        const response = await axios.post(url, {
-          query: graphQLQuery,
-          variables: { year, season: seasonUpper, page }
-        }, {
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'User-Agent': 'MapleVault-Local-Client'
-          },
-          timeout: 8000,
-          maxRedirects: 0
-        });
+      let response: any;
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          response = await axios.post(url, {
+            query: graphQLQuery,
+            variables: { year, season: seasonUpper, page }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'User-Agent': 'MapleVault-Local-Client'
+            },
+            timeout: 8000,
+            maxRedirects: 0
+          });
 
-        const pageData = response.data?.data?.Page;
-        const mediaList = Array.isArray(pageData?.media) ? pageData.media : [];
-        for (const media of mediaList) {
-          if (Number.isInteger(Number(media?.id))) {
-            mediaById.set(Number(media.id), media);
-          }
+          const graphQLError = createAniListGraphQLError(response);
+          if (graphQLError) throw graphQLError;
+          break;
+        } catch (error: any) {
+          if (!isRetryableExternalError(error) || attempt >= maxRetries) throw error;
+
+          const retryDelayMs = Math.max(
+            getRetryAfterMs(error),
+            Math.min(60000, Math.max(5000, requestDelayMs * 3) * (2 ** attempt))
+          );
+          await options.onRetry?.({
+            attempt: attempt + 1,
+            delayMs: retryDelayMs,
+            status: getExternalErrorStatus(error),
+            message: String(error?.message || 'Error temporal de AniList')
+          });
+          await sleep(retryDelayMs);
         }
+      }
 
-        hasNextPage = pageData?.pageInfo?.hasNextPage === true;
-        page += 1;
-      } catch (error) {
-        if (mediaById.size === 0) throw error;
-        console.warn(`AniList no respondió al solicitar la página ${page}; se conservarán ${mediaById.size} resultados parciales.`);
-        break;
+      const pageData = response?.data?.data?.Page;
+      if (!pageData) {
+        throw new Error(`AniList no devolvió la página ${page} de ${year}-${season}.`);
+      }
+
+      const mediaList = Array.isArray(pageData.media) ? pageData.media : [];
+      for (const media of mediaList) {
+        if (Number.isInteger(Number(media?.id))) {
+          mediaById.set(Number(media.id), media);
+        }
+      }
+
+      hasNextPage = pageData?.pageInfo?.hasNextPage === true;
+      page += 1;
+      if (hasNextPage && requestDelayMs > 0) {
+        await sleep(requestDelayMs);
       }
     }
 
@@ -352,7 +444,7 @@ export async function syncSeasonFromAniList(year: number, season: string): Promi
     const errorMsg = err.response?.data?.errors?.[0]?.message || err.message;
     await logScraping('AniList API', `Sincronizar temporada: ${year} ${season}`, 'error', `Fallo: ${errorMsg}`);
     console.error('Error al sincronizar temporada:', errorMsg);
-    return [];
+    throw err;
   }
 }
 
@@ -378,6 +470,7 @@ export async function searchJikanPage(
 
       return {
         external_id: m.mal_id,
+        mal_id: m.mal_id,
         source: 'MyAnimeList',
         title: m.title_english || m.title,
         title_romaji: m.title,
@@ -465,13 +558,13 @@ export async function saveNormalizedAnimeToLocal(anime: NormalizedAnime): Promis
     // Actualizar metadatos
     await query.run(`
       UPDATE anime
-      SET title_romaji = ?, title_english = ?, title_japanese = ?, synopsis = ?,
+      SET mal_id = COALESCE(?, mal_id), title_romaji = ?, title_english = ?, title_japanese = ?, synopsis = ?,
           status = ?, type = ?, episodes = ?, duration = ?, score = ?, popularity = ?,
           cover_image = ?, banner_image = ?, studio = ?, source_material = ?,
           start_date = ?, end_date = ?, is_adult = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `, [
-      anime.title_romaji, anime.title_english, anime.title_japanese, originalSynopsis,
+      anime.mal_id, anime.title_romaji, anime.title_english, anime.title_japanese, originalSynopsis,
       anime.status, anime.type, anime.episodes, anime.duration, anime.score, anime.popularity,
       anime.cover_image, anime.banner_image, anime.studio, anime.source_material,
       anime.start_date, anime.end_date, isAdult, animeId
@@ -480,12 +573,12 @@ export async function saveNormalizedAnimeToLocal(anime: NormalizedAnime): Promis
     // Insertar nuevo
     const res = await query.run(`
       INSERT INTO anime (
-        external_id, source, title, title_romaji, title_english, title_japanese, synopsis,
+        external_id, mal_id, source, title, title_romaji, title_english, title_japanese, synopsis,
         year, season, status, type, episodes, duration, score, popularity,
         cover_image, banner_image, studio, source_material, start_date, end_date, is_adult
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
-      anime.external_id, anime.source, anime.title, anime.title_romaji, anime.title_english, anime.title_japanese, originalSynopsis,
+      anime.external_id, anime.mal_id, anime.source, anime.title, anime.title_romaji, anime.title_english, anime.title_japanese, originalSynopsis,
       anime.year, anime.season, anime.status, anime.type, anime.episodes, anime.duration, anime.score, anime.popularity,
       anime.cover_image, anime.banner_image, anime.studio, anime.source_material, anime.start_date, anime.end_date, isAdult
     ]);
@@ -549,13 +642,22 @@ function deserializeSvelteKit(index: number, flatArray: any[], cache = new Map()
 }
 
 // Obtener slug de AnimeAV1 buscando en el catálogo por título(s)
-export async function getAnimeAV1Slug(title: string, romaji?: string, english?: string): Promise<string | null> {
-  const queries = [title, romaji, english].filter((q): q is string => typeof q === 'string' && q.trim().length > 0);
+export async function getAnimeAV1Slug(
+  title: string,
+  romaji?: string,
+  english?: string,
+  excludedSlugs: string[] = []
+): Promise<string | null> {
+  const aliases = [title, romaji, english]
+    .filter((q): q is string => typeof q === 'string' && q.trim().length > 0);
+  const queries = [...new Set(aliases)];
   
   const simplified = simplifyTitle(title);
   if (simplified && !queries.includes(simplified)) {
     queries.push(simplified);
   }
+
+  const candidatesBySlug = new Map<string, { slug: string; title: string }>();
   
   for (const q of queries) {
     try {
@@ -570,85 +672,241 @@ export async function getAnimeAV1Slug(title: string, romaji?: string, english?: 
       
       const cheerio = require('cheerio');
       const $ = cheerio.load(response.data);
-      const slugs: string[] = [];
+      let extractedFromArticles = 0;
       
-      // Intentar extraer de las tarjetas article
-      $('article').each((i: any, el: any) => {
+      $('article').each((_: any, el: any) => {
         const link = $(el).find('a').filter((idx: any, aEl: any) => {
           const href = $(aEl).attr('href');
           return !!(href && href.startsWith('/media/') && href.split('/').length === 3);
         }).first();
-        
         const href = link.attr('href');
-        if (href) {
-          const slug = href.split('/')[2];
-          if (!slugs.includes(slug)) {
-            slugs.push(slug);
-          }
+        if (!href) return;
+
+        const slug = href.split('/')[2];
+        const heading = $(el).find('h1, h2, h3, h4, [class*="title"]').first().text().trim();
+        const imageAlt = ($(el).find('img').first().attr('alt') || '')
+          .replace(/^portada\s+de\s+/i, '')
+          .trim();
+        const candidateTitle = heading || imageAlt;
+        if (slug && candidateTitle) {
+          candidatesBySlug.set(slug, { slug, title: candidateTitle });
+          extractedFromArticles += 1;
         }
       });
 
-      // Como fallback, buscar cualquier enlace que empiece por /media/ y tenga 3 partes
-      if (slugs.length === 0) {
-        $('a').each((i: any, el: any) => {
+      if (extractedFromArticles === 0) {
+        $('a').each((_: any, el: any) => {
           const href = $(el).attr('href');
           if (href && href.startsWith('/media/')) {
             const parts = href.split('/');
             if (parts.length === 3) {
               const slug = parts[2];
-              if (!slugs.includes(slug)) {
-                slugs.push(slug);
+              const candidateTitle = ($(el).attr('title') || $(el).text()).trim();
+              if (slug && candidateTitle) {
+                candidatesBySlug.set(slug, { slug, title: candidateTitle });
               }
             }
           }
         });
       }
       
-      if (slugs.length > 0) {
-        await logScraping('AnimeAV1 Scraping', `Buscar slug para: "${q}"`, 'success', `Encontrado slug: ${slugs[0]}`);
-        return slugs[0];
-      }
     } catch (err: any) {
       await logScraping('AnimeAV1 Scraping', `Buscar slug para: "${q}"`, 'error', `Fallo al buscar: ${err.message}`);
       console.error(`Error buscando slug en AnimeAV1 para "${q}":`, err.message);
     }
   }
+
+  const excluded = new Set(excludedSlugs.map(slug => String(slug || '').trim()).filter(Boolean));
+  const candidates = [...candidatesBySlug.values()]
+    .filter(candidate => !excluded.has(candidate.slug));
+  const match = findBestAnimeTitleMatch(aliases, candidates);
+  if (match) {
+    await logScraping(
+      'AnimeAV1 Scraping',
+      `Buscar slug para: "${title}"`,
+      'success',
+      `Coincidencia validada: ${match.candidate.title} (${match.candidate.slug}, ${match.score.toFixed(2)})`
+    );
+    return match.candidate.slug;
+  }
+
+  await logScraping(
+    'AnimeAV1 Scraping',
+    `Buscar slug para: "${title}"`,
+    'error',
+    'No se encontró una coincidencia de título segura'
+  );
   return null;
+}
+
+export interface AnimeAV1MediaData {
+  title: string;
+  slug: string;
+  malId: number | null;
+  startDate: string | null;
+  endDate: string | null;
+  category: {
+    name: string;
+    slug: string;
+  } | null;
+  episodes: { id: number; number: number }[];
+  declaredEpisodesCount: number | null;
+  extractionSource: 'sveltekit' | 'html';
+}
+
+export function extractAnimeAV1MediaData(data: any, fallbackSlug: string): AnimeAV1MediaData {
+  if (!data || !Array.isArray(data.nodes)) {
+    throw new Error('Formato SvelteKit no reconocido');
+  }
+
+  for (const node of data.nodes) {
+    if (!node || node.type !== 'data' || !Array.isArray(node.data)) continue;
+    const root = deserializeSvelteKit(0, node.data);
+    if (!root?.media) continue;
+
+    const media = root.media;
+    const episodes = Array.isArray(media.episodes)
+      ? media.episodes
+        .map((episode: any) => ({
+          id: Number(episode.id),
+          number: Number(episode.number)
+        }))
+        .filter((episode: { id: number; number: number }) =>
+          Number.isFinite(episode.id) && Number.isFinite(episode.number)
+        )
+        .sort((left: { number: number }, right: { number: number }) => left.number - right.number)
+      : [];
+    const declaredEpisodesCount = Number(media.episodesCount);
+    const malId = Number(media.malId);
+
+    return {
+      title: String(media.title || '').trim(),
+      slug: String(media.slug || fallbackSlug).trim(),
+      malId: Number.isInteger(malId) && malId > 0 ? malId : null,
+      startDate: media.startDate ? String(media.startDate) : null,
+      endDate: media.endDate ? String(media.endDate) : null,
+      category: media.category
+        ? {
+          name: String(media.category.name || ''),
+          slug: String(media.category.slug || '')
+        }
+        : null,
+      episodes,
+      declaredEpisodesCount: Number.isFinite(declaredEpisodesCount)
+        ? Math.max(0, declaredEpisodesCount)
+        : episodes.length,
+      extractionSource: 'sveltekit'
+    };
+  }
+
+  throw new Error('AnimeAV1 no devolvió metadata de la serie');
+}
+
+export function extractAnimeAV1MediaDataFromHtml(
+  html: string,
+  fallbackSlug: string
+): AnimeAV1MediaData {
+  const cheerio = require('cheerio');
+  const $ = cheerio.load(String(html || ''));
+  const escapedSlug = fallbackSlug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const episodePath = new RegExp(`^/media/${escapedSlug}/(\\d+)/?$`);
+  const episodesByNumber = new Map<number, { id: number; number: number }>();
+
+  $('a[href]').each((_: any, element: any) => {
+    const href = String($(element).attr('href') || '').trim();
+    if (!href) return;
+
+    let pathname = href;
+    try {
+      pathname = new URL(href, 'https://animeav1.com').pathname;
+    } catch {
+      return;
+    }
+
+    const match = pathname.match(episodePath);
+    const episodeNumber = Number(match?.[1]);
+    if (!Number.isFinite(episodeNumber)) return;
+    episodesByNumber.set(episodeNumber, {
+      id: episodeNumber,
+      number: episodeNumber
+    });
+  });
+
+  const episodes = [...episodesByNumber.values()]
+    .sort((left, right) => left.number - right.number);
+  const title = $('h1').first().text().trim()
+    || $('meta[property="og:title"]').attr('content')?.trim()
+    || '';
+
+  return {
+    title,
+    slug: fallbackSlug,
+    malId: null,
+    startDate: null,
+    endDate: null,
+    category: null,
+    episodes,
+    declaredEpisodesCount: episodes.length,
+    extractionSource: 'html'
+  };
+}
+
+export async function getAnimeAV1Media(slug: string): Promise<AnimeAV1MediaData> {
+  const baseUrl = `https://animeav1.com/media/${encodeURIComponent(slug)}`;
+  const requestConfig = {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
+    },
+    timeout: 8000
+  };
+  let mediaFromData: AnimeAV1MediaData | null = null;
+  let dataError: unknown = null;
+
+  try {
+    const response = await axios.get(`${baseUrl}/__data.json`, requestConfig);
+    mediaFromData = extractAnimeAV1MediaData(response.data, slug);
+    if (mediaFromData.episodes.length > 0) return mediaFromData;
+  } catch (error) {
+    dataError = error;
+  }
+
+  try {
+    const response = await axios.get(baseUrl, requestConfig);
+    const mediaFromHtml = extractAnimeAV1MediaDataFromHtml(response.data, slug);
+    if (mediaFromHtml.episodes.length > 0) {
+      return {
+        ...mediaFromHtml,
+        title: mediaFromData?.title || mediaFromHtml.title,
+        malId: mediaFromData?.malId ?? null,
+        startDate: mediaFromData?.startDate ?? null,
+        endDate: mediaFromData?.endDate ?? null,
+        category: mediaFromData?.category ?? null
+      };
+    }
+  } catch (htmlError) {
+    if (!mediaFromData) throw dataError || htmlError;
+  }
+
+  if (mediaFromData) {
+    if (
+      mediaFromData.declaredEpisodesCount !== null
+      && mediaFromData.declaredEpisodesCount > 0
+    ) {
+      throw new Error(
+        `AnimeAV1 informa ${mediaFromData.declaredEpisodesCount} capítulos, pero no fue posible extraerlos.`
+      );
+    }
+    return mediaFromData;
+  }
+
+  throw dataError || new Error('AnimeAV1 no devolvió metadata ni capítulos de la serie.');
 }
 
 // Obtener la lista de episodios de un anime por su slug
 export async function getAnimeAV1Episodes(slug: string): Promise<{ id: number, number: number }[]> {
   try {
     await logScraping('AnimeAV1 Scraping', `Obtener episodios para slug: "${slug}"`, 'started', `Solicitando __data.json del catálogo`);
-    const url = `https://animeav1.com/media/${slug}/__data.json`;
-    const response = await axios.get(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
-      },
-      timeout: 8000
-    });
-    
-    const data = response.data;
-    if (!data || !data.nodes || !Array.isArray(data.nodes)) {
-      throw new Error('Formato SvelteKit no reconocido');
-    }
-    
-    // Buscar el nodo que contenga los episodios recorriendo todos de forma segura
-    let episodes: { id: number, number: number }[] = [];
-    for (const node of data.nodes) {
-      if (node && node.type === 'data' && Array.isArray(node.data)) {
-        const root = deserializeSvelteKit(0, node.data);
-        if (root && root.media && Array.isArray(root.media.episodes)) {
-          episodes = root.media.episodes.map((ep: any) => ({
-            id: ep.id,
-            number: ep.number
-          }));
-          break;
-        }
-      }
-    }
-    
-    episodes.sort((a, b) => a.number - b.number);
+    const { episodes } = await getAnimeAV1Media(slug);
     await logScraping('AnimeAV1 Scraping', `Obtener episodios para slug: "${slug}"`, 'success', `Encontrados ${episodes.length} episodios`);
     return episodes;
   } catch (err: any) {

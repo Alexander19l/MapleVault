@@ -31,6 +31,7 @@ describe('scraping/animeNormalization', () => {
   it('convierte una ficha AniList sin conservar HTML ni relaciones manga', () => {
     const normalized = normalizeAniListMedia({
       id: 10,
+      idMal: 20,
       title: { romaji: 'Serie Romaji', english: 'Series English' },
       description: '<p>Verified synopsis</p>',
       seasonYear: 2024,
@@ -65,6 +66,7 @@ describe('scraping/animeNormalization', () => {
 
     expect(normalized).toMatchObject({
       external_id: 10,
+      mal_id: 20,
       source: 'AniList',
       title: 'Series English',
       synopsis: 'Verified synopsis',

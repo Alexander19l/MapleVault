@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   assertValidSlugColumn,
+  clearAnimeSlug,
   getAnimeForSlugLookup,
   getAnimeSlug,
   getWatchedEpisodeNumbers,
@@ -32,10 +33,13 @@ describe('Episode repository', () => {
       animeav1_slug: null
     });
     await saveAnimeSlug(queryClient, 1, 'animeav1_slug', 'maple-slug');
+    await clearAnimeSlug(queryClient, 1, 'animeav1_slug');
 
-    expect(queryClient.get.mock.calls[0][0]).toContain('animeav1_slug FROM anime');
+    expect(queryClient.get.mock.calls[0][0]).toContain('animeav1_slug');
+    expect(queryClient.get.mock.calls[0][0]).toContain('FROM anime WHERE id = ?');
     expect(queryClient.get.mock.calls[0][1]).toEqual([1]);
     expect(queryClient.run).toHaveBeenCalledWith('UPDATE anime SET animeav1_slug = ? WHERE id = ?', ['maple-slug', 1]);
+    expect(queryClient.run).toHaveBeenCalledWith('UPDATE anime SET animeav1_slug = NULL WHERE id = ?', [1]);
   });
 
   it('consulta slug simple de proveedor', async () => {

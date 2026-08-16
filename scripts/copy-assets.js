@@ -8,7 +8,14 @@ if (!fs.existsSync(destDir)) {
   fs.mkdirSync(destDir, { recursive: true });
 }
 
-const files = ['splash.html', 'error.html', 'splash-renderer.js', 'error-renderer.js'];
+const files = [
+  'splash.html',
+  'error.html',
+  'player.html',
+  'splash-renderer.js',
+  'error-renderer.js',
+  'player-renderer.js'
+];
 files.forEach(file => {
   const srcPath = path.join(srcDir, file);
   const destPath = path.join(destDir, file);

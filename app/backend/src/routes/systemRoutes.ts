@@ -1,7 +1,13 @@
 import { Router } from 'express';
+import { getMapleVaultAgentSystem } from '../agents/agentRegistry';
 import { listBackups } from '../database/backup';
 import { DB_PATH, query } from '../database/db';
 import { getAISettings } from '../chatbot/aiSettings';
+import {
+  getMapleVaultPlayerCapabilities,
+  getMediaSourceCandidates,
+  getRecommendedAnimeSourceIntegrations
+} from '../sources/mediaSourceCandidates';
 import { getErrorMessage as getSharedErrorMessage } from './routeUtils';
 
 type QueryClient = Pick<typeof query, 'get' | 'all'>;
@@ -14,6 +20,10 @@ interface SystemRouterDependencies {
   queryClient?: QueryClient;
   listDatabaseBackups?: typeof listBackups;
   getAssistantSettings?: typeof getAISettings;
+  getAgentSystem?: typeof getMapleVaultAgentSystem;
+  getSourceCandidates?: typeof getMediaSourceCandidates;
+  getRecommendedAnimeSources?: typeof getRecommendedAnimeSourceIntegrations;
+  getPlayerCapabilities?: typeof getMapleVaultPlayerCapabilities;
   databasePath?: string;
   getUptime?: () => number;
 }
@@ -27,6 +37,10 @@ export function createSystemRouter({
   queryClient = query,
   listDatabaseBackups = listBackups,
   getAssistantSettings = getAISettings,
+  getAgentSystem = getMapleVaultAgentSystem,
+  getSourceCandidates = getMediaSourceCandidates,
+  getRecommendedAnimeSources = getRecommendedAnimeSourceIntegrations,
+  getPlayerCapabilities = getMapleVaultPlayerCapabilities,
   databasePath = DB_PATH,
   getUptime = () => process.uptime()
 }: SystemRouterDependencies = {}) {
@@ -98,5 +112,17 @@ export function createSystemRouter({
     }
   });
 
+  router.get('/system/agents', (_req, res) => {
+    res.json(getAgentSystem());
+  });
+
+  router.get('/system/source-candidates', (_req, res) => {
+    res.json({
+      policy: 'Candidatos desactivados por defecto. Cada fuente debe auditarse antes de convertirse en proveedor activo.',
+      playerCapabilities: getPlayerCapabilities(),
+      selected: getRecommendedAnimeSources(),
+      candidates: getSourceCandidates()
+    });
+  });
   return router;
 }
