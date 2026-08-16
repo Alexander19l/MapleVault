@@ -9,7 +9,7 @@ Este documento es el punto de entrada para continuar el desarrollo cuando una se
 ## Estado de la versión
 
 - Producto: MapleVault.
-- Versión empaquetada actual: `1.0.17`.
+- Versión empaquetada actual: `1.0.18`.
 - Repositorio: `https://github.com/Alexander19l/MapleVault`.
 - Rama de trabajo publicada: `codex/safe-sqlite-restore`.
 - Último checkpoint publicado antes de esta fase: commit `1628cfbd`; esta fase queda pendiente de publicar.
@@ -452,7 +452,7 @@ ese comportamiento por carga paginada cuando se usa el lector offline.
 - TypeScript backend, desktop y frontend: aprobado.
 - ESLint frontend: aprobado.
 - Instalador Windows x64 generado: `MapleVault-Setup-1.0.16-x64.exe`.
-- SHA-256 del instalador: `FE57D18E8D677E93A2C3EF3F34BC2E1F54CD38C979C5547A420803C204DA8546`.
+- SHA-256 del instalador: `D9E5925A5EB4AD9283A5BF424BB64117646AFEBF888AEA0C4EBD84AB0F9D9DF0`.
 
 Estas pruebas son deterministas y usan contratos/fixtures. No deben presentarse como prueba
 de disponibilidad permanente de MangaDex, ZonaTMO o ShadeManga. La aceptación final requiere
@@ -500,6 +500,7 @@ timeouts, deduplicación, orden estable y degradación sin bloquear la interfaz.
 - Typecheck backend, desktop y frontend: aprobado.
 - ESLint frontend: aprobado.
 - Instalador 1.0.17 generado y verificado antes de publicar esta fase.
+- SHA-256 del instalador 1.0.17: `FE57D18E8D677E93A2C3EF3F34BC2E1F54CD38C979C5547A420803C204DA8546`.
 
 ## Prueba E2E del lector
 
@@ -525,3 +526,26 @@ npm run test:e2e -- tests/manga-reader.spec.ts --project=chromium
 Resultado de esta iteración: `1 passed` en Chromium. La prueba no valida la CDN real de
 MangaDex, el comportamiento nativo de pantalla completa de Windows ni la extracción de ZIP;
 esas verificaciones siguen siendo manuales o requieren una suite Electron específica.
+
+## Implementación 1.0.18: almacenamiento offline testeable
+
+- La lógica de ZIP, rutas, enumeración y lectura se aisló en
+  `app/desktop/electron/mangaOfflineStorage.ts`.
+- `main.ts` solo resuelve la carpeta de Descargas de Electron y conecta los mismos canales IPC;
+  no cambia el contrato del preload ni de React.
+- La enumeración recorre subcarpetas internas del ZIP, acepta únicamente imágenes permitidas y
+  conserva orden numérico estable.
+- Se mantiene el límite de 500 páginas y 256 MiB, además de la validación contra traversal de
+  rutas antes de escribir cada entrada.
+- Los ZIP inválidos se rechazan antes de crear la carpeta de descarga.
+- Las pruebas verifican ZIP anidado, orden `001`/`002`, respuesta paginada, MIME data URL y
+  rechazo de archivo no ZIP.
+
+### Verificación 1.0.18
+
+- Suite backend completa: `83` archivos y `679` pruebas aprobadas.
+- Typecheck backend, desktop y frontend: aprobado.
+- ESLint frontend: aprobado.
+- La prueba E2E de lector continúa aprobada: `1 passed` en Chromium.
+- Instalador Windows generado: `MapleVault-Setup-1.0.18-x64.exe`.
+- SHA-256 del instalador 1.0.18: `2AA3B1BBEBE270F7A22CF9FFF5CBC6D4B60549F4D5A63398189C47433018CDC1`.

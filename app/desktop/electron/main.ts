@@ -3,7 +3,6 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import axios from 'axios';
-import unzipper from 'unzipper';
 import net from 'net';
 import { spawn, ChildProcess } from 'child_process';
 import { 
@@ -22,6 +21,12 @@ import {
   setPlayerRequestContext
 } from './adblock/playerProtection';
 import { resolveDesktopAssetPath, resolveWindowIconPath } from './desktopAssets';
+import {
+  getMangaDownloadRoot,
+  listOfflineMangaChapters,
+  readOfflineMangaChapter,
+  saveMangaArchive
+} from './mangaOfflineStorage';
 import {
   getSafePlayerReferer,
   getSafePlayerUrl,
@@ -151,121 +156,6 @@ async function openPlayerWindow(request: PlayerOpenRequest): Promise<{
 
 function normalizeCloseBehavior(value: unknown): CloseBehavior {
   return value === 'minimize' || value === 'quit' || value === 'ask' ? value : 'ask';
-}
-
-function sanitizeMangaPathPart(value: unknown, fallback: string): string {
-  const cleaned = String(value || fallback)
-    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/[. ]+$/g, '');
-  return (cleaned || fallback).slice(0, 120);
-}
-
-async function saveMangaArchive(request: {
-  series?: unknown;
-  fileName?: unknown;
-  data?: unknown;
-}): Promise<{ saved: boolean; path?: string; extractedPages?: number; error?: string }> {
-  const rawData = request?.data;
-  if (!rawData || (!ArrayBuffer.isView(rawData) && !(rawData instanceof ArrayBuffer))) {
-    return { saved: false, error: 'El archivo de manga no es válido.' };
-  }
-
-  const data = rawData instanceof ArrayBuffer
-    ? Buffer.from(rawData)
-    : Buffer.from(rawData.buffer, rawData.byteOffset, rawData.byteLength);
-  if (data.length === 0 || data.length > 256 * 1024 * 1024) {
-    return { saved: false, error: 'El archivo de manga supera el tamaño permitido.' };
-  }
-
-  const series = sanitizeMangaPathPart(request.series, 'Manga');
-  const fileName = sanitizeMangaPathPart(request.fileName, 'capitulo.zip').replace(/\.zip$/i, '') + '.zip';
-  const targetDirectory = path.join(app.getPath('downloads'), 'MapleVault', 'Mangas', series);
-  const targetPath = path.join(targetDirectory, fileName);
-  await fs.promises.mkdir(targetDirectory, { recursive: true });
-  await fs.promises.writeFile(targetPath, data, { flag: 'w' });
-  const chapterDirectory = path.join(targetDirectory, fileName.replace(/\.zip$/i, ''));
-  const archive = await unzipper.Open.buffer(data);
-  let extractedPages = 0;
-  let extractedBytes = 0;
-  for (const entry of archive.files) {
-    if (entry.type !== 'File' || extractedPages >= 500) continue;
-    const relative = entry.path.replace(/\\/g, '/').replace(/^\/+/, '');
-    const extension = path.extname(relative).toLowerCase();
-    if (!/^\.(png|jpe?g|webp|gif)$/.test(extension) || relative.split('/').some((part: string) => part === '..')) continue;
-    const destination = path.resolve(chapterDirectory, relative);
-    if (!destination.startsWith(`${path.resolve(chapterDirectory)}${path.sep}`)) continue;
-    const pageData = await entry.buffer();
-    extractedBytes += pageData.length;
-    if (extractedBytes > 256 * 1024 * 1024) break;
-    await fs.promises.mkdir(path.dirname(destination), { recursive: true });
-    await fs.promises.writeFile(destination, pageData, { flag: 'w' });
-    extractedPages += 1;
-  }
-  return { saved: true, path: targetPath, extractedPages };
-}
-
-function getMangaDownloadRoot(): string {
-  return path.join(app.getPath('downloads'), 'MapleVault', 'Mangas');
-}
-
-function getSafeMangaSeriesDirectory(series: unknown): string | null {
-  const normalized = sanitizeMangaPathPart(series, 'Manga');
-  const root = path.resolve(getMangaDownloadRoot());
-  const target = path.resolve(root, normalized);
-  return target.startsWith(`${root}${path.sep}`) ? target : null;
-}
-
-async function listOfflineMangaChapters(request: { series?: unknown }): Promise<{ chapters: Array<{ key: string; label: string; pages: number }> }> {
-  const directory = getSafeMangaSeriesDirectory(request?.series);
-  if (!directory || !fs.existsSync(directory)) return { chapters: [] };
-  const entries = await fs.promises.readdir(directory, { withFileTypes: true });
-  const chapters: Array<{ key: string; label: string; pages: number }> = [];
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const chapterDirectory = path.join(directory, entry.name);
-    const files = await fs.promises.readdir(chapterDirectory, { withFileTypes: true });
-    const pages = files.filter(file => file.isFile() && /\.(png|jpe?g|webp|gif)$/i.test(file.name)).length;
-    if (pages > 0) chapters.push({ key: entry.name, label: entry.name, pages });
-  }
-  return { chapters: chapters.sort((left, right) => left.label.localeCompare(right.label, undefined, { numeric: true })) };
-}
-
-async function readOfflineMangaChapter(request: {
-  series?: unknown;
-  chapter?: unknown;
-  offset?: unknown;
-  limit?: unknown;
-}): Promise<{ pages: string[]; total: number; offset: number; hasMore: boolean }> {
-  const directory = getSafeMangaSeriesDirectory(request?.series);
-  const chapter = sanitizeMangaPathPart(request?.chapter, '');
-  const offset = Math.max(0, Math.min(500, Number(request?.offset) || 0));
-  const limit = Math.max(1, Math.min(12, Number(request?.limit) || 1));
-  if (!directory || !chapter || !fs.existsSync(directory)) return { pages: [], total: 0, offset, hasMore: false };
-  const entries = await fs.promises.readdir(directory, { withFileTypes: true });
-  const chapterLower = chapter.toLowerCase();
-  const selected = entries.find(entry => entry.isDirectory() && entry.name.toLowerCase() === chapterLower)
-    || entries.find(entry => entry.isDirectory() && entry.name.toLowerCase().includes(`capitulo ${chapterLower}`));
-  if (!selected) return { pages: [], total: 0, offset, hasMore: false };
-  const chapterDirectory = path.join(directory, selected.name);
-  const files = (await fs.promises.readdir(chapterDirectory, { withFileTypes: true }))
-    .filter(file => file.isFile() && /\.(png|jpe?g|webp|gif)$/i.test(file.name))
-    .sort((left, right) => left.name.localeCompare(right.name, undefined, { numeric: true }));
-  const pages: string[] = [];
-  const boundedFiles = files.slice(0, 500);
-  for (const file of boundedFiles.slice(offset, offset + limit)) {
-    const data = await fs.promises.readFile(path.join(chapterDirectory, file.name));
-    const extension = path.extname(file.name).toLowerCase();
-    const mime = extension === '.png' ? 'image/png' : extension === '.webp' ? 'image/webp' : extension === '.gif' ? 'image/gif' : 'image/jpeg';
-    pages.push(`data:${mime};base64,${data.toString('base64')}`);
-  }
-  return {
-    pages,
-    total: boundedFiles.length,
-    offset,
-    hasMore: offset + pages.length < boundedFiles.length
-  };
 }
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -620,10 +510,13 @@ app.whenReady().then(async () => {
   ipcMain.handle('app-set-startup-settings', (_event, enabled: boolean) => setStartupSettings(Boolean(enabled)));
   ipcMain.handle('app-get-close-behavior', () => getCloseBehavior());
   ipcMain.handle('app-set-close-behavior', (_event, value: unknown) => setCloseBehavior(value));
-  ipcMain.handle('manga-save-archive', (_event, request) => saveMangaArchive(request));
-  ipcMain.handle('manga-list-offline-chapters', (_event, request) => listOfflineMangaChapters(request));
-  ipcMain.handle('manga-read-offline-chapter', (_event, request) => readOfflineMangaChapter(request));
-  ipcMain.handle('manga-open-folder', async () => ({ path: getMangaDownloadRoot(), error: await shell.openPath(getMangaDownloadRoot()) || undefined }));
+  ipcMain.handle('manga-save-archive', (_event, request) => saveMangaArchive(request, app.getPath('downloads')));
+  ipcMain.handle('manga-list-offline-chapters', (_event, request) => listOfflineMangaChapters(getMangaDownloadRoot(app.getPath('downloads')), request));
+  ipcMain.handle('manga-read-offline-chapter', (_event, request) => readOfflineMangaChapter(getMangaDownloadRoot(app.getPath('downloads')), request));
+  ipcMain.handle('manga-open-folder', async () => {
+    const folder = getMangaDownloadRoot(app.getPath('downloads'));
+    return { path: folder, error: await shell.openPath(folder) || undefined };
+  });
   ipcMain.handle('player-open', (_event, request: PlayerOpenRequest) => openPlayerWindow(request));
 
   ipcMain.handle('show-confirm', async (_event, message: string) => {
