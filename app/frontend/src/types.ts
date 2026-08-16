@@ -330,6 +330,19 @@ export interface MangaOnlineSearchItem {
   contentRating?: string;
   coverUrl?: string;
   sourceUrl: string;
+  genres?: string[];
+  tags?: string[];
+  translation?: {
+    translated: boolean;
+    cached?: boolean;
+    status?: string;
+  };
+}
+
+export interface MangaOnlineTag {
+  id: string;
+  name: string;
+  group: 'genre' | 'theme' | 'format' | 'other';
 }
 
 export interface MangaOnlineChapter {

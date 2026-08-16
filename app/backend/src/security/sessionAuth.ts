@@ -13,7 +13,7 @@ export function createSessionAuthMiddleware(configuredToken = process.env.MAPLEV
   const expectedToken = configuredToken.trim();
 
   return (req: Request, res: Response, next: NextFunction): void => {
-    if (!expectedToken || req.method === 'OPTIONS' || req.path === '/health') {
+    if (!expectedToken || req.method === 'OPTIONS' || req.path === '/health' || req.path === '/manga/online/page-proxy') {
       next();
       return;
     }

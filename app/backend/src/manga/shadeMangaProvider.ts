@@ -139,6 +139,15 @@ export class ShadeMangaProvider implements MangaCatalogProvider {
     return response.data.map(toSearchItem).filter((item): item is MangaDexSearchItem => Boolean(item)).slice(0, take);
   }
 
+  async getRecent(limit = 8): Promise<MangaDexSearchItem[]> {
+    const take = Math.min(Math.max(Math.floor(limit), 1), MAX_SEARCH_LIMIT);
+    const response = await this.gate(() => this.http.get<ShadeMangaSeries[]>('/series-locales/recientes', {
+      params: { take, excludeAdult: true }
+    }));
+    if (!Array.isArray(response.data)) return [];
+    return response.data.map(toSearchItem).filter((item): item is MangaDexSearchItem => Boolean(item)).slice(0, take);
+  }
+
   async getDetails(mangaId: string): Promise<MangaDexSearchItem> {
     if (!PUBLIC_ID_PATTERN.test(mangaId)) throw new Error('Identificador de manga de ShadeManga inválido.');
     const response = await this.gate(() => this.http.get<ShadeMangaSeries>(

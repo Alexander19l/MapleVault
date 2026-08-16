@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import axios from 'axios';
 import { query } from '../database/db';
 import { getMediaSourceCandidates } from '../sources/mediaSourceCandidates';
 import {
@@ -23,6 +24,9 @@ import {
 import type { MangaCatalogProvider } from '../manga/mangaProviderTypes';
 import { ZonaTmoProvider } from '../manga/zonaTmoProvider';
 import { ShadeMangaProvider } from '../manga/shadeMangaProvider';
+import { createMangaPageProxyPath, verifyMangaPageProxy } from '../manga/mangaPageProxy';
+import { translateTextForAnime } from '../translation/translationService';
+import type { MangaSearchFilters } from '../manga/mangaProviderTypes';
 
 type QueryClient = Pick<typeof query, 'get' | 'all'>;
 
@@ -32,6 +36,7 @@ interface MangaRouterDependencies {
   mangaDexProvider?: MangaDexProvider;
   zonaTmoProvider?: MangaCatalogProvider;
   shadeMangaProvider?: MangaCatalogProvider;
+  translationProvider?: typeof translateTextForAnime;
 }
 
 function getErrorMessage(error: unknown): string {
@@ -100,7 +105,8 @@ export function createMangaRouter({
   sourceCandidatesProvider = getMediaSourceCandidates,
   mangaDexProvider = new MangaDexProvider(),
   zonaTmoProvider = new ZonaTmoProvider(),
-  shadeMangaProvider = new ShadeMangaProvider()
+  shadeMangaProvider = new ShadeMangaProvider(),
+  translationProvider = translateTextForAnime
 }: MangaRouterDependencies = {}) {
   const router = Router();
 
@@ -124,7 +130,15 @@ export function createMangaRouter({
     }
 
     try {
-      const results = await implementation.search(searchQuery, Number(req.query.limit) || 20);
+      const filters: MangaSearchFilters = {
+        genres: typeof req.query.genres === 'string' ? req.query.genres.split(',').filter(Boolean).slice(0, 4) : undefined,
+        tags: typeof req.query.tags === 'string' ? req.query.tags.split(',').filter(Boolean).slice(0, 4) : undefined,
+        status: typeof req.query.status === 'string' ? req.query.status.slice(0, 32) : undefined
+      };
+      const hasFilters = Boolean(filters.genres?.length || filters.tags?.length || filters.status);
+      const results = hasFilters
+        ? await implementation.search(searchQuery, Number(req.query.limit) || 20, filters)
+        : await implementation.search(searchQuery, Number(req.query.limit) || 20);
       return res.json({ provider: getProviderResponse(provider), results });
     } catch (error: unknown) {
       console.warn(`[MapleVault] ${provider.label} no respondió a la búsqueda.`, error);
@@ -132,6 +146,34 @@ export function createMangaRouter({
         error: `${provider.label} no está disponible en este momento. Intenta nuevamente más tarde.`,
         code: 'MANGA_PROVIDER_UNAVAILABLE'
       });
+    }
+  });
+
+  router.get('/manga/online/recent', async (req, res) => {
+    const provider = requireMangaProvider(req.query.source, res);
+    if (!provider) return;
+    const implementation = getProviderImplementation(provider.id, mangaDexProvider, zonaTmoProvider, shadeMangaProvider);
+    if (!implementation?.getRecent) return res.json({ provider: getProviderResponse(provider), results: [], supported: false });
+    try {
+      const results = await implementation.getRecent(Number(req.query.limit) || 8);
+      return res.json({ provider: getProviderResponse(provider), results, supported: true });
+    } catch (error) {
+      console.warn(`[MapleVault] No se pudieron cargar recientes de ${provider.label}.`, error);
+      return res.json({ provider: getProviderResponse(provider), results: [], supported: false });
+    }
+  });
+
+  router.get('/manga/online/tags', async (req, res) => {
+    const provider = requireMangaProvider(req.query.source, res);
+    if (!provider) return;
+    const implementation = getProviderImplementation(provider.id, mangaDexProvider, zonaTmoProvider, shadeMangaProvider);
+    if (!implementation?.getTags) return res.json({ provider: getProviderResponse(provider), tags: [], supported: false });
+    try {
+      const tags = await implementation.getTags();
+      return res.json({ provider: getProviderResponse(provider), tags, supported: true });
+    } catch (error) {
+      console.warn(`[MapleVault] No se pudieron cargar tags de ${provider.label}.`, error);
+      return res.json({ provider: getProviderResponse(provider), tags: [], supported: false });
     }
   });
 
@@ -157,13 +199,53 @@ export function createMangaRouter({
 
     try {
       const manga = await implementation.getDetails(mangaId);
-      return res.json({ provider: getProviderResponse(provider), manga });
+      const originalSynopsis = manga.synopsis || '';
+      const translation = await translationProvider({
+        animeId: null,
+        entityKey: `manga:${provider.id}:${manga.id}`,
+        field: 'synopsis',
+        text: originalSynopsis
+      });
+      return res.json({
+        provider: getProviderResponse(provider),
+        manga: {
+          ...manga,
+          synopsis_original: originalSynopsis || undefined,
+          synopsis: translation.text || originalSynopsis || undefined,
+          translation: { translated: translation.translated, cached: translation.cached, status: translation.status }
+        }
+      });
     } catch (error: unknown) {
       console.warn(`[MapleVault] ${provider.label} no devolvió la ficha del manga.`, error);
       return res.status(502).json({
         error: `No se pudo cargar la ficha desde ${provider.label}.`,
         code: 'MANGA_PROVIDER_DETAILS_UNAVAILABLE'
       });
+    }
+  });
+
+  router.get('/manga/online/page-proxy', async (req, res) => {
+    const providerId = typeof req.query.provider === 'string' ? req.query.provider : '';
+    const encodedUrl = typeof req.query.url === 'string' ? req.query.url : '';
+    const expires = typeof req.query.exp === 'string' ? req.query.exp : '';
+    const signature = typeof req.query.sig === 'string' ? req.query.sig : '';
+    if (!getMangaProvider(providerId) || !encodedUrl || !expires || !signature) return res.status(400).end();
+    const safeUrl = verifyMangaPageProxy(providerId, encodedUrl, expires, signature);
+    if (!safeUrl) return res.status(403).end();
+    try {
+      const upstream = await axios.get<ArrayBuffer>(safeUrl, {
+        responseType: 'arraybuffer',
+        timeout: 15_000,
+        maxContentLength: 20 * 1024 * 1024,
+        headers: { Referer: getProviderResponse(getMangaProvider(providerId)).baseUrl, 'User-Agent': 'MapleVault/1.0' }
+      });
+      const contentType = String(upstream.headers['content-type'] || '').split(';')[0].toLowerCase();
+      if (!contentType.startsWith('image/')) return res.status(502).end();
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'private, max-age=300');
+      return res.send(Buffer.from(upstream.data));
+    } catch {
+      return res.status(502).end();
     }
   });
 
@@ -212,7 +294,9 @@ export function createMangaRouter({
 
     try {
       const pages = await implementation.getPages(chapterId, quality);
-      return res.json({ provider: getProviderResponse(provider), ...pages });
+      const proxiedPages = pages.pages.map(page => createMangaPageProxyPath(provider.id, page)).filter((page): page is string => Boolean(page));
+      if (!proxiedPages.length) throw new Error('No se pudieron proteger las páginas del capítulo.');
+      return res.json({ provider: getProviderResponse(provider), ...pages, pages: proxiedPages });
     } catch (error: unknown) {
       console.warn(`[MapleVault] ${provider.label} no devolvió páginas.`, error);
       return res.status(502).json({

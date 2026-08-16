@@ -1,4 +1,5 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig } from 'axios';
+import type { MangaSearchFilters, MangaTagOption } from './mangaProviderTypes';
 
 const MANGADEX_BASE_URL = 'https://api.mangadex.org';
 const MANGADEX_UPLOADS_HOST = 'uploads.mangadex.org';
@@ -20,6 +21,8 @@ export interface MangaDexSearchItem {
   contentRating?: string;
   coverUrl?: string;
   sourceUrl: string;
+  genres?: string[];
+  tags?: string[];
 }
 
 export interface MangaDexChapter {
@@ -98,6 +101,9 @@ function toSearchItem(entity: MangaDexEntity): MangaDexSearchItem | null {
     .map((item: unknown) => getLocalizedValue(item, ['ja-ro', 'ja-latn']))
     .find((item: string | undefined): item is string => Boolean(item));
   const year = Number(attributes.year);
+  const tags = Array.isArray(attributes.tags) ? attributes.tags
+    .map((tag: any) => getLocalizedValue(tag?.attributes?.name, ['es', 'en']))
+    .filter((tag: string | undefined): tag is string => Boolean(tag)) : [];
 
   return {
     id: entity.id,
@@ -109,7 +115,8 @@ function toSearchItem(entity: MangaDexEntity): MangaDexSearchItem | null {
     year: Number.isInteger(year) ? year : undefined,
     contentRating: typeof attributes.contentRating === 'string' ? attributes.contentRating : undefined,
     coverUrl: getMangaCoverUrl(entity),
-    sourceUrl: `https://mangadex.org/title/${encodeURIComponent(entity.id)}`
+    sourceUrl: `https://mangadex.org/title/${encodeURIComponent(entity.id)}`,
+    tags
   };
 }
 
@@ -259,19 +266,43 @@ export class MangaDexProvider {
     })
   ) {}
 
-  async search(query: string, limit = 20): Promise<MangaDexSearchItem[]> {
+  async search(query: string, limit = 20, filters: MangaSearchFilters = {}): Promise<MangaDexSearchItem[]> {
     const normalizedQuery = query.trim().slice(0, 160);
-    if (!normalizedQuery) return [];
+    if (!normalizedQuery && !filters.recent) return [];
+    const params: Record<string, unknown> = {
+      limit: Math.min(Math.max(Math.floor(limit), 1), MAX_SEARCH_LIMIT),
+      'contentRating[]': ['safe', 'suggestive'],
+      'includes[]': ['cover_art']
+    };
+    if (normalizedQuery) params.title = normalizedQuery;
+    if (filters.recent) params['order[latestUploadedChapter]'] = 'desc';
+    const includedTags = [...(filters.genres || []), ...(filters.tags || [])].filter(Boolean).slice(0, 8);
+    if (includedTags.length) {
+      params['includedTags[]'] = includedTags;
+      params.includedTagsMode = 'AND';
+    }
+    if (filters.status) params.status = filters.status;
     const response = await this.gate(() => this.http.get<MangaDexResponse<MangaDexEntity>>('/manga', {
-      params: {
-        title: normalizedQuery,
-        limit: Math.min(Math.max(Math.floor(limit), 1), MAX_SEARCH_LIMIT),
-        'contentRating[]': ['safe', 'suggestive'],
-        'includes[]': ['cover_art']
-      }
+      params
     }));
     if (response.data?.result !== 'ok' || !Array.isArray(response.data.data)) return [];
     return response.data.data.map(toSearchItem).filter((item): item is MangaDexSearchItem => Boolean(item));
+  }
+
+  async getRecent(limit = 8): Promise<MangaDexSearchItem[]> {
+    return this.search('', limit, { recent: true });
+  }
+
+  async getTags(): Promise<MangaTagOption[]> {
+    const response = await this.gate(() => this.http.get<MangaDexResponse<MangaDexEntity>>('/manga/tag', { params: { limit: 100 } }));
+    if (!Array.isArray(response.data?.data)) return [];
+    return response.data.data.map(tag => {
+      const name = getLocalizedValue(tag.attributes?.name, ['es', 'en']);
+      if (!name) return null;
+      const rawGroup = tag.attributes?.group;
+      const group = rawGroup === 'genre' || rawGroup === 'theme' || rawGroup === 'format' ? rawGroup : 'other';
+      return { id: tag.id, name, group } satisfies MangaTagOption;
+    }).filter((tag): tag is MangaTagOption => Boolean(tag));
   }
 
   async getDetails(mangaId: string): Promise<MangaDexSearchItem> {
