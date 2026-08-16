@@ -12,6 +12,8 @@ import type {
   MangaOnlineChapter,
   MangaOnlinePages,
   MangaOnlineSearchItem,
+  MangaOnlineTag,
+  MangaLibrarySavePayload,
   MangaSourceOverview,
   SourceCandidatesOverview
 } from '../types';
@@ -247,8 +249,34 @@ export const api = {
     return response.data;
   },
 
-  searchMangaOnline: async (q: string, limit = 20, source = 'mangadex'): Promise<{ results: MangaOnlineSearchItem[] }> => {
-    const response = await client.get('/manga/online/search', { params: { q, limit, source } });
+  searchMangaOnline: async (q: string, limit = 20, source = 'mangadex', filters?: { genres?: string[]; tags?: string[]; status?: string; page?: number }): Promise<{ results: MangaOnlineSearchItem[]; page: number; hasMore: boolean }> => {
+    const response = await client.get('/manga/online/search', { params: {
+      q, limit, source,
+      genres: filters?.genres?.join(','),
+      tags: filters?.tags?.join(','),
+      status: filters?.status,
+      page: filters?.page
+    } });
+    return response.data;
+  },
+
+  saveMangaToLibrary: async (payload: MangaLibrarySavePayload): Promise<{ saved: boolean; mangaId: number }> => {
+    const response = await client.post('/manga/library', payload);
+    return response.data;
+  },
+
+  getMangaChapters: async (mangaId: number): Promise<{ chapters: MangaOnlineChapter[] }> => {
+    const response = await client.get(`/manga/${mangaId}/chapters`);
+    return response.data;
+  },
+
+  getMangaOnlineRecent: async (limit = 8, source = 'mangadex'): Promise<{ results: MangaOnlineSearchItem[]; supported: boolean }> => {
+    const response = await client.get('/manga/online/recent', { params: { limit, source } });
+    return response.data;
+  },
+
+  getMangaOnlineTags: async (source = 'mangadex'): Promise<{ tags: MangaOnlineTag[]; supported: boolean }> => {
+    const response = await client.get('/manga/online/tags', { params: { source } });
     return response.data;
   },
 

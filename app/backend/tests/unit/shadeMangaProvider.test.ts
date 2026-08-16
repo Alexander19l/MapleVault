@@ -30,6 +30,19 @@ describe('ShadeMangaProvider', () => {
     });
   });
 
+  it('extrae obras recientes desde la portada pública cuando el API no expone un endpoint reciente', async () => {
+    const apiGet = vi.fn();
+    const siteGet = vi.fn().mockResolvedValue({
+      data: '<a href="/serie/Abc123"><h3>Blue Lock</h3><img src="https://cdn.shademanga.com/mangas/blue.webp"></a><a href="/serie/Def456">Jujutsu Kaisen</a>'
+    });
+    const provider = new ShadeMangaProvider({ get: apiGet } as any, { get: siteGet } as any);
+
+    const result = await provider.getRecent(2);
+
+    expect(result.map(item => item.title)).toEqual(['Blue Lock', 'Jujutsu Kaisen']);
+    expect(siteGet).toHaveBeenCalledWith('/');
+  });
+
   it('carga una ficha con sinopsis en español', async () => {
     const get = vi.fn().mockResolvedValue({
       data: {

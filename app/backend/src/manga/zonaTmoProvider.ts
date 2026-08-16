@@ -8,6 +8,7 @@ import {
   type MangaDexSearchItem
 } from './mangadexProvider';
 import type { MangaCatalogProvider } from './mangaProviderTypes';
+import type { MangaSearchFilters } from './mangaProviderTypes';
 
 const ZONATMO_BASE_URL = 'https://zonatmo.org';
 const ZONATMO_IMAGE_HOST_SUFFIX = '.zonatmo.org';
@@ -119,11 +120,11 @@ export class ZonaTmoProvider implements MangaCatalogProvider {
     return { html, path };
   }
 
-  async search(query: string, limit = 20): Promise<MangaDexSearchItem[]> {
+  async search(query: string, limit = 20, filters: MangaSearchFilters = {}): Promise<MangaDexSearchItem[]> {
     const normalizedQuery = query.trim().slice(0, 120);
     if (!normalizedQuery) return [];
     const response = await this.gate(() => this.http.get<string>(`${ZONATMO_BASE_URL}/biblioteca`, {
-      params: { title: normalizedQuery, _pg: 1 },
+      params: { title: normalizedQuery, _pg: Math.max(1, Math.floor(filters.page || 0) + 1) },
       headers: { 'User-Agent': USER_AGENT }
     }));
     const doc = cheerio.load(String(response.data));
@@ -142,6 +143,24 @@ export class ZonaTmoProvider implements MangaCatalogProvider {
         coverUrl: cover || undefined,
         sourceUrl: `${ZONATMO_BASE_URL}${path}`
       });
+    });
+    return result;
+  }
+
+  async getRecent(limit = 8): Promise<MangaDexSearchItem[]> {
+    const response = await this.gate(() => this.http.get<string>(`${ZONATMO_BASE_URL}/biblioteca`, {
+      params: { _pg: 1 },
+      headers: { 'User-Agent': USER_AGENT }
+    }));
+    const doc = cheerio.load(String(response.data));
+    const result: MangaDexSearchItem[] = [];
+    doc('.element a[href*="/library/"]').each((_, element) => {
+      if (result.length >= Math.min(Math.max(Math.floor(limit), 1), MAX_SEARCH_LIMIT)) return;
+      const href = getAllowedUrl(doc(element).attr('href'), ['zonatmo.org']);
+      const path = getAbsolutePath(href, '/library/');
+      const title = doc(element).find('.thumbnail-title h4').first().text().replace(/\s+/g, ' ').trim();
+      if (!path || !title) return;
+      result.push({ id: encodeSourcePath(path), title, coverUrl: getAllowedUrl(doc(element).find('img').first().attr('src'), ['zonatmo.org']) || undefined, sourceUrl: `${ZONATMO_BASE_URL}${path}` });
     });
     return result;
   }

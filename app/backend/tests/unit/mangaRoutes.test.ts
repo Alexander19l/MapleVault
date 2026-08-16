@@ -6,6 +6,7 @@ import { createMangaRouter } from '../../src/routes/mangaRoutes';
 
 const queryGetMock = vi.fn<(sql: string, params?: unknown[]) => Promise<any>>();
 const queryAllMock = vi.fn<(sql: string, params?: unknown[]) => Promise<any[]>>();
+const mangaRunMock = vi.fn<(sql: string, params?: unknown[]) => Promise<any>>();
 const mangaDexSearchMock = vi.fn();
 const mangaDexDetailsMock = vi.fn();
 const mangaDexChaptersMock = vi.fn();
@@ -33,13 +34,24 @@ async function requestJson(requestPath: string) {
   };
 }
 
+async function requestJsonPost(requestPath: string, body: unknown) {
+  const response = await fetch(`${baseUrl}${requestPath}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  return { response, json: await response.json() };
+}
+
 describe('Manga HTTP router', () => {
   beforeAll(async () => {
     const app = express();
+    app.use(express.json());
     app.use(createMangaRouter({
       queryClient: {
         get: queryGetMock,
-        all: queryAllMock
+        all: queryAllMock,
+        run: mangaRunMock
       },
       sourceCandidatesProvider: () => [
         {
@@ -96,6 +108,7 @@ describe('Manga HTTP router', () => {
     vi.clearAllMocks();
     queryAllMock.mockResolvedValue([]);
     queryGetMock.mockResolvedValue({ total: 0 });
+    mangaRunMock.mockResolvedValue({ lastID: 7, changes: 1 });
     mangaDexSearchMock.mockResolvedValue([]);
     mangaDexDetailsMock.mockResolvedValue({ id: '11111111-1111-1111-1111-111111111111', title: 'Manga' });
     mangaDexChaptersMock.mockResolvedValue([]);
@@ -204,6 +217,33 @@ describe('Manga HTTP router', () => {
     expect(zonaTmoSearchMock).toHaveBeenCalledWith('blue lock', 20);
   });
 
+  it('permite buscar por género sin introducir un título', async () => {
+    mangaDexSearchMock.mockResolvedValueOnce([{ id: '11111111-1111-1111-1111-111111111111', title: 'Romance' }]);
+
+    const { response, json } = await requestJson('/manga/online/search?source=mangadex&genres=genre-id');
+
+    expect(response.status).toBe(200);
+    expect(json.results[0].title).toBe('Romance');
+    expect(mangaDexSearchMock).toHaveBeenCalledWith('', 20, expect.objectContaining({ genres: ['genre-id'] }));
+  });
+
+  it('guarda una obra online y sus capítulos en la biblioteca local', async () => {
+    queryGetMock.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 4 });
+
+    const { response, json } = await requestJsonPost('/manga/library', {
+      source: 'mangadex',
+      externalId: '11111111-1111-1111-1111-111111111111',
+      title: 'Obra local',
+      synopsis: 'Sinopsis de prueba',
+      genres: ['Romance'],
+      chapters: [{ id: '22222222-2222-2222-2222-222222222222', number: 1, language: 'es', sourceUrl: 'https://mangadex.org/chapter/x' }]
+    });
+
+    expect(response.status).toBe(201);
+    expect(json).toEqual({ saved: true, mangaId: 7 });
+    expect(mangaRunMock).toHaveBeenCalled();
+  });
+
   it('retira proveedores descartados del contrato público', async () => {
     const { response, json } = await requestJson('/manga/online/search?q=blue%20lock&source=manhwaweb');
 
@@ -227,5 +267,19 @@ describe('Manga HTTP router', () => {
     expect(details.response.status).toBe(200);
     expect(details.json.manga.synopsis).toBe('Sinopsis en español.');
     expect(shadeMangaDetailsMock).toHaveBeenCalledWith('3DySaf');
+  });
+
+  it('devuelve páginas de manga con URL absoluta del backend para el lector', async () => {
+    mangaDexPagesMock.mockResolvedValueOnce({
+      chapterId: '22222222-2222-2222-2222-222222222222',
+      quality: 'data-saver',
+      pages: ['https://uploads.mangadex.org/data-saver/hash/1.jpg']
+    });
+
+    const { response, json } = await requestJson('/manga/online/chapters/22222222-2222-2222-2222-222222222222/pages');
+
+    expect(response.status).toBe(200);
+    expect(json.pages[0]).toMatch(new RegExp(`^${baseUrl}/manga/online/page-proxy\\?`));
+    expect(json.pages[0]).toContain('provider=mangadex');
   });
 });
