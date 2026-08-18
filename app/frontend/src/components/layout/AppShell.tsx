@@ -23,7 +23,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   syncing = false
 }) => {
   return (
-    <div className="flex flex-col bg-dark-bg h-screen overflow-hidden text-slate-100 selection:bg-violet-500/30">
+    <div className="flex flex-col bg-dark-bg h-screen overflow-hidden text-slate-100 selection:bg-[var(--accent-primary)]/30">
       {/* 1. Frameless Custom TitleBar */}
       <TitleBar />
 

@@ -102,7 +102,7 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
           <div className="absolute inset-0 flex items-center justify-center space-x-2 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 backdrop-blur-[2px] z-20">
             <button
               onClick={() => onViewDetails(anime.id)}
-              className="p-2.5 bg-violet-600 hover:bg-violet-700 rounded-full text-white shadow-md transition-transform duration-200 hover:scale-105 cursor-pointer"
+              className="p-2.5 bg-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] rounded-full text-white shadow-md transition-transform duration-200 hover:scale-105 cursor-pointer"
               title="Detalles"
             >
               <Eye className="h-4.5 w-4.5" />

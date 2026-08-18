@@ -227,6 +227,8 @@ export const api = {
     sort?: string;
     limit: number;
     offset: number;
+    readStatus?: string;
+    favorite?: boolean;
   }) => {
     const response = await client.get('/manga', {
       params: { ...filters, withTotal: true }
@@ -262,6 +264,14 @@ export const api = {
 
   saveMangaToLibrary: async (payload: MangaLibrarySavePayload): Promise<{ saved: boolean; mangaId: number }> => {
     const response = await client.post('/manga/library', payload);
+    return response.data;
+  },
+
+  updateMangaUserList: async (
+    mangaId: number,
+    payload: { read_status?: 'reading' | 'plan_to_read' | 'dropped' | 'completed' | 'on_hold'; favorite?: boolean }
+  ): Promise<{ message: string }> => {
+    const response = await client.put(`/manga/${mangaId}/user-list`, payload);
     return response.data;
   },
 
@@ -409,8 +419,8 @@ export const api = {
   },
 
   saveSettings: async (settingsData: {
-    theme: 'dark';
-    language: 'es';
+    theme?: 'violet' | 'ember';
+    language?: 'es';
     closeBehavior?: 'ask' | 'minimize' | 'quit';
     translation?: {
       enabled: boolean;

@@ -975,7 +975,7 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
                               <button
                                 type="button"
                                 onClick={() => void handleOpenStandalonePlayer()}
-                                className="h-9 px-4 text-xs text-white bg-[var(--accent-primary)] hover:bg-violet-500 flex items-center gap-2 cursor-pointer font-bold transition-colors rounded-md"
+                                className="h-9 px-4 text-xs text-white bg-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] flex items-center gap-2 cursor-pointer font-bold transition-colors rounded-md"
                               >
                                 <MonitorPlay className="h-4 w-4 shrink-0" />
                                 <span>Abrir reproductor</span>
@@ -1005,7 +1005,7 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
                               <button
                                 type="button"
                                 onClick={() => void handleOpenStandalonePlayer()}
-                                className="h-8 px-3 text-[11px] text-white bg-[var(--accent-primary)] hover:bg-violet-500 flex items-center gap-1.5 cursor-pointer font-bold transition-colors rounded-md"
+                                className="h-8 px-3 text-[11px] text-white bg-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] flex items-center gap-1.5 cursor-pointer font-bold transition-colors rounded-md"
                               >
                                 <MonitorPlay className="h-4 w-4 shrink-0" />
                                 <span>Reproductor independiente</span>
@@ -1013,7 +1013,7 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
                               <button
                                 type="button"
                                 onClick={() => handleOpenExternal(selectedServer.url)}
-                                className="h-8 px-2 text-[10px] text-[var(--accent-primary)] hover:text-violet-400 hover:underline flex items-center cursor-pointer font-bold transition-colors"
+                                className="h-8 px-2 text-[10px] text-[var(--accent-primary)] hover:text-[var(--accent-primary-hover)] hover:underline flex items-center cursor-pointer font-bold transition-colors"
                               >
                                 <span>Ver en navegador</span>
                               </button>

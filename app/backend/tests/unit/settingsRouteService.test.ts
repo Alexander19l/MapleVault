@@ -21,7 +21,7 @@ const translationSettings: StoredTranslationSettings = {
 };
 
 const currentSettings: AppSettings = {
-  theme: 'dark',
+  theme: 'violet',
   language: 'es',
   closeBehavior: 'ask',
   translation: translationSettings
@@ -56,7 +56,7 @@ describe('settingsRouteService', () => {
     );
 
     expect(settings).toMatchObject({
-      theme: 'dark',
+      theme: 'violet',
       language: 'es',
       closeBehavior: 'minimize',
       translation: {
@@ -67,6 +67,30 @@ describe('settingsRouteService', () => {
       { translateGenres: false },
       translationSettings
     );
+  });
+
+  it('aplica un tema válido enviado desde Ajustes', () => {
+    const normalizeTranslation = vi.fn((_raw, fallback) => fallback);
+
+    const settings = buildSavedAppSettings(
+      currentSettings,
+      { theme: 'ember' },
+      normalizeTranslation
+    );
+
+    expect(settings.theme).toBe('ember');
+  });
+
+  it('ignora un tema no soportado y conserva el valor actual', () => {
+    const normalizeTranslation = vi.fn((_raw, fallback) => fallback);
+
+    const settings = buildSavedAppSettings(
+      { ...currentSettings, theme: 'ember' },
+      { theme: 'not-a-real-theme' },
+      normalizeTranslation
+    );
+
+    expect(settings.theme).toBe('ember');
   });
 
   it('resuelve endpoints de prueba segun proveedor', () => {

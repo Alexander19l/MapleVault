@@ -24,7 +24,7 @@ export const Recommendations: React.FC<RecommendationsProps> = ({ refreshTrigger
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-20 space-y-3">
-        <div className="h-8 w-8 border-3 border-violet-500 border-t-transparent rounded-full animate-spin"></div>
+        <div className="h-8 w-8 border-3 border-[var(--accent-primary)] border-t-transparent rounded-full animate-spin"></div>
         <span className="text-xs text-slate-400">Analizando tu biblioteca...</span>
       </div>
     );

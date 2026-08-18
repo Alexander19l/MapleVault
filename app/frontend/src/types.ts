@@ -233,7 +233,7 @@ export interface ChatActionHistoryItem {
 }
 
 export interface Settings {
-  theme: 'dark';
+  theme: 'violet' | 'ember';
   language: 'es';
   closeBehavior?: 'ask' | 'minimize' | 'quit';
   translation?: {

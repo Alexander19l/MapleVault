@@ -101,6 +101,38 @@
 }
 
 /* =====================================================
+   TEMA — Ember (inspirado en la estética oscura y limpia de
+   Crunchyroll, con el naranja de hoja de arce de MapleVault
+   como acento). Solo redefine los tokens "hoja" de arriba —
+   `--bg-primary`, `--background`, etc. son alias vía var() y
+   siguen la cascada automáticamente, sin duplicarlos aquí. */
+:root[data-theme='ember'] {
+  --bg-main:     #0b0a09;
+  --bg-elevated: #15110f;
+  --bg-panel:    #1b1512;
+  --bg-card:     #211a15;
+
+  --border-soft:   rgba(64, 51, 40, 0.5);
+  --border-medium: #3d2f24;
+  --border-strong: #52402f;
+  --border-glow:   rgba(232, 89, 12, 0.14);
+
+  --text-main:  #f8f2ec;
+  --text-muted: #bdac9c;
+  --text-dim:   #8c7a68;
+  --text-faint: #5c4d3f;
+
+  --accent-primary:       #e8590c;
+  --accent-primary-hover: #c74807;
+  --accent-soft:          rgba(232, 89, 12, 0.14);
+  --accent-soft-hover:    rgba(232, 89, 12, 0.20);
+  --accent-secondary:     #f2b846;
+  --accent-warm:          #e8590c;
+
+  --shadow-glow: 0 0 20px rgba(232, 89, 12, 0.08);
+}
+
+/* =====================================================
    BASE — Reset mínimo y estilos fundamentales
    ===================================================== */
 

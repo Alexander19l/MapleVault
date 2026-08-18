@@ -48,7 +48,7 @@ export const GenreTagPicker: React.FC<GenreTagPickerProps> = ({
         <div
           role="group"
           aria-label={label}
-          className="mt-1.5 flex max-h-24 flex-wrap gap-1.5 overflow-y-auto rounded-md border border-[var(--border-soft)] bg-slate-950/70 p-2"
+          className="mt-1.5 flex max-h-56 flex-wrap content-start gap-2 overflow-y-auto rounded-md border border-[var(--border-soft)] bg-slate-950/70 p-3"
         >
           {tags.map(tag => {
             const isSelected = selected.includes(tag.id);
@@ -61,7 +61,7 @@ export const GenreTagPicker: React.FC<GenreTagPickerProps> = ({
                 disabled={atLimit}
                 onClick={() => toggle(tag.id)}
                 title={atLimit ? `Máximo ${limit} seleccionados` : tag.name}
-                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
                   isSelected
                     ? 'border-[var(--accent-primary)] bg-[var(--accent-soft)] text-[var(--accent-primary)]'
                     : 'border-[var(--border-soft)] bg-slate-900/60 text-[var(--text-muted)] hover:border-[var(--border-strong)] hover:text-[var(--text-main)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[var(--border-soft)]'

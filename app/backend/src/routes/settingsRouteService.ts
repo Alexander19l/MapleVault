@@ -21,6 +21,17 @@ export function normalizeCloseBehavior(
     : fallback;
 }
 
+const ALLOWED_THEMES = new Set<AppSettings['theme']>(['violet', 'ember']);
+
+export function normalizeTheme(
+  value: unknown,
+  fallback: AppSettings['theme'] = 'violet'
+): AppSettings['theme'] {
+  return ALLOWED_THEMES.has(value as AppSettings['theme'])
+    ? value as AppSettings['theme']
+    : fallback;
+}
+
 export function buildSavedAppSettings(
   current: AppSettings,
   rawBody: any,
@@ -28,6 +39,7 @@ export function buildSavedAppSettings(
 ): AppSettings {
   return enforceSupportedAppearance({
     ...current,
+    theme: normalizeTheme(rawBody?.theme, current.theme),
     closeBehavior: normalizeCloseBehavior(rawBody?.closeBehavior, current.closeBehavior || 'ask'),
     translation: normalizeTranslationSettingsForStorage(
       rawBody?.translation,

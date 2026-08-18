@@ -30,17 +30,38 @@ describe('ShadeMangaProvider', () => {
     });
   });
 
-  it('extrae obras recientes desde la portada pública cuando el API no expone un endpoint reciente', async () => {
-    const apiGet = vi.fn();
-    const siteGet = vi.fn().mockResolvedValue({
-      data: '<a href="/serie/Abc123"><h3>Blue Lock</h3><img src="https://cdn.shademanga.com/mangas/blue.webp"></a><a href="/serie/Def456">Jujutsu Kaisen</a>'
+  it('carga obras recientes desde el endpoint de novedades y conserva la portada', async () => {
+    const get = vi.fn().mockResolvedValue({
+      data: [
+        {
+          publicId: 'Abc123',
+          titulo: 'Blue Lock',
+          estado: 'En curso',
+          esMayorDeEdad: false,
+          portadaUrl: 'https://cdn.shademanga.com/mangas/blue.webp'
+        },
+        { publicId: 'Adult1', titulo: 'Adulto', esMayorDeEdad: true },
+        {
+          publicId: 'Def456',
+          titulo: 'Jujutsu Kaisen',
+          estado: 'En curso',
+          esMayorDeEdad: false
+        }
+      ]
     });
-    const provider = new ShadeMangaProvider({ get: apiGet } as any, { get: siteGet } as any);
+    const provider = new ShadeMangaProvider({ get } as any);
 
     const result = await provider.getRecent(2);
 
-    expect(result.map(item => item.title)).toEqual(['Blue Lock', 'Jujutsu Kaisen']);
-    expect(siteGet).toHaveBeenCalledWith('/');
+    expect(get).toHaveBeenCalledWith('/series-locales/novedades-recientes');
+    expect(result).toHaveLength(2);
+    expect(result[0]).toMatchObject({
+      id: 'Abc123',
+      title: 'Blue Lock',
+      coverUrl: 'https://cdn.shademanga.com/mangas/blue.webp'
+    });
+    expect(result[1]).toMatchObject({ id: 'Def456', title: 'Jujutsu Kaisen' });
+    expect(result[1].coverUrl).toBeUndefined();
   });
 
   it('carga una ficha con sinopsis en español', async () => {

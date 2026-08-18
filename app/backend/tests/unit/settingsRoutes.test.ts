@@ -17,7 +17,7 @@ const aiSettings: AISettings = {
 };
 
 const baseSettings: AppSettings = {
-  theme: 'dark',
+  theme: 'violet',
   language: 'es',
   closeBehavior: 'ask',
   translation: {
@@ -134,7 +134,7 @@ describe('Settings HTTP router', () => {
     const loaded = await requestJson('/settings');
     expect(loaded.response.status).toBe(200);
     expect(loaded.json).toMatchObject({
-      theme: 'dark',
+      theme: 'violet',
       language: 'es',
       closeBehavior: 'ask'
     });
@@ -154,7 +154,7 @@ describe('Settings HTTP router', () => {
 
     expect(saved.response.status).toBe(200);
     expect(saveSettingsMock).toHaveBeenCalledWith(expect.objectContaining({
-      theme: 'dark',
+      theme: 'violet',
       language: 'es',
       closeBehavior: 'minimize',
       translation: expect.objectContaining({

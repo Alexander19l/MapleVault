@@ -44,6 +44,15 @@ async function requestJsonPost(requestPath: string, body: unknown) {
   return { response, json: await response.json() };
 }
 
+async function requestJsonPut(requestPath: string, body: unknown) {
+  const response = await fetch(`${baseUrl}${requestPath}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  return { response, json: await response.json() };
+}
+
 describe('Manga HTTP router', () => {
   beforeAll(async () => {
     const app = express();
@@ -342,5 +351,50 @@ describe('Manga HTTP router', () => {
     expect(response.status).toBe(200);
     expect(json.pages[0]).toMatch(new RegExp(`^${baseUrl}/manga/online/page-proxy\\?`));
     expect(json.pages[0]).toContain('provider=mangadex');
+  });
+
+  it('filtra la biblioteca local por estado de lectura y favoritos', async () => {
+    await requestJson('/manga?readStatus=reading');
+    expect(queryAllMock).toHaveBeenLastCalledWith(
+      expect.stringContaining('mul.read_status = ?'),
+      expect.arrayContaining(['reading'])
+    );
+
+    await requestJson('/manga?favorite=true');
+    expect(queryAllMock).toHaveBeenLastCalledWith(
+      expect.stringContaining('mul.favorite = 1'),
+      expect.anything()
+    );
+  });
+
+  it('actualiza el estado de lectura y favorito de una serie en biblioteca', async () => {
+    const { response, json } = await requestJsonPut('/manga/7/user-list', {
+      read_status: 'reading',
+      favorite: true
+    });
+
+    expect(response.status).toBe(200);
+    expect(json).toMatchObject({ message: expect.any(String) });
+    expect(mangaRunMock).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE manga_user_list'),
+      expect.arrayContaining(['reading', 1, 7])
+    );
+  });
+
+  it('rechaza un estado de lectura no soportado', async () => {
+    const { response, json } = await requestJsonPut('/manga/7/user-list', {
+      read_status: 'not-a-real-status'
+    });
+
+    expect(response.status).toBe(400);
+    expect(json.error).toBeTruthy();
+  });
+
+  it('responde 404 si la serie no está en la biblioteca local', async () => {
+    mangaRunMock.mockResolvedValueOnce({ lastID: 0, changes: 0 });
+
+    const { response } = await requestJsonPut('/manga/999/user-list', { read_status: 'dropped' });
+
+    expect(response.status).toBe(404);
   });
 });

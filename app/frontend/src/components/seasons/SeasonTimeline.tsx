@@ -98,7 +98,7 @@ export const SeasonTimeline: React.FC<SeasonTimelineProps> = ({
       <section className="border border-[var(--border-light)] bg-[var(--bg-card)] p-4 sm:p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
           <div className="flex min-w-0 items-center gap-3 lg:w-52">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center border border-violet-500/20 bg-violet-500/10 text-[var(--accent-primary)]">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center border border-[var(--accent-primary)]/20 bg-[var(--accent-primary)]/10 text-[var(--accent-primary)]">
               <CalendarDays className="h-4 w-4" />
             </div>
             <div className="min-w-0">
@@ -118,7 +118,7 @@ export const SeasonTimeline: React.FC<SeasonTimelineProps> = ({
                 <div className="min-w-14 text-center">
                   <strong className="block text-xl font-black text-white">{selectedYear}</strong>
                   {selectedYear === currentYear && (
-                    <span className="block text-[8px] font-bold uppercase tracking-wider text-violet-400">Actual</span>
+                    <span className="block text-[8px] font-bold uppercase tracking-wider text-[var(--accent-primary)]">Actual</span>
                   )}
                 </div>
                 <button
@@ -145,7 +145,7 @@ export const SeasonTimeline: React.FC<SeasonTimelineProps> = ({
                   onClick={() => handleSelect(selectedYear, season.id)}
                   className={`min-h-14 border px-3 py-2 text-left maple-interactive ${
                     isActive
-                      ? 'border-violet-500/40 bg-violet-500/10 text-white'
+                      ? 'border-[var(--accent-primary)]/40 bg-[var(--accent-primary)]/10 text-white'
                       : 'border-[var(--border-medium)] bg-slate-950/25 text-[var(--text-muted)] hover:border-slate-600 hover:text-white'
                   }`}
                 >
@@ -165,7 +165,7 @@ export const SeasonTimeline: React.FC<SeasonTimelineProps> = ({
             <button
               type="button"
               onClick={openArchive}
-              className="flex items-center justify-center gap-2 border border-[var(--border-medium)] bg-slate-900 px-4 py-2.5 text-xs font-bold text-slate-200 hover:border-violet-500/40 hover:text-white"
+              className="flex items-center justify-center gap-2 border border-[var(--border-medium)] bg-slate-900 px-4 py-2.5 text-xs font-bold text-slate-200 hover:border-[var(--accent-primary)]/40 hover:text-white"
             >
               <CalendarRange className="h-4 w-4 text-[var(--accent-primary)]" />
               Explorar 2000-2033
@@ -217,7 +217,7 @@ export const SeasonTimeline: React.FC<SeasonTimelineProps> = ({
                   onClick={() => setActiveDecadeStart(decade.start)}
                   className={`border-r border-[var(--border-medium)] px-3 py-3 text-xs font-bold last:border-r-0 ${
                     activeDecadeStart === decade.start
-                      ? 'bg-violet-500/10 text-[var(--accent-primary)]'
+                      ? 'bg-[var(--accent-primary)]/10 text-[var(--accent-primary)]'
                       : 'text-slate-400 hover:bg-slate-900/50 hover:text-white'
                   }`}
                 >
@@ -236,7 +236,7 @@ export const SeasonTimeline: React.FC<SeasonTimelineProps> = ({
                       key={year}
                       className={`grid gap-2 border p-3 sm:grid-cols-[92px_1fr] sm:items-center ${
                         isSelectedYear
-                          ? 'border-violet-500/35 bg-violet-500/5'
+                          ? 'border-[var(--accent-primary)]/35 bg-[var(--accent-primary)]/5'
                           : 'border-[var(--border-light)] bg-slate-950/20'
                       }`}
                     >
@@ -260,7 +260,7 @@ export const SeasonTimeline: React.FC<SeasonTimelineProps> = ({
                               onClick={() => handleSelect(year, season.id)}
                               className={`flex min-h-9 items-center justify-between border px-2.5 text-[10px] font-bold ${
                                 isActive
-                                  ? 'border-violet-500/40 bg-violet-500/15 text-white'
+                                  ? 'border-[var(--accent-primary)]/40 bg-[var(--accent-primary)]/15 text-white'
                                   : 'border-[var(--border-medium)] text-slate-400 hover:border-slate-600 hover:text-white'
                               }`}
                             >

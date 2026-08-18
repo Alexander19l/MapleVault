@@ -7,12 +7,11 @@ interface ChapterListItemProps {
   /** El capítulo ya existe descargado en el almacenamiento offline. */
   offline?: boolean;
   /**
-   * En modo biblioteca local, "no descargado" bloquea la apertura y debe
-   * decirlo explícitamente. En modo online, "no descargado" es el estado
-   * normal (se lee desde la fuente) y no hace falta remarcarlo.
+   * Cuando no está descargado, indica que abrirlo transmitirá desde la
+   * fuente en línea en vez de leerlo offline. Informativo, no bloquea nada:
+   * la apertura siempre cae a online si no hay copia local.
    */
-  requiresDownloadToOpen?: boolean;
-  disabled?: boolean;
+  showOnlineFallbackHint?: boolean;
   onOpen: () => void;
   onDownload?: () => void;
   downloadLoading?: boolean;
@@ -21,8 +20,7 @@ interface ChapterListItemProps {
 export const ChapterListItem: React.FC<ChapterListItemProps> = ({
   chapter,
   offline = false,
-  requiresDownloadToOpen = false,
-  disabled = false,
+  showOnlineFallbackHint = false,
   onOpen,
   onDownload,
   downloadLoading = false
@@ -39,8 +37,7 @@ export const ChapterListItem: React.FC<ChapterListItemProps> = ({
       <button
         type="button"
         onClick={onOpen}
-        disabled={disabled}
-        className="min-w-0 flex-1 text-left disabled:cursor-not-allowed disabled:opacity-50"
+        className="min-w-0 flex-1 text-left"
       >
         <span
           data-testid="manga-chapter-label"
@@ -60,8 +57,10 @@ export const ChapterListItem: React.FC<ChapterListItemProps> = ({
               Descargado
             </span>
           )}
-          {!offline && requiresDownloadToOpen && (
-            <span className="status-badge bg-slate-800 text-[var(--text-dim)]">Descarga requerida</span>
+          {!offline && showOnlineFallbackHint && (
+            <span className="status-badge bg-slate-800 text-[var(--text-dim)]" title="Se transmite desde la fuente en línea">
+              Solo en línea
+            </span>
           )}
         </span>
       </button>

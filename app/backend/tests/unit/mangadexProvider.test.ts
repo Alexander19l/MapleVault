@@ -140,4 +140,23 @@ describe('MangaDexProvider', () => {
     expect(archive.readUInt32LE(archive.length - 22)).toBe(0x06054b50);
     expect(sanitizeDownloadName('Serie: ../capitulo?', 'Manga')).toBe('Serie .. capitulo');
   });
+
+  it('excluye la etiqueta Loli del panel de géneros/temas', async () => {
+    const get = vi.fn().mockResolvedValue({
+      data: {
+        result: 'ok',
+        data: [
+          { id: 'tag-action', attributes: { name: { en: 'Action' }, group: 'genre' } },
+          { id: 'tag-loli', attributes: { name: { en: 'Loli' }, group: 'theme' } },
+          { id: 'tag-isekai', attributes: { name: { en: 'Isekai' }, group: 'theme' } }
+        ]
+      }
+    });
+    const provider = new MangaDexProvider({ get } as any);
+
+    const tags = await provider.getTags();
+
+    expect(tags.map(tag => tag.name)).toEqual(['Action', 'Isekai']);
+    expect(tags.some(tag => tag.name.toLowerCase() === 'loli')).toBe(false);
+  });
 });

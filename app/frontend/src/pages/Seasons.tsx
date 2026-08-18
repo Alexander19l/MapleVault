@@ -288,7 +288,7 @@ export const Seasons: React.FC<SeasonsProps> = ({ onViewDetails }) => {
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
           {/* Temporada más populosa */}
           <div className="p-4 bg-slate-900/60 border border-dark-border/40 rounded-2xl flex items-center space-x-3">
-            <div className="p-2.5 rounded-xl bg-violet-500/10 text-violet-400 shrink-0">
+            <div className="p-2.5 rounded-xl bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] shrink-0">
               <Layers className="h-5 w-5" />
             </div>
             <div>

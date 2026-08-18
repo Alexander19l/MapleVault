@@ -11,6 +11,13 @@ const MAX_PAGE_COUNT = 500;
 const MAX_DOWNLOAD_BYTES = 256 * 1024 * 1024;
 const REQUEST_INTERVAL_MS = 250;
 
+// Etiquetas oficiales de MangaDex que no deben ofrecerse como filtro
+// seleccionable en el panel de géneros/temas, independientemente de
+// contentRating (una obra 'safe'/'suggestive' puede llevar igualmente
+// esta etiqueta temática). Nombre en minúsculas para comparar sin
+// distinguir mayúsculas.
+const EXCLUDED_TAG_NAMES = new Set(['loli']);
+
 export interface MangaDexSearchItem {
   id: string;
   title: string;
@@ -301,7 +308,7 @@ export class MangaDexProvider {
     if (!Array.isArray(response.data?.data)) return [];
     return response.data.data.map(tag => {
       const name = getLocalizedValue(tag.attributes?.name, ['es', 'en']);
-      if (!name) return null;
+      if (!name || EXCLUDED_TAG_NAMES.has(name.toLowerCase())) return null;
       const rawGroup = tag.attributes?.group;
       const group = rawGroup === 'genre' || rawGroup === 'theme' || rawGroup === 'format' ? rawGroup : 'other';
       return { id: tag.id, name, group } satisfies MangaTagOption;

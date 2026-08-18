@@ -191,7 +191,7 @@ export const AdvancedSearch: React.FC<AdvancedSearchProps> = ({ onViewDetails })
               type="button"
               variant="outline"
               onClick={() => setShowFilters(!showFilters)}
-              className={`flex items-center space-x-2 shrink-0 py-3 ${showFilters ? 'border-[var(--accent-primary)] text-[var(--accent-primary)] bg-violet-500/5' : ''}`}
+              className={`flex items-center space-x-2 shrink-0 py-3 ${showFilters ? 'border-[var(--accent-primary)] text-[var(--accent-primary)] bg-[var(--accent-primary)]/5' : ''}`}
             >
               <SlidersHorizontal className="h-4.5 w-4.5" />
               <span className="text-xs">Filtros</span>

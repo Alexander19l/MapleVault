@@ -123,7 +123,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
                   onClick={() => handleNavClick(item)}
                   className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs maple-interactive cursor-pointer ${
                     isActive 
-                      ? 'bg-violet-600/10 text-[var(--accent-primary)] font-bold' 
+                      ? 'bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] font-bold'
                       : 'text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-slate-900/50'
                   }`}
                 >
@@ -152,7 +152,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
                   onClick={() => handleNavClick(item)}
                   className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-xs maple-interactive cursor-pointer ${
                     isActive 
-                      ? 'bg-violet-600/10 text-[var(--accent-primary)] font-bold' 
+                      ? 'bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] font-bold'
                       : 'text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-slate-900/50'
                   }`}
                 >
@@ -179,7 +179,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
                   onClick={() => handleNavClick(item)}
                   className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-xs maple-interactive cursor-pointer ${
                     isActive 
-                      ? 'bg-violet-600/10 text-[var(--accent-primary)] font-bold' 
+                      ? 'bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] font-bold'
                       : 'text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-slate-900/50'
                   }`}
                 >

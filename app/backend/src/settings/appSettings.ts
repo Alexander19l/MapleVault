@@ -18,7 +18,7 @@ export interface StoredTranslationSettings {
 }
 
 export interface AppSettings {
-  theme: 'dark';
+  theme: 'violet' | 'ember';
   language: 'es';
   closeBehavior: 'ask' | 'minimize' | 'quit';
   translation: StoredTranslationSettings;
@@ -35,7 +35,7 @@ function ensureSettingsDirectory() {
 
 export function defaultAppSettings(): AppSettings {
   return {
-    theme: 'dark',
+    theme: 'violet',
     language: 'es',
     closeBehavior: 'ask',
     translation: {
@@ -101,7 +101,7 @@ export function loadSettings(): AppSettings {
       translation: normalizeTranslationSettingsForStorage(stored.translation, defaults.translation)
     }) as AppSettings;
 
-    if (stored.theme !== 'dark' || stored.language !== 'es') {
+    if (stored.theme !== normalized.theme || stored.language !== normalized.language) {
       saveSettings(normalized);
     }
 
