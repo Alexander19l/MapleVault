@@ -403,22 +403,22 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
     setOfflineChapters([]);
   };
 
-  const handleDownloadChapter = async (chapter: MangaOnlineChapter) => {
-    if (!selectedOnline) return;
+  const handleDownloadChapter = async (chapter: MangaOnlineChapter, seriesTitle: string, providerId: string) => {
+    if (!seriesTitle) return;
     setDownloadLoading(true);
     try {
       const blob = await api.downloadMangaOnlineChapter(
         chapter.id,
-        selectedOnline.title,
+        seriesTitle,
         String(chapter.number ?? chapter.id.slice(0, 8)),
         'data-saver',
-        selectedProvider.id
+        providerId
       );
-      const fileName = `${selectedOnline.title} - Capitulo ${chapter.number ?? chapter.id.slice(0, 8)}.zip`;
+      const fileName = `${seriesTitle} - Capitulo ${chapter.number ?? chapter.id.slice(0, 8)}.zip`;
       const desktopMangaApi = (window as any).electronAPI?.manga;
       if (desktopMangaApi?.saveArchive) {
         const result = await desktopMangaApi.saveArchive({
-          series: selectedOnline.title,
+          series: seriesTitle,
           fileName,
           data: new Uint8Array(await blob.arrayBuffer())
         });
@@ -551,6 +551,7 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
             onTagsChange={setSelectedTags}
             statusFilter={statusFilter}
             onStatusChange={setStatusFilter}
+            onSearch={() => void runOnlineSearch(0)}
             hasNoSourceTags={!tags.length && selectedProvider.id !== 'mangadex'}
           />
 
@@ -652,7 +653,7 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
                         chapter={chapter}
                         offline={Boolean(findOfflineChapter(chapter, offlineChapters))}
                         onOpen={() => selectedOnline && handleOpenAnyChapter(chapter, selectedOnline.title, selectedProvider.id)}
-                        onDownload={() => handleDownloadChapter(chapter)}
+                        onDownload={() => selectedOnline && handleDownloadChapter(chapter, selectedOnline.title, selectedProvider.id)}
                         downloadLoading={downloadLoading}
                       />
                     ))}
@@ -696,7 +697,12 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
               onPageRequest={selectedLocal && offlineReaderKey ? loadOfflinePage : undefined}
               downloadLoading={downloadLoading}
               onClose={() => { setReader(null); setReaderChapter(null); setOfflineReaderKey(''); }}
-              onDownload={selectedOnline ? () => handleDownloadChapter(readerChapter) : undefined}
+              onDownload={() => {
+                if (!readerChapter) return;
+                const seriesTitle = selectedOnline?.title || selectedLocal?.title || '';
+                const providerId = selectedOnline ? selectedProvider.id : (selectedLocal?.source || selectedProvider.id);
+                if (seriesTitle) void handleDownloadChapter(readerChapter, seriesTitle, providerId);
+              }}
             />
           )}
         </section>
@@ -867,6 +873,8 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
                       offline={offline}
                       showOnlineFallbackHint
                       onOpen={() => selectedLocal && handleOpenAnyChapter(chapter, selectedLocal.title, selectedLocal.source || selectedProvider.id)}
+                      onDownload={() => selectedLocal && handleDownloadChapter(chapter, selectedLocal.title, selectedLocal.source || selectedProvider.id)}
+                      downloadLoading={downloadLoading}
                     />
                   );
                 })}
@@ -883,7 +891,9 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
           pages={reader.pages}
           totalPages={reader.totalPages}
           onPageRequest={offlineReaderKey ? loadOfflinePage : undefined}
+          downloadLoading={downloadLoading}
           onClose={() => { setReader(null); setReaderChapter(null); setOfflineReaderKey(''); }}
+          onDownload={() => readerChapter && selectedLocal && handleDownloadChapter(readerChapter, selectedLocal.title, selectedLocal.source || selectedProvider.id)}
         />
       )}
 

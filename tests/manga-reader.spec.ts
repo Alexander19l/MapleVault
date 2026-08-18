@@ -188,15 +188,27 @@ test.describe('Lector de manga', () => {
     await expect(localDialog.getByText('Sinopsis traducida al español por LibreTranslate.')).toBeVisible();
     await localDialog.getByRole('button', { name: 'Cerrar' }).click();
 
-    // Panel de género: chips en vez de <select multiple>.
+    // Panel de género: chips en vez de <select multiple>, y colapsado por defecto.
     await page.getByRole('tab', { name: /Buscar en MangaDex/ }).click();
     await expect(page.locator('select[multiple]')).toHaveCount(0);
+    const genrePanelToggle = page.getByRole('button', { name: 'Filtros de catálogo' });
+    await expect(genrePanelToggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.getByRole('group', { name: 'Géneros' })).toHaveCount(0);
+
+    await genrePanelToggle.click();
+    await expect(genrePanelToggle).toHaveAttribute('aria-expanded', 'true');
     const genreGroup = page.getByRole('group', { name: 'Géneros' });
     await expect(genreGroup).toBeVisible();
     const actionChip = genreGroup.getByRole('button', { name: 'Acción' });
     await expect(actionChip).toHaveAttribute('aria-pressed', 'false');
     await actionChip.click();
     await expect(actionChip).toHaveAttribute('aria-pressed', 'true');
+    await expect(genrePanelToggle).toContainText('1 activo');
+
+    // El botón de búsqueda propio del panel aplica el filtro por género sin texto.
+    await expect(page.getByRole('button', { name: /Online Manga/ })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Buscar con estos filtros' }).click();
+    await expect(page.getByRole('button', { name: /Online Manga/ })).toBeVisible();
 
     // El chip seleccionado aparece también en la franja de "Seleccionados".
     const selectedStrip = page.locator('text=Seleccionados').locator('..');
@@ -243,6 +255,7 @@ test.describe('Lector de manga', () => {
     let mangaReadStatus: string | null = null;
     let mangaFavorite = 0;
     let updateCalls = 0;
+    const downloadRequests: Array<{ series: string; chapter: string; source: string }> = [];
 
     await page.addInitScript(() => {
       (window as any).electronAPI = {
@@ -309,6 +322,14 @@ test.describe('Lector de manga', () => {
           body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')
         });
       }
+      if (method === 'GET' && /^\/manga\/online\/chapters\/[^/]+\/download$/.test(url.pathname)) {
+        downloadRequests.push({
+          series: url.searchParams.get('series') || '',
+          chapter: url.searchParams.get('chapter') || '',
+          source: url.searchParams.get('source') || ''
+        });
+        return route.fulfill({ status: 200, contentType: 'application/zip', body: Buffer.from('PK') });
+      }
       if (method === 'GET' && url.pathname === '/manga/sources') return route.fulfill({ json: { providers: [], candidates: [], policy: 'fixture' } });
       if (method === 'GET' && url.pathname === '/dashboard/summary') return route.fulfill({ json: { recent: [], airing: [], stats: {} } });
       if (method === 'GET' && ['/anime', '/user-list', '/recommendations', '/downloads'].includes(url.pathname)) return route.fulfill({ json: [] });
@@ -343,9 +364,21 @@ test.describe('Lector de manga', () => {
     await expect(rows.nth(0).getByTestId('manga-chapter-offline-badge')).toBeVisible();
     await expect(rows.nth(1)).toContainText('Solo en línea');
 
+    // La biblioteca local debe permitir descargar capítulos igual que la búsqueda online.
+    await rows.nth(0).getByRole('button', { name: 'Descargar capítulo' }).click();
+    await expect.poll(() => downloadRequests.length).toBe(1);
+    expect(downloadRequests[0]).toMatchObject({ series: 'Biblioteca Manga', chapter: '1', source: 'mangadex' });
+
     await rows.nth(1).getByTestId('manga-chapter-label').click();
     const image = page.getByTestId('manga-reader-current-page');
     await expect(image).toBeVisible();
     await expect.poll(() => image.evaluate(element => (element as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+
+    // Abrir el lector no debe desactivar la descarga: sigue habilitada y usa la serie/fuente correctas.
+    const readerDownloadButton = page.getByTestId('manga-reader').getByRole('button', { name: 'Descargar capítulo' });
+    await expect(readerDownloadButton).toBeEnabled();
+    await readerDownloadButton.click();
+    await expect.poll(() => downloadRequests.length).toBe(2);
+    expect(downloadRequests[1]).toMatchObject({ series: 'Biblioteca Manga', chapter: '2', source: 'mangadex' });
   });
 });
