@@ -88,7 +88,8 @@ export function createAssistantRouter({
 
       const chatbotResponse = await assistantService.handleChatMessage(safeMessage);
       res.json(chatbotResponse);
-    } catch (_) {
+    } catch (error: unknown) {
+      console.error('Error al procesar el mensaje del chat:', getSharedErrorMessage(error, 'Error al procesar el mensaje.'));
       res.status(500).json({ error: 'Error al procesar el mensaje.' });
     }
   });
@@ -105,7 +106,8 @@ export function createAssistantRouter({
 
       const message = await assistantService.executeChatbotAction(type, data || {}, confirmToken);
       res.json({ text: message });
-    } catch (_) {
+    } catch (error: unknown) {
+      console.error('Error al ejecutar la accion del chatbot:', getSharedErrorMessage(error, 'Error al ejecutar la accion.'));
       res.status(500).json({ error: 'Error al ejecutar la accion.' });
     }
   });

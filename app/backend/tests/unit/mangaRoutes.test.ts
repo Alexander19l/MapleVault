@@ -22,6 +22,7 @@ const shadeMangaDetailsMock = vi.fn();
 const shadeMangaChaptersMock = vi.fn();
 const shadeMangaPagesMock = vi.fn();
 const shadeMangaDownloadMock = vi.fn();
+const translationMock = vi.fn();
 
 let server: Server;
 let baseUrl: string;
@@ -86,7 +87,8 @@ describe('Manga HTTP router', () => {
         getChapters: shadeMangaChaptersMock,
         getPages: shadeMangaPagesMock,
         downloadPages: shadeMangaDownloadMock
-      } as any
+      } as any,
+      translationProvider: translationMock
     }));
 
     await new Promise<void>(resolve => {
@@ -124,6 +126,13 @@ describe('Manga HTTP router', () => {
     shadeMangaChaptersMock.mockResolvedValue([]);
     shadeMangaPagesMock.mockResolvedValue({ chapterId: 'Chap02', quality: 'data-saver', pages: [] });
     shadeMangaDownloadMock.mockResolvedValue(Buffer.from('zip'));
+    translationMock.mockImplementation(async ({ text }: { text: string }) => ({
+      text,
+      translated: false,
+      cached: false,
+      status: 'spanish_source',
+      provider: 'libretranslate'
+    }));
   });
 
   it('expone MangaDex como servidor principal y tres proveedores operativos', async () => {
@@ -185,6 +194,32 @@ describe('Manga HTTP router', () => {
 
     expect(response.status).toBe(404);
     expect(json).toEqual({ error: 'Manga no encontrado.' });
+  });
+
+  it('traduce la sinopsis al abrir una ficha de la biblioteca local', async () => {
+    queryGetMock.mockResolvedValueOnce({
+      id: 8,
+      title: 'Saved Manga',
+      synopsis: 'This saved synopsis is long enough to require a translation into Spanish.',
+      genre_names: null
+    });
+    translationMock.mockResolvedValueOnce({
+      text: 'Esta sinopsis guardada está traducida al español.',
+      translated: true,
+      cached: false,
+      status: 'translated',
+      provider: 'libretranslate'
+    });
+
+    const { response, json } = await requestJson('/manga/8');
+
+    expect(response.status).toBe(200);
+    expect(json.synopsis).toBe('Esta sinopsis guardada está traducida al español.');
+    expect(json.synopsis_original).toContain('saved synopsis');
+    expect(translationMock).toHaveBeenCalledWith(expect.objectContaining({
+      entityKey: 'manga:local:8',
+      field: 'synopsis'
+    }));
   });
 
   it('expone búsqueda remota y limita el contrato a MangaDex', async () => {
@@ -267,6 +302,32 @@ describe('Manga HTTP router', () => {
     expect(details.response.status).toBe(200);
     expect(details.json.manga.synopsis).toBe('Sinopsis en español.');
     expect(shadeMangaDetailsMock).toHaveBeenCalledWith('3DySaf');
+  });
+
+  it('traduce al español la sinopsis de la ficha remota', async () => {
+    mangaDexDetailsMock.mockResolvedValueOnce({
+      id: '11111111-1111-1111-1111-111111111111',
+      title: 'Remote Manga',
+      synopsis: 'This synopsis is written in English and contains enough text to require translation.'
+    });
+    translationMock.mockResolvedValueOnce({
+      text: 'Esta sinopsis fue traducida al español.',
+      translated: true,
+      cached: false,
+      status: 'translated',
+      provider: 'libretranslate'
+    });
+
+    const { response, json } = await requestJson('/manga/online/11111111-1111-1111-1111-111111111111/details');
+
+    expect(response.status).toBe(200);
+    expect(json.manga.synopsis).toBe('Esta sinopsis fue traducida al español.');
+    expect(json.manga.synopsis_original).toContain('written in English');
+    expect(json.manga.translation).toMatchObject({ translated: true, status: 'translated' });
+    expect(translationMock).toHaveBeenCalledWith(expect.objectContaining({
+      entityKey: 'manga:mangadex:11111111-1111-1111-1111-111111111111',
+      field: 'synopsis'
+    }));
   });
 
   it('devuelve páginas de manga con URL absoluta del backend para el lector', async () => {

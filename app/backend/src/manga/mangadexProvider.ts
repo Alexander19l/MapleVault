@@ -6,7 +6,7 @@ const MANGADEX_UPLOADS_HOST = 'uploads.mangadex.org';
 const MANGADEX_AT_HOME_HOST_SUFFIX = '.mangadex.network';
 const MAX_SEARCH_LIMIT = 24;
 const MAX_CHAPTER_LIMIT = 100;
-const MAX_TOTAL_CHAPTERS = 2000;
+const MAX_TOTAL_CHAPTERS = 10_000;
 const MAX_PAGE_COUNT = 500;
 const MAX_DOWNLOAD_BYTES = 256 * 1024 * 1024;
 const REQUEST_INTERVAL_MS = 250;
@@ -124,7 +124,8 @@ function toSearchItem(entity: MangaDexEntity): MangaDexSearchItem | null {
 function toChapter(entity: MangaDexEntity): MangaDexChapter | null {
   if (!entity.id || entity.type !== 'chapter') return null;
   const attributes = entity.attributes || {};
-  const language = attributes.translatedLanguage;
+  const sourceLanguage = attributes.translatedLanguage;
+  const language = sourceLanguage === 'es-la' ? 'es' : sourceLanguage;
   if (language !== 'es' && language !== 'en') return null;
   const rawNumber = attributes.chapter === null || attributes.chapter === undefined
     ? undefined
@@ -324,12 +325,15 @@ export class MangaDexProvider {
     if (!/^[0-9a-f-]{36}$/i.test(mangaId)) throw new Error('Identificador de manga inválido.');
     const chapters: MangaDexEntity[] = [];
     const uniqueIds = new Set<string>();
-    const translatedLanguages = [...new Set(languages)];
+    const translatedLanguages = [...new Set(languages.flatMap(language => (
+      language === 'es' ? ['es', 'es-la'] : [language]
+    )))];
+    let expectedTotal: number | null = null;
 
     for (let offset = 0; offset < MAX_TOTAL_CHAPTERS; offset += MAX_CHAPTER_LIMIT) {
-      const response = await this.gate(() => this.http.get<MangaDexResponse<MangaDexEntity>>('/chapter', {
+      const response = await this.gate(() => this.http.get<MangaDexResponse<MangaDexEntity>>(
+        `/manga/${encodeURIComponent(mangaId)}/feed`, {
         params: {
-          manga: mangaId,
           'translatedLanguage[]': translatedLanguages,
           'contentRating[]': ['safe', 'suggestive'],
           'includes[]': ['scanlation_group'],
@@ -339,13 +343,17 @@ export class MangaDexProvider {
         }
       }));
       const page = response.data?.result === 'ok' && Array.isArray(response.data.data) ? response.data.data : [];
+      const total = Number(response.data?.total);
+      if (Number.isInteger(total) && total >= 0) expectedTotal = total;
       for (const entity of page) {
         if (entity.id && !uniqueIds.has(entity.id)) {
           uniqueIds.add(entity.id);
           chapters.push(entity);
         }
       }
-      if (page.length < MAX_CHAPTER_LIMIT) break;
+      const nextOffset = offset + MAX_CHAPTER_LIMIT;
+      if (page.length === 0 || (expectedTotal !== null && nextOffset >= expectedTotal)) break;
+      if (expectedTotal === null && page.length < MAX_CHAPTER_LIMIT) break;
     }
 
     return chapters

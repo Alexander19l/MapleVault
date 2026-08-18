@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "last_update": "2026-08-17",
+  "resolved_with": "git ls-remote <repo> HEAD",
+  "sources": {
+    "ecc": {
+      "commit": "06c5e118c4d3e6c3b7f9445f973a2194c82de193",
+      "license_verified": "MIT",
+      "license_holder": "Copyright (c) 2026 Affaan Mustafa",
+      "reviewed_paths": [
+        "agents/code-explorer.md",
+        "agents/code-simplifier.md",
+        "agents/refactor-cleaner.md",
+        "agents/performance-optimizer.md",
+        "agents/security-reviewer.md",
+        "agents/silent-failure-hunter.md",
+        "agents/react-reviewer.md",
+        "agents/a11y-architect.md",
+        "agents/type-design-analyzer.md",
+        "agents/harness-optimizer.md",
+        "agents/pr-test-analyzer.md",
+        "LICENSE"
+      ],
+      "listed_not_reviewed": [
+        "agents/typescript-reviewer.md"
+      ]
+    },
+    "hermes-agent": {
+      "commit": "cf64ca20c5ab99ebf7e8ca272c69edc7ea0636ed",
+      "license_verified": "MIT",
+      "license_holder": "Copyright (c) 2025 Nous Research",
+      "reviewed_paths": [
+        "skills/software-development/systematic-debugging/SKILL.md",
+        "skills/software-development/simplify-code/SKILL.md",
+        "LICENSE"
+      ],
+      "listed_not_reviewed": [
+        "skills/software-development/test-driven-development/",
+        "skills/software-development/requesting-code-review/",
+        "skills/software-development/plan/",
+        "skills/software-development/spike/",
+        "skills/index-cache/",
+        "trajectory_compressor.py",
+        "AGENTS.md"
+      ]
+    }
+  },
+  "next_update_procedure": "Resolver HEAD con git ls-remote y comparar con estos commits. Si coinciden, NO CHANGE y parar. Si difieren, revisar unicamente watch_paths de SOURCES.json."
+}

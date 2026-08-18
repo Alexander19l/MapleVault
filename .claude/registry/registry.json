@@ -1,0 +1,157 @@
+{
+  "schema_version": 1,
+  "updated": "2026-08-17",
+  "claude_code_version": "2.1.233",
+  "layout": {
+    "agents": "~/.claude/agents/ (alcance usuario, disponible en todos los proyectos)",
+    "skills": "~/.claude/skills/ (alcance usuario)",
+    "registry": "<proyecto>/.claude/registry/",
+    "upstream": "<proyecto>/.claude/upstream/",
+    "reports": "<proyecto>/.claude/reports/",
+    "quarantine": "<proyecto>/.claude/quarantine/",
+    "backups": "<proyecto>/.claude-backups/"
+  },
+  "policy": {
+    "max_default_agents": 6,
+    "agent_prompt_target_bytes": 6144,
+    "agent_prompt_target_lines": 180,
+    "skill_prompt_target_bytes": 8192,
+    "skill_prompt_target_lines": 250,
+    "normal_max_files_per_delegation": 12,
+    "normal_max_output_lines": 80,
+    "evidence_format": "file:line",
+    "full_file_dump": false
+  },
+  "frontmatter_schema_verified": {
+    "agents": ["name", "description", "model", "effort", "color", "tools"],
+    "skills": ["name", "description"],
+    "notes": "maxTurns NO es soportado en 2.1.233 y fue eliminado. tools debe ser lista inline separada por comas. model acepta sonnet|opus|haiku|inherit. effort acepta low|medium|high|xhigh|max."
+  },
+  "components": [
+    {
+      "name": "code-reader",
+      "type": "agent",
+      "active": true,
+      "capabilities": ["code-reading", "code-navigation", "flow-tracing", "dependency-mapping"],
+      "risk": "low",
+      "model_profile": "cheap-read",
+      "model": "haiku",
+      "effort": "low",
+      "tools": ["Read", "Grep", "Glob"],
+      "write_access": false,
+      "shell": false,
+      "network": false,
+      "bytes": 3142
+    },
+    {
+      "name": "code-optimizer",
+      "type": "agent",
+      "active": true,
+      "capabilities": ["simplify", "refactor", "performance", "reuse", "altitude"],
+      "risk": "medium",
+      "model_profile": "edit",
+      "model": "sonnet",
+      "effort": "medium",
+      "tools": ["Read", "Grep", "Glob", "Edit", "Bash"],
+      "write_access": "edit-only",
+      "shell": "comandos existentes del proyecto",
+      "network": false,
+      "bytes": 6134
+    },
+    {
+      "name": "frontend-director",
+      "type": "agent",
+      "active": true,
+      "capabilities": ["frontend", "ui", "ux", "art-direction", "accessibility", "react", "type-design"],
+      "risk": "medium",
+      "model_profile": "edit",
+      "model": "sonnet",
+      "effort": "medium",
+      "tools": ["Read", "Grep", "Glob", "Edit", "Write", "Bash", "Skill"],
+      "write_access": true,
+      "shell": "comandos existentes del proyecto",
+      "network": false,
+      "uses_skill": "anti-ai-design",
+      "bytes": 6144
+    },
+    {
+      "name": "security-auditor",
+      "type": "agent",
+      "active": true,
+      "capabilities": ["security-review", "data-flow-analysis", "silent-failure-detection"],
+      "risk": "low",
+      "model_profile": "deep-read",
+      "model": "sonnet",
+      "effort": "high",
+      "tools": ["Read", "Grep", "Glob"],
+      "write_access": false,
+      "shell": false,
+      "network": false,
+      "secret_access": "denegado explicitamente",
+      "bytes": 5571
+    },
+    {
+      "name": "test-verifier",
+      "type": "agent",
+      "active": true,
+      "capabilities": ["verification", "lint", "typecheck", "test-execution", "build"],
+      "risk": "low",
+      "model_profile": "cheap-check",
+      "model": "haiku",
+      "effort": "low",
+      "tools": ["Read", "Grep", "Glob", "Bash"],
+      "write_access": false,
+      "shell": "solo scripts ya definidos en package.json",
+      "network": false,
+      "bytes": 3050
+    },
+    {
+      "name": "stack-maintainer",
+      "type": "agent",
+      "active": true,
+      "capabilities": ["agent-maintenance", "skill-maintenance", "upstream-sync", "provenance"],
+      "risk": "medium",
+      "model_profile": "edit",
+      "model": "sonnet",
+      "effort": "medium",
+      "tools": ["Read", "Grep", "Glob", "Edit", "Write", "Bash"],
+      "write_access": "solo archivos de harness, nunca codigo de producto",
+      "shell": "git ls-remote y lectura",
+      "network": "solo fetch de lectura de upstream declarado",
+      "uses_skill": "stack-maintainer",
+      "bytes": 5648
+    },
+    {
+      "name": "anti-ai-design",
+      "type": "skill",
+      "active": true,
+      "capabilities": ["art-direction", "anti-template-design", "gradient-policy", "accessibility"],
+      "risk": "low",
+      "bytes": 6055
+    },
+    {
+      "name": "stack-maintainer",
+      "type": "skill",
+      "active": true,
+      "capabilities": ["upstream-update-procedure", "scoring", "deduplication", "rollback"],
+      "risk": "low",
+      "bytes": 3661
+    }
+  ],
+  "external_dependencies": {
+    "superpowers@claude-plugins-official": {
+      "version": "6.3.0",
+      "status": "instalado previamente por el usuario, conservado",
+      "provides": [
+        "systematic-debugging",
+        "test-driven-development",
+        "requesting-code-review",
+        "writing-plans",
+        "brainstorming",
+        "verification-before-completion",
+        "subagent-driven-development"
+      ],
+      "note": "Fuente canonica de los procesos de debugging y TDD. Las skills equivalentes de Hermes NO se duplicaron por esta razon."
+    }
+  }
+}

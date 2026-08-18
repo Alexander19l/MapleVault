@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ArrowUpDown,
   BookOpen,
   Database,
-  Download,
   ExternalLink,
   Filter,
   Loader2,
@@ -12,6 +12,8 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { MangaReader } from '../components/manga/MangaReader';
+import { GenreTagPicker } from '../components/manga/GenreTagPicker';
+import { ChapterListItem } from '../components/manga/ChapterListItem';
 import { Modal } from '../components/ui/Modal';
 import { api } from '../services/api';
 import type {
@@ -78,6 +80,7 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
   const [statusFilter, setStatusFilter] = useState('');
   const [chapters, setChapters] = useState<MangaOnlineChapter[]>([]);
   const [chaptersLoading, setChaptersLoading] = useState(false);
+  const [chapterSort, setChapterSort] = useState<'asc' | 'desc'>('asc');
   const [reader, setReader] = useState<MangaOnlinePages | null>(null);
   const [readerChapter, setReaderChapter] = useState<MangaOnlineChapter | null>(null);
   const [offlineReaderKey, setOfflineReaderKey] = useState('');
@@ -152,6 +155,18 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
   const genreTags = useMemo(() => tags.filter(tag => tag.group === 'genre'), [tags]);
   const topicTags = useMemo(() => tags.filter(tag => tag.group !== 'genre'), [tags]);
 
+  const sortChapters = useCallback((list: MangaOnlineChapter[]) => {
+    const sorted = [...list].sort((a, b) => {
+      const aNumber = a.number ?? Number.POSITIVE_INFINITY;
+      const bNumber = b.number ?? Number.POSITIVE_INFINITY;
+      return aNumber - bNumber;
+    });
+    return chapterSort === 'desc' ? sorted.reverse() : sorted;
+  }, [chapterSort]);
+
+  const sortedChapters = useMemo(() => sortChapters(chapters), [chapters, sortChapters]);
+  const sortedLocalChapters = useMemo(() => sortChapters(localChapters), [localChapters, sortChapters]);
+
   const activeOnlineProviderCount = useMemo(
     () => onlineProviders.filter(provider => provider.enabled).length,
     [onlineProviders]
@@ -222,12 +237,11 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
     setReader(null);
     setChaptersLoading(true);
     const providerId = selectedProvider.id;
-    const detailsRequest = item.synopsis
-      ? Promise.resolve({ manga: item })
-      : api.getMangaOnlineDetails(item.id, providerId);
-    const [detailsResult, chaptersResult] = await Promise.allSettled([
-      detailsRequest,
-      api.getMangaOnlineChapters(item.id, ['es', 'en'], providerId)
+    const offlineApi = (window as any).electronAPI?.manga;
+    const [detailsResult, chaptersResult, offlineResult] = await Promise.allSettled([
+      api.getMangaOnlineDetails(item.id, providerId),
+      api.getMangaOnlineChapters(item.id, ['es', 'en'], providerId),
+      offlineApi?.listOfflineChapters ? offlineApi.listOfflineChapters({ series: item.title }) : Promise.resolve(null)
     ]);
 
     if (detailsResult.status === 'fulfilled') {
@@ -243,6 +257,10 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
       console.error('Error al cargar capítulos de manga:', chaptersResult.reason);
       setChapters([]);
     }
+    // Mismo dato que ya se calculaba para la ficha local: si el usuario ya
+    // descargó capítulos de esta obra antes, la ficha online también debe
+    // marcarlos como descargados en vez de ofrecerlos como "solo online".
+    setOfflineChapters(offlineResult.status === 'fulfilled' ? offlineResult.value?.chapters || [] : []);
     setChaptersLoading(false);
     setDetailLoading(false);
   };
@@ -477,7 +495,7 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
         </button>
       </div>
 
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="grid gap-4 md:grid-cols-2">
         <div className="rounded-lg border border-[var(--border-medium)] bg-slate-900/45 p-4">
           <div className="flex items-center gap-3">
             <Database className="h-5 w-5 text-sky-300" />
@@ -494,14 +512,6 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
           <p className="mt-3 text-2xl font-black">{activeOnlineProviderCount}</p>
           <p className="text-xs text-[var(--text-muted)]">Proveedores remotos operativos.</p>
         </div>
-        <div className="rounded-lg border border-[var(--border-medium)] bg-slate-900/45 p-4">
-          <div className="flex items-center gap-3">
-            <BookOpen className="h-5 w-5 text-violet-300" />
-            <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-dim)]">Candidatas</span>
-          </div>
-          <p className="mt-3 text-2xl font-black">{sources?.candidates.length || 0}</p>
-          <p className="text-xs text-[var(--text-muted)]">Pendientes de auditoría antes de integrarse.</p>
-        </div>
       </section>
 
       {mode === 'online' ? (
@@ -511,17 +521,21 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
               <div className="flex items-center gap-2 text-sm font-bold text-[var(--text-main)]"><Filter className="h-4 w-4 text-[var(--accent-primary)]" /> Filtros de catálogo</div>
               <button type="button" onClick={() => { setSelectedGenres([]); setSelectedTags([]); setStatusFilter(''); }} className="text-xs font-bold text-[var(--text-muted)] hover:text-[var(--text-main)]">Limpiar filtros</button>
             </div>
-            <div className="mt-3 grid gap-3 md:grid-cols-3">
-              <label className="text-xs text-[var(--text-muted)]">Géneros
-                <select multiple value={selectedGenres} onChange={event => setSelectedGenres(Array.from(event.target.selectedOptions).slice(0, 4).map(option => option.value))} className="mt-1 h-20 w-full rounded-md border border-[var(--border-soft)] bg-slate-950/70 p-1 text-xs text-[var(--text-main)]" aria-label="Filtrar por géneros">
-                  {genreTags.map(tag => <option key={tag.id} value={tag.id}>{tag.name}</option>)}
-                </select>
-              </label>
-              <label className="text-xs text-[var(--text-muted)]">Temas y etiquetas
-                <select multiple value={selectedTags} onChange={event => setSelectedTags(Array.from(event.target.selectedOptions).slice(0, 4).map(option => option.value))} className="mt-1 h-20 w-full rounded-md border border-[var(--border-soft)] bg-slate-950/70 p-1 text-xs text-[var(--text-main)]" aria-label="Filtrar por etiquetas">
-                  {topicTags.map(tag => <option key={tag.id} value={tag.id}>{tag.name}</option>)}
-                </select>
-              </label>
+            <div className="mt-3 grid gap-4 md:grid-cols-3">
+              <GenreTagPicker
+                label="Géneros"
+                tags={genreTags}
+                selected={selectedGenres}
+                onChange={setSelectedGenres}
+                emptyHint="Esta fuente no expone géneros."
+              />
+              <GenreTagPicker
+                label="Temas y etiquetas"
+                tags={topicTags}
+                selected={selectedTags}
+                onChange={setSelectedTags}
+                emptyHint="Esta fuente no expone temas."
+              />
               <label className="text-xs text-[var(--text-muted)]">Estado
                 <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="mt-1 h-9 w-full rounded-md border border-[var(--border-soft)] bg-slate-950/70 px-2 text-xs text-[var(--text-main)]">
                   <option value="">Cualquier estado</option><option value="ongoing">En publicación</option><option value="completed">Finalizado</option><option value="hiatus">En pausa</option>
@@ -603,22 +617,35 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
               </div>
 
               <div className="mt-5 border-t border-[var(--border-soft)] pt-4">
-                <h3 className="text-sm font-bold text-[var(--text-main)]">Capítulos disponibles</h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-[var(--text-main)]">Capítulos disponibles</h3>
+                  {chapters.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setChapterSort(prev => prev === 'asc' ? 'desc' : 'asc')}
+                      className="flex items-center gap-1 rounded-md border border-[var(--border-medium)] bg-[var(--bg-elevated)] px-2 py-1 text-[var(--text-muted)] hover:text-[var(--text-main)]"
+                      title={chapterSort === 'asc' ? 'Orden ascendente' : 'Orden descendente'}
+                    >
+                      <ArrowUpDown className="h-3.5 w-3.5" />
+                      <span className="text-[10px] font-bold uppercase">{chapterSort === 'asc' ? 'Asc' : 'Desc'}</span>
+                    </button>
+                  )}
+                </div>
                 {chaptersLoading ? (
                   <div className="flex items-center gap-2 py-5 text-sm text-[var(--text-muted)]"><Loader2 className="h-4 w-4 animate-spin" /> Cargando capítulos...</div>
                 ) : chapters.length === 0 ? (
                   <p className="py-5 text-sm text-[var(--text-muted)]">No hay capítulos en español o inglés para esta obra.</p>
                 ) : (
                   <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    {chapters.map(chapter => (
-                      <div key={`${chapter.id}-${chapter.language}`} className="flex items-center justify-between gap-3 rounded-md border border-[var(--border-soft)] bg-slate-950/45 px-3 py-2">
-                        <button type="button" onClick={() => handleOpenChapter(chapter)} className="min-w-0 text-left text-sm font-bold text-[var(--text-main)] hover:text-[var(--accent-primary)]">
-                          Cap. {chapter.number ?? 'S/N'} <span className="ml-1 text-[10px] uppercase text-[var(--text-dim)]">{chapter.language}</span>
-                        </button>
-                        <button type="button" onClick={() => handleDownloadChapter(chapter)} disabled={downloadLoading} className="shrink-0 rounded-md p-2 text-[var(--text-muted)] hover:bg-slate-800 hover:text-white disabled:opacity-50" aria-label="Descargar capítulo" title="Descargar capítulo">
-                          {downloadLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                        </button>
-                      </div>
+                    {sortedChapters.map(chapter => (
+                      <ChapterListItem
+                        key={`${chapter.id}-${chapter.language}`}
+                        chapter={chapter}
+                        offline={Boolean(findOfflineChapter(chapter, offlineChapters))}
+                        onOpen={() => handleOpenChapter(chapter)}
+                        onDownload={() => handleDownloadChapter(chapter)}
+                        downloadLoading={downloadLoading}
+                      />
                     ))}
                   </div>
                 )}
@@ -675,9 +702,54 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
         <Modal isOpen={detailOpen && mode === 'local'} onClose={clearDetail} title={`Ficha de ${selectedLocal.title}`} size="xl">
           <div className="flex flex-col gap-4 md:flex-row">
             {selectedLocal.cover_image && <img src={selectedLocal.cover_image} alt="" referrerPolicy="no-referrer" className="h-40 w-28 rounded-md object-cover" />}
-            <div className="min-w-0 flex-1"><h2 className="text-xl font-black text-[var(--text-main)]">{selectedLocal.title}</h2><p className="mt-1 text-xs text-[var(--text-muted)]">Biblioteca local · {selectedLocal.year || 'Año no disponible'}</p>{detailLoading ? <div className="mt-4 flex items-center gap-2 text-sm text-[var(--text-muted)]"><Loader2 className="h-4 w-4 animate-spin" /> Cargando información...</div> : <p className="mt-3 text-sm leading-6 text-[var(--text-muted)]">{selectedLocal.synopsis || 'Sinopsis no disponible.'}</p>}</div>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-xl font-black text-[var(--text-main)]">{selectedLocal.title}</h2>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">Biblioteca local · {selectedLocal.year || 'Año no disponible'}</p>
+              {detailLoading ? (
+                <div className="mt-4 flex items-center gap-2 text-sm text-[var(--text-muted)]"><Loader2 className="h-4 w-4 animate-spin" /> Cargando información...</div>
+              ) : (
+                <>
+                  <p className="mt-3 text-sm leading-6 text-[var(--text-muted)]">{selectedLocal.synopsis || 'Sinopsis no disponible.'}</p>
+                  {selectedLocal.translation?.translated && <p className="mt-2 text-[11px] font-bold text-emerald-300">Sinopsis traducida al español por LibreTranslate.</p>}
+                </>
+              )}
+            </div>
           </div>
-          <div className="mt-5 border-t border-[var(--border-soft)] pt-4"><h3 className="text-sm font-bold text-[var(--text-main)]">Capítulos de la biblioteca</h3>{localChapters.length === 0 ? <p className="py-5 text-sm text-[var(--text-muted)]">Esta obra todavía no tiene capítulos sincronizados.</p> : <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{localChapters.map(chapter => { const offline = Boolean(findOfflineChapter(chapter, offlineChapters)); return <div key={`${chapter.id}-${chapter.language}`} className="flex items-center justify-between gap-3 rounded-md border border-[var(--border-soft)] bg-slate-950/45 px-3 py-2"><button type="button" disabled={!offline} onClick={() => void handleOpenOfflineChapter(chapter)} className="min-w-0 text-left text-sm font-bold text-[var(--text-main)] hover:text-[var(--accent-primary)] disabled:cursor-not-allowed disabled:opacity-50">Cap. {chapter.number ?? 'S/N'} {offline ? <span className="ml-1 text-[10px] text-emerald-300">offline</span> : <span className="ml-1 text-[10px] text-[var(--text-dim)]">descarga requerida</span>}</button></div>; })}</div>}</div>
+          <div className="mt-5 border-t border-[var(--border-soft)] pt-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-[var(--text-main)]">Capítulos de la biblioteca</h3>
+              {localChapters.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setChapterSort(prev => prev === 'asc' ? 'desc' : 'asc')}
+                  className="flex items-center gap-1 rounded-md border border-[var(--border-medium)] bg-[var(--bg-elevated)] px-2 py-1 text-[var(--text-muted)] hover:text-[var(--text-main)]"
+                  title={chapterSort === 'asc' ? 'Orden ascendente' : 'Orden descendente'}
+                >
+                  <ArrowUpDown className="h-3.5 w-3.5" />
+                  <span className="text-[10px] font-bold uppercase">{chapterSort === 'asc' ? 'Asc' : 'Desc'}</span>
+                </button>
+              )}
+            </div>
+            {localChapters.length === 0 ? (
+              <p className="py-5 text-sm text-[var(--text-muted)]">Esta obra todavía no tiene capítulos sincronizados.</p>
+            ) : (
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {sortedLocalChapters.map(chapter => {
+                  const offline = Boolean(findOfflineChapter(chapter, offlineChapters));
+                  return (
+                    <ChapterListItem
+                      key={`${chapter.id}-${chapter.language}`}
+                      chapter={chapter}
+                      offline={offline}
+                      requiresDownloadToOpen
+                      disabled={!offline}
+                      onOpen={() => void handleOpenOfflineChapter(chapter)}
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </Modal>
       )}
 
@@ -692,25 +764,6 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
         />
       )}
 
-      {sources && (
-        <section className="rounded-lg border border-[var(--border-medium)] bg-slate-900/35 p-5">
-          <h2 className="text-sm font-bold text-[var(--text-main)]">Fuentes candidatas para manga</h2>
-          <p className="mt-1 text-xs text-[var(--text-muted)]">{sources.policy}</p>
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            {sources.candidates.map(source => (
-              <div key={source.id} className="rounded-lg border border-[var(--border-soft)] bg-slate-950/45 p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm font-bold text-[var(--text-main)]">{source.name}</span>
-                  <span className="rounded-full bg-slate-800 px-2 py-1 text-[10px] uppercase text-[var(--text-muted)]">
-                    riesgo {source.risk}
-                  </span>
-                </div>
-                <p className="mt-2 text-xs text-[var(--text-muted)]">{source.notes}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
     </div>
   );
 };

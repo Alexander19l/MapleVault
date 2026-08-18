@@ -108,9 +108,10 @@ function App() {
         return <Home onViewDetails={handleViewDetails} onNavigate={setActivePage} refreshTrigger={refreshTrigger} />;
       case 'catalog':
         return (
-          <Catalog 
-            onViewDetails={handleViewDetails} 
-            refreshTrigger={refreshTrigger} 
+          <Catalog
+            onViewDetails={handleViewDetails}
+            refreshTrigger={refreshTrigger}
+            searchValue={searchValue}
           />
         );
       case 'seasons':

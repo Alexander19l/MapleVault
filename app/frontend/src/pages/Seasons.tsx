@@ -4,6 +4,7 @@ import type { Anime } from '../types';
 import { AnimeCard } from '../components/anime/AnimeCard';
 import { SeasonTimeline } from '../components/seasons/SeasonTimeline';
 import { useCurrentAnimeSeason } from '../hooks/useCurrentAnimeSeason';
+import { notifications } from '../utils/notify';
 import { 
   Calendar, 
   RefreshCw, 
@@ -151,7 +152,7 @@ export const Seasons: React.FC<SeasonsProps> = ({ onViewDetails }) => {
       await Promise.all([loadSeasonData(), loadComparisons()]);
     } catch (err) {
       console.error('Error al sincronizar temporada:', err);
-      alert('Error en la sincronización. Revisa los logs de Scraping.');
+      notifications.error('Error en la sincronización. Revisa los logs de Scraping.');
     } finally {
       setSyncing(false);
     }

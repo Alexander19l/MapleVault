@@ -82,35 +82,30 @@ export const AdvancedSearch: React.FC<AdvancedSearchProps> = ({ onViewDetails })
     if (!query.trim()) return;
 
     setHasSearched(true);
-    
-    // 1. Search locally with filters
-    setLoadingLocal(true);
-    try {
-      const localData = await api.getAnimeList({
-        q: query,
-        genre: selectedGenre || undefined,
-        year: selectedYear || undefined,
-        season: selectedSeason || undefined,
-        type: selectedType || undefined,
-        status: selectedStatus || undefined
-      });
-      setLocalResults(localData);
-    } catch (err) {
-      console.error('Error en búsqueda local:', err);
-    } finally {
-      setLoadingLocal(false);
-    }
 
-    // 2. Search online (AniList API via backend)
+    // Local y online son independientes: se lanzan en paralelo en vez de en
+    // serie para que el tiempo total sea max(local, online) y no la suma.
+    setLoadingLocal(true);
     setLoadingOnline(true);
-    try {
-      const onlineData = await api.searchExternal(query);
-      setOnlineResults(onlineData);
-    } catch (err) {
-      console.error('Error en búsqueda online:', err);
-    } finally {
-      setLoadingOnline(false);
-    }
+
+    const localSearch = api.getAnimeList({
+      q: query,
+      genre: selectedGenre || undefined,
+      year: selectedYear || undefined,
+      season: selectedSeason || undefined,
+      type: selectedType || undefined,
+      status: selectedStatus || undefined
+    })
+      .then(setLocalResults)
+      .catch((err) => console.error('Error en búsqueda local:', err))
+      .finally(() => setLoadingLocal(false));
+
+    const onlineSearch = api.searchExternal(query)
+      .then(setOnlineResults)
+      .catch((err) => console.error('Error en búsqueda online:', err))
+      .finally(() => setLoadingOnline(false));
+
+    await Promise.all([localSearch, onlineSearch]);
   };
 
   const handleImport = async (anime: any, importKey = getOnlineAnimeKey(anime)) => {

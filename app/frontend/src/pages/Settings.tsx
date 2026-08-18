@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '../services/api';
 import { showConfirm } from '../utils/dialog';
+import { notifications } from '../utils/notify';
 import type { ChatActionHistoryItem, DatabaseBackup, ScrapingJobStatus, SourceCandidatesOverview } from '../types';
 
 import { 
@@ -200,11 +201,11 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
     try {
       setSaving(true);
       const res = await api.clearCatalog(keepUserList);
-      alert(res.message);
+      notifications.success(res.message);
       if (onRefreshData) onRefreshData();
     } catch (err: any) {
       console.error('Error al vaciar catálogo:', err);
-      alert('Error: ' + (err.response?.data?.error || err.message));
+      notifications.error('Error: ' + (err.response?.data?.error || err.message));
     } finally {
       setSaving(false);
     }
@@ -214,10 +215,10 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
     try {
       setSaving(true);
       const res = await api.clearBotMemory();
-      alert(res.message || 'Memoria borrada');
+      notifications.success(res.message || 'Memoria borrada');
     } catch (err: any) {
       console.error('Error al vaciar memoria bot:', err);
-      alert('Error: ' + (err.response?.data?.error || err.message));
+      notifications.error('Error: ' + (err.response?.data?.error || err.message));
     } finally {
       setSaving(false);
     }
@@ -453,7 +454,7 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Error al exportar catálogo:', err);
-      alert('Error al exportar los datos.');
+      notifications.error('Error al exportar los datos.');
     }
   };
 

@@ -27,7 +27,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
 
   useEffect(() => {
     checkConnectionStatus();
-  }, [activePage]);
+    const intervalId = window.setInterval(() => {
+      checkConnectionStatus();
+    }, 60000);
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   const checkConnectionStatus = async () => {
     try {

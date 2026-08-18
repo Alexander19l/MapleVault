@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 
-const PROXY_TTL_MS = 5 * 60 * 1000;
+const PROXY_TTL_MS = 2 * 60 * 60 * 1000;
 const MAX_URL_LENGTH = 4096;
 const SECRET = process.env.MAPLEVAULT_API_TOKEN || crypto.randomBytes(32).toString('hex');
 

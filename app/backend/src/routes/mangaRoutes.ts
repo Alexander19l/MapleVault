@@ -119,6 +119,25 @@ export function createMangaRouter({
   translationProvider = translateTextForAnime
 }: MangaRouterDependencies = {}) {
   const router = Router();
+  const withSpanishSynopsis = async <T extends { synopsis?: string | null }>(manga: T, entityKey: string) => {
+    const originalSynopsis = manga.synopsis || '';
+    const translation = await translationProvider({
+      animeId: null,
+      entityKey,
+      field: 'synopsis',
+      text: originalSynopsis
+    });
+    return {
+      ...manga,
+      synopsis_original: originalSynopsis || undefined,
+      synopsis: translation.text || originalSynopsis || undefined,
+      translation: {
+        translated: translation.translated,
+        cached: translation.cached,
+        status: translation.status
+      }
+    };
+  };
 
   router.get('/manga/online/providers', (_req, res) => {
     res.json({ providers: getMangaProviderDescriptors(), defaultProvider: 'mangadex' });
@@ -210,21 +229,9 @@ export function createMangaRouter({
 
     try {
       const manga = await implementation.getDetails(mangaId);
-      const originalSynopsis = manga.synopsis || '';
-      const translation = await translationProvider({
-        animeId: null,
-        entityKey: `manga:${provider.id}:${manga.id}`,
-        field: 'synopsis',
-        text: originalSynopsis
-      });
       return res.json({
         provider: getProviderResponse(provider),
-        manga: {
-          ...manga,
-          synopsis_original: originalSynopsis || undefined,
-          synopsis: translation.text || originalSynopsis || undefined,
-          translation: { translated: translation.translated, cached: translation.cached, status: translation.status }
-        }
+        manga: await withSpanishSynopsis(manga, `manga:${provider.id}:${manga.id}`)
       });
     } catch (error: unknown) {
       console.warn(`[MapleVault] ${provider.label} no devolvió la ficha del manga.`, error);
@@ -486,7 +493,15 @@ export function createMangaRouter({
         return res.status(404).json({ error: 'Manga no encontrado.' });
       }
 
-      res.json(manga);
+      // Misma clave de caché que se usó al consultar la ficha online
+      // (manga:<proveedor>:<externalId>), no una nueva por id local. Si no,
+      // cada apertura de la ficha guardada reintenta traducir un texto que
+      // ya llegó traducido bajo una clave distinta, sin aprovechar la caché.
+      const entityKey = manga.source && manga.external_id
+        ? `manga:${manga.source}:${manga.external_id}`
+        : `manga:local:${manga.id}`;
+
+      res.json(await withSpanishSynopsis(manga, entityKey));
     } catch (error: unknown) {
       res.status(500).json({ error: getErrorMessage(error) });
     }

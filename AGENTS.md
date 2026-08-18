@@ -23,14 +23,24 @@ Este archivo reduce contexto repetido para Codex y subagentes que trabajen en Ma
 - No agregar scraping agresivo sin rate limit, cache y validación de identidad.
 - No agregar dependencias pesadas sin justificar tamaño, mantenimiento y seguridad.
 
-## Subagentes Recomendados
+## Subagentes Disponibles
 
-- `security-reviewer`: seguridad, validación, IPC, tokens, rutas y dependencias.
-- `code-optimizer`: duplicación, consultas SQL, cache, carga inicial y limpieza segura.
-- `scraping-analyst`: fuentes, rate limits, validación de identidad y degradación.
-- `chatbot-evaluator`: intents, capacidades, memoria y pruebas semánticas.
-- `manga-planner`: expansión de manga manteniendo separación anime/manga.
-- `test-runner`: typecheck, tests backend/frontend y build.
+Seis agentes canónicos, definidos en `~/.claude/agents/`. Están instalados y son invocables; no
+inventes otros nombres.
+
+- `code-reader`: solo lectura. Estructura, flujo, dependencias y contratos. Úsalo antes de cambiar
+  una zona desconocida.
+- `code-optimizer`: duplicación, consultas SQL, cache, carga inicial, rendimiento y limpieza segura.
+  Clasifica cada cambio como SAFE/CAREFUL/RISKY y no aplica los RISKY por su cuenta.
+- `frontend-director`: UI, React/TSX, accesibilidad y dirección visual anti-plantilla.
+- `security-auditor`: solo lectura. Seguridad, validación, IPC, tokens, rutas, subidas, dependencias
+  y errores silenciados. No lee `.env` ni ejecuta nada.
+- `test-verifier`: ejecuta typecheck, lint, tests y build ya definidos, y reporta el primer fallo.
+- `stack-maintainer`: mantiene los propios agentes y skills desde upstream. No toca código de producto.
+
+Las capacidades de los antiguos `scraping-analyst`, `chatbot-evaluator` y `manga-planner` se cubren
+combinando `code-reader` (mapear el flujo) con `security-auditor` (rate limits, validación de
+identidad, degradación) y las reglas de estabilidad de arriba.
 
 ## Política de Contexto
 

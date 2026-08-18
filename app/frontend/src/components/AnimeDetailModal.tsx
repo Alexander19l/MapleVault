@@ -377,7 +377,7 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
       setAnime(updated);
     } catch (err) {
       console.error('Error al guardar progreso:', err);
-      alert('Error al guardar el progreso');
+      notifications.error('Error al guardar el progreso');
     } finally {
       setSavingProgress(false);
     }
