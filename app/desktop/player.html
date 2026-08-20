@@ -61,9 +61,13 @@
   <body>
     <div id="loader" class="loader" aria-label="Cargando reproductor"></div>
     <div id="error" class="error">No se pudo abrir el reproductor.</div>
+    <!-- allowfullscreen (atributo antiguo) ademas de allow="fullscreen": algunos
+         reproductores como Voe siguen comprobando el atributo y sin el su boton de
+         pantalla completa no hace nada. -->
     <iframe
       id="player"
       title="Reproductor de video"
+      allowfullscreen
       allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
     ></iframe>
     <script src="./player-renderer.js"></script>

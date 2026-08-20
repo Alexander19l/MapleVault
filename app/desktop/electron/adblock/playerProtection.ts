@@ -26,6 +26,10 @@ let mainWindowRef: BrowserWindow | null = null;
 
 export const PLAYER_SESSION_PARTITION = 'maplevault-player';
 
+/** Identidad de navegador estandar para el reproductor, igual que la que ya usa el backend. */
+const PLAYER_USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
 interface PlayerRequestContext {
   targetUrl: string;
   referer: string;
@@ -305,6 +309,13 @@ function installPlayerSessionSafeguards(): void {
   if (playerSessionSafeguardsInstalled) return;
 
   const playerSession = session.fromPartition(PLAYER_SESSION_PARTITION);
+  // Por defecto Electron se anuncia como "Electron/<version> MapleVault/<version>", una
+  // identidad que varios reproductores rechazan directamente: la pagina responde con un
+  // bloqueo y el capitulo se queda en negro sin ningun aviso. El resto de la aplicacion ya
+  // se presenta como un navegador normal (SOURCE_USER_AGENT en el backend); el reproductor
+  // era la unica pieza que no lo hacia. Se le da la misma identidad estandar por coherencia.
+  playerSession.setUserAgent(PLAYER_USER_AGENT);
+
   // 'fullscreen' es un permiso de Electron: denegarlo todo bloqueaba la pantalla completa
   // del reproductor antes incluso de que el proceso principal pudiera reaccionar. Se
   // permite solo ese, que no da acceso a datos ni hardware; el resto (cámara, micrófono,
