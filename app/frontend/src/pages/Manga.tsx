@@ -84,7 +84,7 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
   const [readerChapter, setReaderChapter] = useState<MangaOnlineChapter | null>(null);
   const [offlineReaderKey, setOfflineReaderKey] = useState('');
   const [readerLoading, setReaderLoading] = useState(false);
-  const [downloadLoading, setDownloadLoading] = useState(false);
+  const [downloadingChapters, setDownloadingChapters] = useState<Set<string>>(new Set());
   const [selectedProviderId, setSelectedProviderId] = useState('mangadex');
   const [onlinePage, setOnlinePage] = useState(0);
   const [onlineHasMore, setOnlineHasMore] = useState(false);
@@ -404,8 +404,8 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
   };
 
   const handleDownloadChapter = async (chapter: MangaOnlineChapter, seriesTitle: string, providerId: string) => {
-    if (!seriesTitle) return;
-    setDownloadLoading(true);
+    if (!seriesTitle || downloadingChapters.has(chapter.id)) return;
+    setDownloadingChapters(prev => new Set(prev).add(chapter.id));
     try {
       const blob = await api.downloadMangaOnlineChapter(
         chapter.id,
@@ -433,7 +433,11 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
     } catch (error) {
       console.error('Error al descargar capítulo de manga:', error);
     } finally {
-      setDownloadLoading(false);
+      setDownloadingChapters(prev => {
+        const next = new Set(prev);
+        next.delete(chapter.id);
+        return next;
+      });
     }
   };
 
@@ -654,7 +658,7 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
                         offline={Boolean(findOfflineChapter(chapter, offlineChapters))}
                         onOpen={() => selectedOnline && handleOpenAnyChapter(chapter, selectedOnline.title, selectedProvider.id)}
                         onDownload={() => selectedOnline && handleDownloadChapter(chapter, selectedOnline.title, selectedProvider.id)}
-                        downloadLoading={downloadLoading}
+                        downloadLoading={downloadingChapters.has(chapter.id)}
                       />
                     ))}
                   </div>
@@ -695,7 +699,7 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
               pages={reader.pages}
               totalPages={reader.totalPages}
               onPageRequest={selectedLocal && offlineReaderKey ? loadOfflinePage : undefined}
-              downloadLoading={downloadLoading}
+              downloadLoading={readerChapter ? downloadingChapters.has(readerChapter.id) : false}
               onClose={() => { setReader(null); setReaderChapter(null); setOfflineReaderKey(''); }}
               onDownload={() => {
                 if (!readerChapter) return;
@@ -874,7 +878,7 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
                       showOnlineFallbackHint
                       onOpen={() => selectedLocal && handleOpenAnyChapter(chapter, selectedLocal.title, selectedLocal.source || selectedProvider.id)}
                       onDownload={() => selectedLocal && handleDownloadChapter(chapter, selectedLocal.title, selectedLocal.source || selectedProvider.id)}
-                      downloadLoading={downloadLoading}
+                      downloadLoading={downloadingChapters.has(chapter.id)}
                     />
                   );
                 })}
@@ -891,7 +895,7 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
           pages={reader.pages}
           totalPages={reader.totalPages}
           onPageRequest={offlineReaderKey ? loadOfflinePage : undefined}
-          downloadLoading={downloadLoading}
+          downloadLoading={downloadingChapters.has(readerChapter.id)}
           onClose={() => { setReader(null); setReaderChapter(null); setOfflineReaderKey(''); }}
           onDownload={() => readerChapter && selectedLocal && handleDownloadChapter(readerChapter, selectedLocal.title, selectedLocal.source || selectedProvider.id)}
         />

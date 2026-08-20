@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, dialog, Tray, Menu, nativeImage, type MessageBoxOptions } from 'electron';
+import { app, BrowserWindow, WebContentsView, ipcMain, shell, dialog, Tray, Menu, nativeImage, type MessageBoxOptions } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
@@ -36,8 +36,8 @@ import {
 } from './playerRequest';
 
 let mainWindow: BrowserWindow | null = null;
-let playerWindow: BrowserWindow | null = null;
-let playerDirectOrigin: string | null = null;
+let playerView: WebContentsView | null = null;
+let playerViewDirectOrigin: string | null = null;
 let backendProcess: ChildProcess | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
@@ -65,93 +65,150 @@ interface StartupSettings {
   reason?: string;
 }
 
-async function openPlayerWindow(request: PlayerOpenRequest): Promise<{
-  opened: boolean;
+interface PlayerViewBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+// Límite defensivo: el panel del reproductor vive dentro de la ventana de la
+// app, nunca debería pedir un area mayor que una pantalla 8K.
+const MAX_PLAYER_VIEW_DIMENSION = 8000;
+
+function getMainWindowContentSize(): { width: number; height: number } | null {
+  if (!mainWindow || mainWindow.isDestroyed()) return null;
+  const contentBounds = mainWindow.getContentBounds();
+  return { width: contentBounds.width, height: contentBounds.height };
+}
+
+function getSafePlayerBounds(value: unknown): PlayerViewBounds | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Record<string, unknown>;
+  const x = Math.round(Number(raw.x));
+  const y = Math.round(Number(raw.y));
+  const width = Math.round(Number(raw.width));
+  const height = Math.round(Number(raw.height));
+  if (![x, y, width, height].every(Number.isFinite)) return null;
+  if (width <= 0 || height <= 0 || width > MAX_PLAYER_VIEW_DIMENSION || height > MAX_PLAYER_VIEW_DIMENSION) return null;
+
+  // Defensa en profundidad: el panel nunca debe caer fuera del área de contenido de
+  // la ventana principal ni superponerse a los controles nativos del marco (frame:false).
+  const containerSize = getMainWindowContentSize();
+  if (!containerSize) return null;
+  const clampedX = Math.min(Math.max(x, 0), Math.max(0, containerSize.width - 1));
+  const clampedY = Math.min(Math.max(y, 0), Math.max(0, containerSize.height - 1));
+  const clampedWidth = Math.min(width, containerSize.width - clampedX);
+  const clampedHeight = Math.min(height, containerSize.height - clampedY);
+  if (clampedWidth <= 0 || clampedHeight <= 0) return null;
+
+  return { x: clampedX, y: clampedY, width: clampedWidth, height: clampedHeight };
+}
+
+function ensurePlayerView(): WebContentsView {
+  if (playerView) return playerView;
+
+  playerView = new WebContentsView({
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+      backgroundThrottling: false,
+      partition: PLAYER_SESSION_PARTITION
+    }
+  });
+  const keepPlayerViewOnAllowedOrigin = (event: Electron.Event, navigationUrl: string) => {
+    try {
+      const isAllowed = playerViewDirectOrigin
+        ? new URL(navigationUrl).origin === playerViewDirectOrigin
+        : navigationUrl.startsWith('file:');
+      if (!isAllowed) event.preventDefault();
+    } catch {
+      event.preventDefault();
+    }
+  };
+  playerView.webContents.on('will-navigate', keepPlayerViewOnAllowedOrigin);
+  playerView.webContents.on('will-redirect', keepPlayerViewOnAllowedOrigin);
+  return playerView;
+}
+
+/**
+ * Adjunta (o reutiliza) el WebContentsView del reproductor dentro de la
+ * ventana principal, en vez de abrir una BrowserWindow aparte. La carga usa
+ * player.html + iframe interno para modo 'embedded' (el Referer correcto lo
+ * inyecta la sesión PLAYER_SESSION_PARTITION vía playerProtection.ts), o
+ * loadURL directo con httpReferrer para modo 'direct'.
+ */
+async function attachPlayerView(request: PlayerOpenRequest & { bounds?: unknown }): Promise<{
+  attached: boolean;
   error?: string;
 }> {
   const url = getSafePlayerUrl(request?.url);
-  if (!url) {
-    return { opened: false, error: 'La URL del reproductor no es valida.' };
+  if (!url) return { attached: false, error: 'La URL del reproductor no es válida.' };
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return { attached: false, error: 'La ventana principal no está disponible.' };
   }
+
+  const bounds = getSafePlayerBounds(request?.bounds);
+  if (!bounds) return { attached: false, error: 'El área del reproductor no es válida.' };
 
   const animeTitle = sanitizePlayerLabel(request?.title, 'Anime');
   const server = sanitizePlayerLabel(request?.server, 'Servidor');
   const referer = getSafePlayerReferer(request?.referer);
   const mode = getSafePlayerWindowMode(request?.mode);
   if (mode === 'direct' && !referer) {
-    return { opened: false, error: 'La fuente directa no proporcionó un origen válido.' };
-  }
-  const windowTitle = `MapleVault Player - ${animeTitle} - ${server}`;
-
-  if (!playerWindow || playerWindow.isDestroyed()) {
-    playerWindow = new BrowserWindow({
-      width: 960,
-      height: 540,
-      minWidth: 640,
-      minHeight: 360,
-      useContentSize: true,
-      title: windowTitle,
-      icon: resolveWindowIconPath(),
-      backgroundColor: '#000000',
-      show: false,
-      autoHideMenuBar: true,
-      fullscreenable: true,
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-        sandbox: true,
-        backgroundThrottling: false,
-        partition: PLAYER_SESSION_PARTITION
-      }
-    });
-    playerWindow.setMenu(null);
-    playerWindow.webContents.on('page-title-updated', event => event.preventDefault());
-    const keepPlayerOnAllowedOrigin = (event: Electron.Event, navigationUrl: string) => {
-      try {
-        const isAllowed = playerDirectOrigin
-          ? new URL(navigationUrl).origin === playerDirectOrigin
-          : navigationUrl.startsWith('file:');
-        if (!isAllowed) event.preventDefault();
-      } catch {
-        event.preventDefault();
-      }
-    };
-    playerWindow.webContents.on('will-navigate', keepPlayerOnAllowedOrigin);
-    playerWindow.webContents.on('will-redirect', keepPlayerOnAllowedOrigin);
-    playerWindow.on('closed', () => {
-      setPlayerRequestContext(null);
-      playerDirectOrigin = null;
-      playerWindow = null;
-    });
+    return { attached: false, error: 'La fuente directa no proporcionó un origen válido.' };
   }
 
-  playerWindow.hide();
-  playerWindow.setTitle(windowTitle);
+  const view = ensurePlayerView();
+  if (!mainWindow.contentView.children.includes(view)) {
+    mainWindow.contentView.addChildView(view);
+  }
+  view.setBounds(bounds);
+
   setPlayerRequestContext(referer ? { targetUrl: url, referer } : null);
   try {
     if (mode === 'direct') {
-      playerDirectOrigin = new URL(url).origin;
-      await playerWindow.loadURL(url, { httpReferrer: referer! });
+      playerViewDirectOrigin = new URL(url).origin;
+      await view.webContents.loadURL(url, { httpReferrer: referer! });
     } else {
-      playerDirectOrigin = null;
-      await playerWindow.loadFile(path.join(__dirname, 'player.html'), {
+      playerViewDirectOrigin = null;
+      await view.webContents.loadFile(path.join(__dirname, 'player.html'), {
         query: {
           url,
-          title: windowTitle
+          title: `MapleVault Player - ${animeTitle} - ${server}`
         }
       });
     }
   } catch (error) {
     setPlayerRequestContext(null);
-    playerDirectOrigin = null;
-    throw error;
+    playerViewDirectOrigin = null;
+    // No dejar el contenido previamente cargado (de un servidor anterior) visible por
+    // encima del mensaje de error que muestra el renderer: se retira la vista.
+    if (mainWindow.contentView.children.includes(view)) {
+      mainWindow.contentView.removeChildView(view);
+    }
+    return { attached: false, error: 'No se pudo cargar el reproductor.' };
   }
 
-  playerWindow.setTitle(windowTitle);
-  if (playerWindow.isMinimized()) playerWindow.restore();
-  playerWindow.show();
-  playerWindow.focus();
-  return { opened: true };
+  return { attached: true };
+}
+
+function repositionPlayerView(request: { bounds?: unknown }): { ok: boolean } {
+  if (!playerView || !mainWindow || mainWindow.isDestroyed()) return { ok: false };
+  const bounds = getSafePlayerBounds(request?.bounds);
+  if (!bounds) return { ok: false };
+  playerView.setBounds(bounds);
+  return { ok: true };
+}
+
+function detachPlayerView(): { ok: boolean } {
+  if (playerView && mainWindow && !mainWindow.isDestroyed() && mainWindow.contentView.children.includes(playerView)) {
+    mainWindow.contentView.removeChildView(playerView);
+  }
+  setPlayerRequestContext(null);
+  playerViewDirectOrigin = null;
+  return { ok: true };
 }
 
 function normalizeCloseBehavior(value: unknown): CloseBehavior {
@@ -468,6 +525,8 @@ function createMainWindow() {
   mainWindow.on('closed', () => {
     setPlayerProtectionMainWindow(null);
     mainWindow = null;
+    playerView = null;
+    playerViewDirectOrigin = null;
   });
 }
 
@@ -517,7 +576,9 @@ app.whenReady().then(async () => {
     const folder = getMangaDownloadRoot(app.getPath('downloads'));
     return { path: folder, error: await shell.openPath(folder) || undefined };
   });
-  ipcMain.handle('player-open', (_event, request: PlayerOpenRequest) => openPlayerWindow(request));
+  ipcMain.handle('player-attach', (_event, request: PlayerOpenRequest & { bounds?: unknown }) => attachPlayerView(request));
+  ipcMain.handle('player-reposition', (_event, request: { bounds?: unknown }) => repositionPlayerView(request));
+  ipcMain.handle('player-detach', () => detachPlayerView());
 
   ipcMain.handle('show-confirm', async (_event, message: string) => {
     const options: MessageBoxOptions = {

@@ -381,4 +381,97 @@ test.describe('Lector de manga', () => {
     await expect.poll(() => downloadRequests.length).toBe(2);
     expect(downloadRequests[1]).toMatchObject({ series: 'Biblioteca Manga', chapter: '2', source: 'mangadex' });
   });
+
+  test('descarga varios capítulos en paralelo sin bloquearse, y evita duplicar la del mismo capítulo', async ({ page }) => {
+    const downloadRequests: Array<{ series: string; chapter: string; source: string }> = [];
+    const pendingResolvers: Array<() => void> = [];
+
+    await page.addInitScript(() => {
+      (window as any).electronAPI = {
+        backend: { getConfig: async () => ({}) },
+        isMaximized: async () => false,
+        minimize: () => undefined,
+        maximize: () => undefined,
+        close: () => undefined,
+        manga: {
+          listOfflineChapters: async () => ({ chapters: [] }),
+          readChapter: async () => ({ pages: [], total: 0 })
+        }
+      };
+    });
+
+    await page.route('http://localhost:5000/**', async route => {
+      const request = route.request();
+      const url = new URL(request.url());
+      const method = request.method();
+
+      if (method === 'GET' && url.pathname === '/settings/ai') return route.fulfill({ json: { enabled: false } });
+      if (method === 'GET' && url.pathname === '/manga') {
+        return route.fulfill({ json: { rows: [{ id: 12, title: 'Manga Paralelo', synopsis: 'x', year: 2025, format: 'manga', chapters: 2 }], total: 1, limit: 30, offset: 0 } });
+      }
+      if (method === 'GET' && url.pathname === '/manga/12') {
+        return route.fulfill({ json: { id: 12, source: 'mangadex', title: 'Manga Paralelo', synopsis: 'x', year: 2025, format: 'manga', chapters: 2 } });
+      }
+      if (method === 'GET' && url.pathname === '/manga/12/chapters') {
+        return route.fulfill({
+          json: {
+            chapters: [
+              { id: 'chapter-a', number: 1, language: 'es', sourceUrl: 'https://example.test/1' },
+              { id: 'chapter-b', number: 2, language: 'es', sourceUrl: 'https://example.test/2' }
+            ]
+          }
+        });
+      }
+      if (method === 'GET' && /^\/manga\/online\/chapters\/[^/]+\/download$/.test(url.pathname)) {
+        // Retiene la respuesta hasta que el test la libere, para observar solapamiento real.
+        await new Promise<void>(resolve => { pendingResolvers.push(resolve); });
+        downloadRequests.push({
+          series: url.searchParams.get('series') || '',
+          chapter: url.searchParams.get('chapter') || '',
+          source: url.searchParams.get('source') || ''
+        });
+        return route.fulfill({ status: 200, contentType: 'application/zip', body: Buffer.from('PK') });
+      }
+      if (method === 'GET' && url.pathname === '/manga/sources') return route.fulfill({ json: { providers: [], candidates: [], policy: 'fixture' } });
+      if (method === 'GET' && url.pathname === '/dashboard/summary') return route.fulfill({ json: { recent: [], airing: [], stats: {} } });
+      if (method === 'GET' && ['/anime', '/user-list', '/recommendations', '/downloads'].includes(url.pathname)) return route.fulfill({ json: [] });
+      return route.fulfill({ json: [] });
+    });
+
+    await page.goto('http://127.0.0.1:5173');
+    await page.getByRole('button', { name: 'Manga' }).click();
+    await page.getByRole('button', { name: /Manga Paralelo/ }).click();
+
+    const dialog = page.getByRole('dialog', { name: 'Ficha de Manga Paralelo' });
+    await expect(dialog).toBeVisible();
+
+    const rows = dialog.getByTestId('manga-chapter-row');
+    await expect(rows).toHaveCount(2);
+    const downloadButtons = rows.getByRole('button', { name: 'Descargar capítulo' });
+
+    // Se disparan las dos descargas casi a la vez, antes de que ninguna responda.
+    await downloadButtons.nth(0).click();
+    await downloadButtons.nth(1).click();
+
+    // Ninguna debe bloquear a la otra: ambas quedan "en curso" a la vez.
+    await expect.poll(() => pendingResolvers.length).toBe(2);
+    await expect(downloadButtons.nth(0)).toBeDisabled();
+    await expect(downloadButtons.nth(1)).toBeDisabled();
+
+    // Se liberan ambas respuestas y cada una corresponde a su propio capítulo.
+    pendingResolvers.splice(0).forEach(resolve => resolve());
+    await expect.poll(() => downloadRequests.length).toBe(2);
+    expect(downloadRequests.map(entry => entry.chapter).sort()).toEqual(['1', '2']);
+    for (const entry of downloadRequests) expect(entry.series).toBe('Manga Paralelo');
+    await expect(downloadButtons.nth(0)).toBeEnabled();
+    await expect(downloadButtons.nth(1)).toBeEnabled();
+
+    // Mientras un capítulo está en curso, su propio botón queda deshabilitado: un usuario real
+    // no puede reintentarlo dos veces (Playwright modela esto igual que un navegador real).
+    await downloadButtons.nth(0).click();
+    await expect.poll(() => pendingResolvers.length).toBe(1);
+    await expect(downloadButtons.nth(0)).toBeDisabled();
+    pendingResolvers.splice(0).forEach(resolve => resolve());
+    await expect.poll(() => downloadRequests.length).toBe(3);
+  });
 });
