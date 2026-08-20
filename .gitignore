@@ -55,3 +55,4 @@ tmp-ui-validation/
 # Worktrees de sesiones aisladas de Claude Code: checkouts completos
 # temporales, no son contenido del proyecto.
 .claude/worktrees/
+.claude/settings.local.json
