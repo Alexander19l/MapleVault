@@ -264,7 +264,11 @@ function installPlayerRequestHeaders(): void {
     const requestHeaders = { ...details.requestHeaders };
     const context = playerRequestContext;
 
-    if (context && details.resourceType === 'subFrame') {
+    // No solo la navegación inicial del iframe (resourceType 'subFrame'): al pulsar play,
+    // el propio reproductor lanza peticiones xhr/fetch/media aparte para el manifiesto y
+    // los segmentos del video, y esas también necesitan el Referer correcto o el servidor
+    // las rechaza en silencio — carga el primer frame/poster pero el capítulo nunca arranca.
+    if (context) {
       try {
         const requested = new URL(details.url);
         const target = new URL(context.targetUrl);

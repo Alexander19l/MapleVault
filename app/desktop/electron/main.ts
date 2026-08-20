@@ -38,6 +38,8 @@ import {
 let mainWindow: BrowserWindow | null = null;
 let playerView: WebContentsView | null = null;
 let playerViewDirectOrigin: string | null = null;
+let playerViewPreFullscreenBounds: { x: number; y: number; width: number; height: number } | null = null;
+let isPlayerViewFullscreen = false;
 let backendProcess: ChildProcess | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
@@ -129,6 +131,29 @@ function ensurePlayerView(): WebContentsView {
   };
   playerView.webContents.on('will-navigate', keepPlayerViewOnAllowedOrigin);
   playerView.webContents.on('will-redirect', keepPlayerViewOnAllowedOrigin);
+
+  // Reproductores por segmentos (HLS, mp4upload) suelen pausar la carga cuando detectan
+  // que la página no tiene el foco/está oculta (Page Visibility). Al estar anidado dentro
+  // de la ventana principal, este WebContentsView no recibe foco automáticamente.
+  playerView.webContents.on('did-finish-load', () => {
+    playerView?.webContents.focus();
+  });
+
+  // Un WebContentsView anidado no dispara fullscreen del sistema por sí solo cuando su
+  // contenido (el <video> o el reproductor embebido) pide pantalla completa: hay que
+  // llevar la ventana principal a fullscreen manualmente y expandir la vista para cubrirla.
+  playerView.webContents.on('enter-html-full-screen', () => {
+    if (!mainWindow || mainWindow.isDestroyed() || !playerView) return;
+    playerViewPreFullscreenBounds = playerView.getBounds();
+    isPlayerViewFullscreen = true;
+    mainWindow.setFullScreen(true);
+  });
+  playerView.webContents.on('leave-html-full-screen', () => {
+    isPlayerViewFullscreen = false;
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
+  });
+
   return playerView;
 }
 
@@ -161,6 +186,13 @@ async function attachPlayerView(request: PlayerOpenRequest & { bounds?: unknown 
   }
 
   const view = ensurePlayerView();
+  // Si se selecciona un nuevo servidor/episodio mientras el anterior estaba en pantalla
+  // completa, hay que salir de fullscreen antes de aplicar el tamaño normal del panel.
+  if (isPlayerViewFullscreen) {
+    isPlayerViewFullscreen = false;
+    playerViewPreFullscreenBounds = null;
+    if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
+  }
   if (!mainWindow.contentView.children.includes(view)) {
     mainWindow.contentView.addChildView(view);
   }
@@ -196,15 +228,32 @@ async function attachPlayerView(request: PlayerOpenRequest & { bounds?: unknown 
 
 function repositionPlayerView(request: { bounds?: unknown }): { ok: boolean } {
   if (!playerView || !mainWindow || mainWindow.isDestroyed()) return { ok: false };
+  // Mientras está en pantalla completa, el tamaño lo controla el sync de fullscreen
+  // (cubre toda la ventana); el ResizeObserver del panel de React no debe pisarlo.
+  if (isPlayerViewFullscreen) return { ok: true };
   const bounds = getSafePlayerBounds(request?.bounds);
   if (!bounds) return { ok: false };
   playerView.setBounds(bounds);
   return { ok: true };
 }
 
-function detachPlayerView(): { ok: boolean } {
+async function detachPlayerView(): Promise<{ ok: boolean }> {
   if (playerView && mainWindow && !mainWindow.isDestroyed() && mainWindow.contentView.children.includes(playerView)) {
     mainWindow.contentView.removeChildView(playerView);
+  }
+  if (isPlayerViewFullscreen && mainWindow && !mainWindow.isDestroyed() && mainWindow.isFullScreen()) {
+    mainWindow.setFullScreen(false);
+  }
+  isPlayerViewFullscreen = false;
+  playerViewPreFullscreenBounds = null;
+  // Retirar la vista del árbol visual no detiene el video/audio que sigue corriendo en su
+  // webContents (se reutiliza entre aperturas): hay que navegarla lejos para que pare de verdad.
+  if (playerView && !playerView.webContents.isDestroyed()) {
+    try {
+      await playerView.webContents.loadURL('about:blank');
+    } catch {
+      // El objetivo es dejar de reproducir; si la navegación en sí falla no hay más que hacer.
+    }
   }
   setPlayerRequestContext(null);
   playerViewDirectOrigin = null;
@@ -522,11 +571,27 @@ function createMainWindow() {
     }
   });
 
+  // El paso a pantalla completa del sistema es asíncrono: hasta que termina, el tamaño
+  // real de la ventana todavía no cambió. Se redimensiona la vista del reproductor recién
+  // aquí (no en 'enter-html-full-screen') para que cubra exactamente el área final.
+  mainWindow.on('enter-full-screen', () => {
+    if (!playerView || !mainWindow) return;
+    const contentSize = mainWindow.getContentBounds();
+    playerView.setBounds({ x: 0, y: 0, width: contentSize.width, height: contentSize.height });
+  });
+  mainWindow.on('leave-full-screen', () => {
+    if (!playerView || !playerViewPreFullscreenBounds) return;
+    playerView.setBounds(playerViewPreFullscreenBounds);
+    playerViewPreFullscreenBounds = null;
+  });
+
   mainWindow.on('closed', () => {
     setPlayerProtectionMainWindow(null);
     mainWindow = null;
     playerView = null;
     playerViewDirectOrigin = null;
+    isPlayerViewFullscreen = false;
+    playerViewPreFullscreenBounds = null;
   });
 }
 
