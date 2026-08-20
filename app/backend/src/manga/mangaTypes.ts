@@ -44,4 +44,10 @@ export interface MangaListFilters {
   limit?: number;
   offset?: number;
   withTotal?: boolean;
+  /** Estado del usuario en su biblioteca local: reading | plan_to_read | dropped | completed | on_hold. */
+  readStatus?: string;
+  /** Cuando es true, solo devuelve series marcadas como favoritas. */
+  favoriteOnly?: boolean;
 }
+
+export const MANGA_READ_STATUSES: MangaReadStatus[] = ['reading', 'plan_to_read', 'dropped', 'completed', 'on_hold'];

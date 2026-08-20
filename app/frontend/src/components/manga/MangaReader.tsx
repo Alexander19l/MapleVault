@@ -174,7 +174,10 @@ export const MangaReader: React.FC<MangaReaderProps> = ({
 
   useEffect(() => {
     setPageIndex(0);
-    readerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Instantáneo, no 'smooth': al abrir un capítulo el lector debe aparecer
+    // ya en su sitio en el primer frame, sin una animación que pueda leerse
+    // como que "no pasó nada" mientras se desplaza.
+    readerRef.current?.scrollIntoView({ behavior: 'auto', block: 'start' });
   }, [chapterLabel, pages]);
 
   useEffect(() => {
@@ -298,8 +301,6 @@ export const MangaReader: React.FC<MangaReaderProps> = ({
     return { ...baseStyle, width: `${preferences.zoom}%`, maxWidth: 'none' };
   }, [preferences.brightness, preferences.fit, preferences.zoom]);
 
-  const stripWidth = preferences.fit === 'custom' ? `${preferences.zoom}%` : '100%';
-
   return (
     <section
       ref={readerRef}
@@ -324,7 +325,7 @@ export const MangaReader: React.FC<MangaReaderProps> = ({
             <button
               type="button"
               onClick={() => updatePreferences({ mode: 'page' })}
-              className={`inline-flex h-7 items-center gap-1.5 rounded px-2 text-xs font-bold transition-colors ${preferences.mode === 'page' ? 'bg-violet-600 text-white' : 'text-slate-400 hover:text-white'}`}
+              className={`inline-flex h-7 items-center gap-1.5 rounded px-2 text-xs font-bold transition-colors ${preferences.mode === 'page' ? 'bg-[var(--accent-primary)] text-white' : 'text-slate-400 hover:text-white'}`}
               aria-pressed={preferences.mode === 'page'}
             >
               <Square className="h-3.5 w-3.5" /> Página
@@ -332,7 +333,7 @@ export const MangaReader: React.FC<MangaReaderProps> = ({
             <button
               type="button"
               onClick={() => updatePreferences({ mode: 'continuous' })}
-              className={`inline-flex h-7 items-center gap-1.5 rounded px-2 text-xs font-bold transition-colors ${preferences.mode === 'continuous' ? 'bg-violet-600 text-white' : 'text-slate-400 hover:text-white'}`}
+              className={`inline-flex h-7 items-center gap-1.5 rounded px-2 text-xs font-bold transition-colors ${preferences.mode === 'continuous' ? 'bg-[var(--accent-primary)] text-white' : 'text-slate-400 hover:text-white'}`}
               aria-pressed={preferences.mode === 'continuous'}
             >
               <List className="h-3.5 w-3.5" /> Continuo
@@ -376,7 +377,7 @@ export const MangaReader: React.FC<MangaReaderProps> = ({
           <TooltipIconButton tooltip={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'} onClick={toggleFullscreen} className="size-9 text-slate-300 hover:bg-white/10 hover:text-white">
             {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
           </TooltipIconButton>
-          <TooltipIconButton tooltip="Descargar capítulo" onClick={onDownload || (() => undefined)} disabled={!onDownload || downloadLoading} className="size-9 bg-violet-600 text-white hover:bg-violet-500">
+          <TooltipIconButton tooltip="Descargar capítulo" onClick={onDownload || (() => undefined)} disabled={!onDownload || downloadLoading} className="size-9 bg-[var(--accent-primary)] text-white hover:bg-[var(--accent-primary-hover)]">
             <Download className={`h-4 w-4 ${downloadLoading ? 'animate-pulse' : ''}`} />
           </TooltipIconButton>
         </div>
@@ -395,10 +396,10 @@ export const MangaReader: React.FC<MangaReaderProps> = ({
             <fieldset>
               <legend className="text-[10px] font-bold uppercase text-slate-500">Dirección</legend>
               <div className="mt-2 grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => updatePreferences({ direction: 'ltr' })} className={`inline-flex h-9 items-center justify-center gap-2 rounded-md border text-xs font-bold ${preferences.direction === 'ltr' ? 'border-violet-500 bg-violet-500/15 text-white' : 'border-white/10 text-slate-400 hover:border-white/20'}`} aria-pressed={preferences.direction === 'ltr'}>
+                <button type="button" onClick={() => updatePreferences({ direction: 'ltr' })} className={`inline-flex h-9 items-center justify-center gap-2 rounded-md border text-xs font-bold ${preferences.direction === 'ltr' ? 'border-[var(--accent-primary)] bg-[var(--accent-primary)]/15 text-white' : 'border-white/10 text-slate-400 hover:border-white/20'}`} aria-pressed={preferences.direction === 'ltr'}>
                   <ArrowRight className="h-4 w-4" /> Izq. a der.
                 </button>
-                <button type="button" onClick={() => updatePreferences({ direction: 'rtl' })} className={`inline-flex h-9 items-center justify-center gap-2 rounded-md border text-xs font-bold ${preferences.direction === 'rtl' ? 'border-violet-500 bg-violet-500/15 text-white' : 'border-white/10 text-slate-400 hover:border-white/20'}`} aria-pressed={preferences.direction === 'rtl'}>
+                <button type="button" onClick={() => updatePreferences({ direction: 'rtl' })} className={`inline-flex h-9 items-center justify-center gap-2 rounded-md border text-xs font-bold ${preferences.direction === 'rtl' ? 'border-[var(--accent-primary)] bg-[var(--accent-primary)]/15 text-white' : 'border-white/10 text-slate-400 hover:border-white/20'}`} aria-pressed={preferences.direction === 'rtl'}>
                   <ArrowLeft className="h-4 w-4" /> Der. a izq.
                 </button>
               </div>
@@ -407,10 +408,10 @@ export const MangaReader: React.FC<MangaReaderProps> = ({
             <fieldset>
               <legend className="text-[10px] font-bold uppercase text-slate-500">Ajuste de página</legend>
               <div className="mt-2 grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => updatePreferences({ fit: 'page', zoom: 100 })} disabled={preferences.mode === 'continuous'} className={`inline-flex h-9 items-center justify-center gap-2 rounded-md border text-xs font-bold disabled:cursor-not-allowed disabled:opacity-40 ${preferences.fit === 'page' ? 'border-violet-500 bg-violet-500/15 text-white' : 'border-white/10 text-slate-400 hover:border-white/20'}`} aria-pressed={preferences.fit === 'page'}>
+                <button type="button" onClick={() => updatePreferences({ fit: 'page', zoom: 100 })} disabled={preferences.mode === 'continuous'} className={`inline-flex h-9 items-center justify-center gap-2 rounded-md border text-xs font-bold disabled:cursor-not-allowed disabled:opacity-40 ${preferences.fit === 'page' ? 'border-[var(--accent-primary)] bg-[var(--accent-primary)]/15 text-white' : 'border-white/10 text-slate-400 hover:border-white/20'}`} aria-pressed={preferences.fit === 'page'}>
                   <Scan className="h-4 w-4" /> Página
                 </button>
-                <button type="button" onClick={() => updatePreferences({ fit: 'width', zoom: 100 })} className={`inline-flex h-9 items-center justify-center gap-2 rounded-md border text-xs font-bold ${preferences.fit === 'width' ? 'border-violet-500 bg-violet-500/15 text-white' : 'border-white/10 text-slate-400 hover:border-white/20'}`} aria-pressed={preferences.fit === 'width'}>
+                <button type="button" onClick={() => updatePreferences({ fit: 'width', zoom: 100 })} className={`inline-flex h-9 items-center justify-center gap-2 rounded-md border text-xs font-bold ${preferences.fit === 'width' ? 'border-[var(--accent-primary)] bg-[var(--accent-primary)]/15 text-white' : 'border-white/10 text-slate-400 hover:border-white/20'}`} aria-pressed={preferences.fit === 'width'}>
                   <ArrowRight className="h-4 w-4" /> Ancho
                 </button>
               </div>
@@ -420,7 +421,7 @@ export const MangaReader: React.FC<MangaReaderProps> = ({
               <span className="flex items-center justify-between text-[10px] font-bold uppercase text-slate-500">
                 Brillo <span className="text-slate-300">{preferences.brightness}%</span>
               </span>
-              <input type="range" min="60" max="120" step="5" value={preferences.brightness} onChange={event => updatePreferences({ brightness: Number(event.target.value) })} className="mt-2 w-full accent-violet-500" />
+              <input type="range" min="60" max="120" step="5" value={preferences.brightness} onChange={event => updatePreferences({ brightness: Number(event.target.value) })} className="mt-2 w-full accent-[var(--accent-primary)]" />
             </label>
 
             {preferences.mode === 'continuous' && (
@@ -428,7 +429,7 @@ export const MangaReader: React.FC<MangaReaderProps> = ({
                 <span className="flex items-center justify-between text-[10px] font-bold uppercase text-slate-500">
                   Separación <span className="text-slate-300">{preferences.gap}px</span>
                 </span>
-                <input type="range" min="0" max="32" step="4" value={preferences.gap} onChange={event => updatePreferences({ gap: Number(event.target.value) })} className="mt-2 w-full accent-violet-500" />
+                <input type="range" min="0" max="32" step="4" value={preferences.gap} onChange={event => updatePreferences({ gap: Number(event.target.value) })} className="mt-2 w-full accent-[var(--accent-primary)]" />
               </label>
             )}
 
@@ -440,7 +441,7 @@ export const MangaReader: React.FC<MangaReaderProps> = ({
                     key={background}
                     type="button"
                     onClick={() => updatePreferences({ background })}
-                    className={`size-9 rounded-md border-2 ${preferences.background === background ? 'border-violet-400' : 'border-white/10'}`}
+                    className={`size-9 rounded-md border-2 ${preferences.background === background ? 'border-[var(--accent-primary)]' : 'border-white/10'}`}
                     style={{ backgroundColor: BACKGROUNDS[background] }}
                     aria-label={`Fondo ${background === 'black' ? 'negro' : background === 'charcoal' ? 'carbón' : 'suave'}`}
                     aria-pressed={preferences.background === background}
@@ -476,7 +477,7 @@ export const MangaReader: React.FC<MangaReaderProps> = ({
             </button>
           </div>
         ) : (
-          <div className="mx-auto min-h-full max-w-5xl px-2 py-3 sm:px-4" style={{ width: stripWidth }} data-testid="manga-reader-continuous">
+          <div className="mx-auto min-h-full max-w-5xl px-2 py-3 sm:px-4" data-testid="manga-reader-continuous">
             <div className="flex flex-col items-center" style={{ gap: `${preferences.gap}px` }}>
               {loadedPages.map((page, index) => page && (
                 <img
@@ -486,8 +487,8 @@ export const MangaReader: React.FC<MangaReaderProps> = ({
                   loading={index < 2 ? 'eager' : 'lazy'}
                   referrerPolicy="no-referrer"
                   draggable={false}
-                  className="block w-full select-none bg-slate-950 object-contain"
-                  style={{ filter: `brightness(${preferences.brightness}%)` }}
+                  className="block select-none bg-slate-950 object-contain"
+                  style={pageImageStyle}
                 />
               ))}
             </div>

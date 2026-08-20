@@ -370,32 +370,6 @@ export function validateLocalServiceUrl(
 }
 
 // =====================================
-// VALIDADOR DE PATH (PATH TRAVERSAL)
-// =====================================
-
-export function validateSafePath(inputPath: string, allowedBase: string): { safe: boolean; reason?: string } {
-  try {
-    const path = require('path');
-    const resolved = path.resolve(inputPath);
-    const base = path.resolve(allowedBase);
-    const relative = path.relative(base, resolved);
-
-    if (relative.startsWith('..') || path.isAbsolute(relative)) {
-      return { safe: false, reason: `Path traversal detectado: "${inputPath}"` };
-    }
-
-    // Rechazar caracteres nulos o de control
-    if (inputPath.includes('\0')) {
-      return { safe: false, reason: 'Carácter nulo detectado en path.' };
-    }
-
-    return { safe: true };
-  } catch (err) {
-    return { safe: false, reason: 'Error al resolver la ruta.' };
-  }
-}
-
-// =====================================
 // VALIDADOR DE TAMAÑO DE PAYLOAD
 // =====================================
 

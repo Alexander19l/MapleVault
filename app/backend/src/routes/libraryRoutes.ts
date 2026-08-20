@@ -309,7 +309,8 @@ export function createLibraryRouter({
       };
 
       res.json(await translationService.decorateAnimeWithSpanishTranslation(decoratedAnime));
-    } catch (_) {
+    } catch (error: unknown) {
+      console.error('Error al consultar la ficha vinculada de AniList:', getErrorMessage(error));
       res.status(500).json({ error: 'No se pudo consultar la ficha vinculada.' });
     }
   });

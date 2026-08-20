@@ -86,6 +86,12 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
   const [selectedVariant, setSelectedVariant] = useState<string>('SUB');
   const [selectedServer, setSelectedServer] = useState<EpisodePlaybackServer | null>(null);
 
+  // Reproductor embebido dentro de la app (WebContentsView anclado a la ventana principal).
+  const playerPanelRef = useRef<HTMLDivElement | null>(null);
+  const [playerAttachState, setPlayerAttachState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [playerErrorMessage, setPlayerErrorMessage] = useState('');
+  const hasPlayerViewApi = typeof window !== 'undefined' && Boolean((window as any).electronAPI?.player?.attach);
+
   // Rich Episode detail states
   const [watchedEpisodes, setWatchedEpisodes] = useState<number[]>([]);
   const [episodeSearch, setEpisodeSearch] = useState('');
@@ -338,6 +344,81 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
     }
   };
 
+  // Adjunta el reproductor (WebContentsView) dentro del panel de la propia app en vez de
+  // abrir una ventana aparte, y mantiene su posición sincronizada con el panel de React.
+  useEffect(() => {
+    const playerApi = (window as any).electronAPI?.player;
+    const panel = playerPanelRef.current;
+    const isPanelActive = activeTab === 'episodes' && selectedEpisode !== null && Boolean(selectedServer?.url) && Boolean(panel);
+
+    if (!playerApi?.attach || !isPanelActive) {
+      setPlayerAttachState('idle');
+      return;
+    }
+
+    let cancelled = false;
+    setPlayerAttachState('loading');
+    setPlayerErrorMessage('');
+
+    const readBounds = () => {
+      if (!panel) return null;
+      const rect = panel.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return null;
+      return {
+        x: Math.round(rect.x),
+        y: Math.round(rect.y),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height)
+      };
+    };
+
+    const initialBounds = readBounds();
+    if (!initialBounds) {
+      setPlayerAttachState('error');
+      setPlayerErrorMessage('No se pudo calcular el área del reproductor.');
+      return;
+    }
+
+    playerApi.attach({
+      url: selectedServer!.url,
+      title: `${anime?.title || 'Anime'} - Capitulo ${selectedEpisode ?? ''}`.trim(),
+      server: selectedServer!.server,
+      referer: selectedServer!.referer,
+      mode: selectedServer!.playbackMode === 'direct-window' ? 'direct' : 'embedded',
+      bounds: initialBounds
+    }).then((result: { attached: boolean; error?: string }) => {
+      if (cancelled) return;
+      if (result?.attached) {
+        setPlayerAttachState('ready');
+      } else {
+        setPlayerAttachState('error');
+        setPlayerErrorMessage(result?.error || 'No se pudo cargar el reproductor.');
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        setPlayerAttachState('error');
+        setPlayerErrorMessage('No se pudo cargar el reproductor.');
+      }
+    });
+
+    const reposition = () => {
+      const bounds = readBounds();
+      if (bounds) void playerApi.reposition?.(bounds);
+    };
+    const resizeObserver = new ResizeObserver(reposition);
+    resizeObserver.observe(panel!);
+    window.addEventListener('resize', reposition);
+    window.addEventListener('scroll', reposition, true);
+
+    return () => {
+      cancelled = true;
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', reposition);
+      window.removeEventListener('scroll', reposition, true);
+      void playerApi.detach?.();
+    };
+  }, [activeTab, selectedEpisode, selectedServer, anime?.title]);
+
   const handleToggleWatch = async (episodeNumber: number, e: React.MouseEvent) => {
     e.stopPropagation();
     if (isExternalView || currentAnimeId <= 0) return;
@@ -377,7 +458,7 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
       setAnime(updated);
     } catch (err) {
       console.error('Error al guardar progreso:', err);
-      alert('Error al guardar el progreso');
+      notifications.error('Error al guardar el progreso');
     } finally {
       setSavingProgress(false);
     }
@@ -452,33 +533,6 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
       label: `Disponible en ${getEpisodeProvider(provider).label}`,
       type: 'aired'
     };
-  };
-
-  const handleOpenStandalonePlayer = async (serverOverride?: EpisodePlaybackServer) => {
-    const serverToOpen = serverOverride || selectedServer;
-    if (!serverToOpen?.url) return;
-
-    const playerApi = (window as any).electronAPI?.player;
-    if (!playerApi?.open) {
-      handleOpenExternal(serverToOpen.url);
-      return;
-    }
-
-    try {
-      const result = await playerApi.open({
-        url: serverToOpen.url,
-        title: `${anime?.title || 'Anime'} - Capitulo ${selectedEpisode || ''}`.trim(),
-        server: serverToOpen.server,
-        referer: serverToOpen.referer,
-        mode: serverToOpen.playbackMode === 'direct-window' ? 'direct' : 'embedded'
-      });
-      if (!result?.opened) {
-        notifications.error(result?.error || 'No se pudo abrir el reproductor independiente.');
-      }
-    } catch (error) {
-      console.error('Error al abrir el reproductor independiente:', error);
-      notifications.error('No se pudo abrir el reproductor independiente.');
-    }
   };
 
   const filteredEpisodes = episodes
@@ -935,12 +989,7 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
                                 <button
                                   key={idx}
                                   type="button"
-                                  onClick={() => {
-                                    setSelectedServer(srv);
-                                    if (srv.playbackMode === 'window' || srv.playbackMode === 'direct-window') {
-                                      void handleOpenStandalonePlayer(srv);
-                                    }
-                                  }}
+                                  onClick={() => setSelectedServer(srv)}
                                   className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-colors cursor-pointer ${
                                     selectedServer?.server === srv.server && selectedServer?.url === srv.url
                                       ? 'bg-[var(--accent-secondary)] text-slate-950 font-extrabold'
@@ -954,40 +1003,38 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
                           </div>
                         )}
 
-                        {/* Iframe player container */}
+                        {/* Panel del reproductor embebido: el video lo pinta un WebContentsView de
+                            Electron anclado sobre este div, no un iframe — por eso el div en sí
+                            queda vacío salvo por los estados de carga/error. */}
                         <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-[var(--border-medium)] shadow-inner flex items-center justify-center">
                           {loadingEmbeds ? (
                             <div className="flex flex-col items-center space-y-2">
                               <div className="h-8 w-8 border-3 border-[var(--accent-secondary)] border-t-transparent rounded-full animate-spin"></div>
                               <p className="text-xs text-[var(--text-dim)] font-semibold">Cargando servidores...</p>
                             </div>
-                          ) : selectedServer?.playbackMode === 'window' || selectedServer?.playbackMode === 'direct-window' ? (
-                            <div className="flex max-w-sm flex-col items-center gap-3 px-6 text-center">
-                              <MonitorPlay className="h-8 w-8 text-[var(--accent-secondary)]" />
-                              <div>
-                                <p className="text-sm font-bold text-[var(--text-main)]">
-                                  Reproductor protegido
-                                </p>
-                                <p className="mt-1 text-xs text-[var(--text-dim)]">
-                                  Este servidor se abre en una ventana aislada para conservar su origen de reproducción.
-                                </p>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => void handleOpenStandalonePlayer()}
-                                className="h-9 px-4 text-xs text-white bg-[var(--accent-primary)] hover:bg-violet-500 flex items-center gap-2 cursor-pointer font-bold transition-colors rounded-md"
-                              >
-                                <MonitorPlay className="h-4 w-4 shrink-0" />
-                                <span>Abrir reproductor</span>
-                              </button>
-                            </div>
                           ) : selectedServer ? (
-                            <iframe
-                              src={selectedServer.url}
-                              className="absolute inset-0 w-full h-full border-none"
-                              allowFullScreen
-                              allow="autoplay; encrypted-media; picture-in-picture"
-                            />
+                            <>
+                              <div ref={playerPanelRef} data-testid="anime-player-panel" className="absolute inset-0 h-full w-full" />
+                              {!hasPlayerViewApi && (
+                                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center text-xs text-[var(--text-dim)]">
+                                  <MonitorPlay className="h-6 w-6 opacity-60" />
+                                  <p>Este reproductor solo está disponible en la aplicación de escritorio. Usa "Ver en navegador".</p>
+                                </div>
+                              )}
+                              {hasPlayerViewApi && playerAttachState === 'loading' && (
+                                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center space-y-2 bg-black/70">
+                                  <div className="h-8 w-8 border-3 border-[var(--accent-secondary)] border-t-transparent rounded-full animate-spin"></div>
+                                  <p className="text-xs text-[var(--text-dim)] font-semibold">Preparando el reproductor...</p>
+                                </div>
+                              )}
+                              {hasPlayerViewApi && playerAttachState === 'error' && (
+                                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/85 px-6 text-center">
+                                  <MonitorPlay className="h-8 w-8 text-rose-400" />
+                                  <p className="text-sm font-bold text-[var(--text-main)]">No se pudo cargar el reproductor</p>
+                                  <p className="text-xs text-[var(--text-dim)]">{playerErrorMessage || 'Prueba con otro servidor o ábrelo en el navegador.'}</p>
+                                </div>
+                              )}
+                            </>
                           ) : (
                             <div className="text-[var(--text-dim)] text-xs text-center px-4">
                               Selecciona un servidor de arriba para iniciar la reproducción en línea.
@@ -1004,16 +1051,8 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
                             <div className="flex items-center gap-2">
                               <button
                                 type="button"
-                                onClick={() => void handleOpenStandalonePlayer()}
-                                className="h-8 px-3 text-[11px] text-white bg-[var(--accent-primary)] hover:bg-violet-500 flex items-center gap-1.5 cursor-pointer font-bold transition-colors rounded-md"
-                              >
-                                <MonitorPlay className="h-4 w-4 shrink-0" />
-                                <span>Reproductor independiente</span>
-                              </button>
-                              <button
-                                type="button"
                                 onClick={() => handleOpenExternal(selectedServer.url)}
-                                className="h-8 px-2 text-[10px] text-[var(--accent-primary)] hover:text-violet-400 hover:underline flex items-center cursor-pointer font-bold transition-colors"
+                                className="h-8 px-2 text-[10px] text-[var(--accent-primary)] hover:text-[var(--accent-primary-hover)] hover:underline flex items-center cursor-pointer font-bold transition-colors"
                               >
                                 <span>Ver en navegador</span>
                               </button>

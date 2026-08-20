@@ -4,6 +4,7 @@ import type { Anime } from '../types';
 import { AnimeCard } from '../components/anime/AnimeCard';
 import { SeasonTimeline } from '../components/seasons/SeasonTimeline';
 import { useCurrentAnimeSeason } from '../hooks/useCurrentAnimeSeason';
+import { notifications } from '../utils/notify';
 import { 
   Calendar, 
   RefreshCw, 
@@ -151,7 +152,7 @@ export const Seasons: React.FC<SeasonsProps> = ({ onViewDetails }) => {
       await Promise.all([loadSeasonData(), loadComparisons()]);
     } catch (err) {
       console.error('Error al sincronizar temporada:', err);
-      alert('Error en la sincronización. Revisa los logs de Scraping.');
+      notifications.error('Error en la sincronización. Revisa los logs de Scraping.');
     } finally {
       setSyncing(false);
     }
@@ -287,7 +288,7 @@ export const Seasons: React.FC<SeasonsProps> = ({ onViewDetails }) => {
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
           {/* Temporada más populosa */}
           <div className="p-4 bg-slate-900/60 border border-dark-border/40 rounded-2xl flex items-center space-x-3">
-            <div className="p-2.5 rounded-xl bg-violet-500/10 text-violet-400 shrink-0">
+            <div className="p-2.5 rounded-xl bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] shrink-0">
               <Layers className="h-5 w-5" />
             </div>
             <div>

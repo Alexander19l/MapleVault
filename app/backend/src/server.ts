@@ -77,6 +77,20 @@ app.get('/health', (req, res) => {
   });
 });
 
+// 404 - Ruta no encontrada
+app.use((_req: any, res: any) => {
+  res.status(404).json({ error: 'Ruta no encontrada.' });
+});
+
+// Handler de errores global
+app.use((err: any, _req: any, res: any, next: any) => {
+  console.error('Error no controlado en la API de MapleVault:', err);
+  if (res.headersSent) {
+    return next(err);
+  }
+  res.status(500).json({ error: 'Error interno del servidor.' });
+});
+
 // ==========================================
 // INICIO DEL SERVIDOR
 // ==========================================

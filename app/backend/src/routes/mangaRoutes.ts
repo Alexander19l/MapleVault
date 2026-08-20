@@ -7,6 +7,7 @@ import {
   getMangaRows,
   getMangaSourceRows
 } from './mangaRepository';
+import { MANGA_READ_STATUSES } from '../manga/mangaTypes';
 import {
   getErrorMessage as getSharedErrorMessage,
   getValidatedId
@@ -119,6 +120,25 @@ export function createMangaRouter({
   translationProvider = translateTextForAnime
 }: MangaRouterDependencies = {}) {
   const router = Router();
+  const withSpanishSynopsis = async <T extends { synopsis?: string | null }>(manga: T, entityKey: string) => {
+    const originalSynopsis = manga.synopsis || '';
+    const translation = await translationProvider({
+      animeId: null,
+      entityKey,
+      field: 'synopsis',
+      text: originalSynopsis
+    });
+    return {
+      ...manga,
+      synopsis_original: originalSynopsis || undefined,
+      synopsis: translation.text || originalSynopsis || undefined,
+      translation: {
+        translated: translation.translated,
+        cached: translation.cached,
+        status: translation.status
+      }
+    };
+  };
 
   router.get('/manga/online/providers', (_req, res) => {
     res.json({ providers: getMangaProviderDescriptors(), defaultProvider: 'mangadex' });
@@ -210,21 +230,9 @@ export function createMangaRouter({
 
     try {
       const manga = await implementation.getDetails(mangaId);
-      const originalSynopsis = manga.synopsis || '';
-      const translation = await translationProvider({
-        animeId: null,
-        entityKey: `manga:${provider.id}:${manga.id}`,
-        field: 'synopsis',
-        text: originalSynopsis
-      });
       return res.json({
         provider: getProviderResponse(provider),
-        manga: {
-          ...manga,
-          synopsis_original: originalSynopsis || undefined,
-          synopsis: translation.text || originalSynopsis || undefined,
-          translation: { translated: translation.translated, cached: translation.cached, status: translation.status }
-        }
+        manga: await withSpanishSynopsis(manga, `manga:${provider.id}:${manga.id}`)
       });
     } catch (error: unknown) {
       console.warn(`[MapleVault] ${provider.label} no devolvió la ficha del manga.`, error);
@@ -436,7 +444,9 @@ export function createMangaRouter({
         sort: typeof req.query.sort === 'string' ? req.query.sort : undefined,
         limit: Number(req.query.limit),
         offset: Number(req.query.offset),
-        withTotal: req.query.withTotal === 'true'
+        withTotal: req.query.withTotal === 'true',
+        readStatus: typeof req.query.readStatus === 'string' ? req.query.readStatus : undefined,
+        favoriteOnly: req.query.favorite === 'true'
       });
 
       if (req.query.withTotal === 'true') {
@@ -486,7 +496,58 @@ export function createMangaRouter({
         return res.status(404).json({ error: 'Manga no encontrado.' });
       }
 
-      res.json(manga);
+      // Misma clave de caché que se usó al consultar la ficha online
+      // (manga:<proveedor>:<externalId>), no una nueva por id local. Si no,
+      // cada apertura de la ficha guardada reintenta traducir un texto que
+      // ya llegó traducido bajo una clave distinta, sin aprovechar la caché.
+      const entityKey = manga.source && manga.external_id
+        ? `manga:${manga.source}:${manga.external_id}`
+        : `manga:local:${manga.id}`;
+
+      res.json(await withSpanishSynopsis(manga, entityKey));
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
+    }
+  });
+
+  router.put('/manga/:id/user-list', async (req, res) => {
+    try {
+      const id = getValidatedId(req.params.id, res);
+      if (!id) return;
+
+      const { read_status: readStatus, favorite } = req.body || {};
+      if (readStatus !== undefined && !MANGA_READ_STATUSES.includes(readStatus)) {
+        return res.status(400).json({
+          error: `Estado de lectura invalido. Usa uno de: ${MANGA_READ_STATUSES.join(', ')}.`
+        });
+      }
+
+      const updates: string[] = [];
+      const params: unknown[] = [];
+      if (readStatus !== undefined) {
+        updates.push('read_status = ?');
+        params.push(readStatus);
+      }
+      if (favorite !== undefined) {
+        updates.push('favorite = ?');
+        params.push(favorite ? 1 : 0);
+      }
+      if (updates.length === 0) {
+        return res.status(400).json({ error: 'No se recibió ningún campo para actualizar.' });
+      }
+      updates.push("updated_at = CURRENT_TIMESTAMP");
+      params.push(id);
+
+      const result = await queryClient.run(
+        `UPDATE manga_user_list SET ${updates.join(', ')} WHERE manga_id = ?`,
+        params
+      );
+
+      if (!result?.changes) {
+        return res.status(404).json({ error: 'Esta serie no está en tu biblioteca local.' });
+      }
+
+      res.json({ message: 'Biblioteca local actualizada.' });
     } catch (error: unknown) {
       res.status(500).json({ error: getErrorMessage(error) });
     }

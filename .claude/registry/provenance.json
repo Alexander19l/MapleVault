@@ -1,0 +1,289 @@
+{
+  "schema_version": 1,
+  "updated": "2026-08-17",
+  "note": "Trazabilidad de cada adaptacion upstream. 'adapted-guidance' significa que se extrajeron ideas y reglas y se reescribieron comprimidas, no que se copiara texto sustancial. Ningun repositorio fue clonado ni ejecutado.",
+  "components": {
+    "code-reader": [
+      {
+        "source": "https://github.com/affaan-m/ECC",
+        "upstream_path": "agents/code-explorer.md",
+        "commit": "06c5e118c4d3e6c3b7f9445f973a2194c82de193",
+        "license": "MIT",
+        "mode": "adapted-guidance",
+        "adopted": [
+          "descubrimiento de entry points",
+          "traza del flujo de ejecucion con ramas y limites async",
+          "mapeo de capas de arquitectura",
+          "reconocimiento de patrones y convenciones existentes",
+          "documentacion de dependencias internas y externas",
+          "evidencia basada en archivo:linea"
+        ],
+        "rejected": [
+          "verbosidad del formato de salida en tablas markdown",
+          "seccion Recommendations for New Development (fuera del alcance de un lector puro)",
+          "Prompt Defense Baseline de 6 vinetas, comprimido a una linea"
+        ]
+      }
+    ],
+    "code-optimizer": [
+      {
+        "source": "https://github.com/affaan-m/ECC",
+        "upstream_path": "agents/code-simplifier.md",
+        "commit": "06c5e118c4d3e6c3b7f9445f973a2194c82de193",
+        "license": "MIT",
+        "mode": "adapted-guidance",
+        "adopted": [
+          "claridad sobre astucia",
+          "consistencia con el estilo del repo",
+          "preservar comportamiento exactamente",
+          "simplificar solo donde el resultado sea demostrablemente mas mantenible",
+          "deshacer helpers sobre-abstraidos de un solo uso"
+        ],
+        "rejected": ["tools Write/Bash amplios sin acotar"]
+      },
+      {
+        "source": "https://github.com/affaan-m/ECC",
+        "upstream_path": "agents/refactor-cleaner.md",
+        "commit": "06c5e118c4d3e6c3b7f9445f973a2194c82de193",
+        "license": "MIT",
+        "mode": "adapted-guidance",
+        "adopted": [
+          "clasificacion de riesgo SAFE/CAREFUL/RISKY",
+          "grepear el simbolo antes de borrar, incluidos imports dinamicos",
+          "no eliminar durante desarrollo activo de features",
+          "ser conservador ante la duda"
+        ],
+        "rejected": [
+          "npx knip / depcheck / ts-prune como paso obligatorio (descarga paquetes)",
+          "commit despues de cada lote (el agente no debe hacer commit)"
+        ]
+      },
+      {
+        "source": "https://github.com/affaan-m/ECC",
+        "upstream_path": "agents/performance-optimizer.md",
+        "commit": "06c5e118c4d3e6c3b7f9445f973a2194c82de193",
+        "license": "MIT",
+        "mode": "partial-reference",
+        "adopted": [
+          "tabla de complejidad algoritmica (bucle anidado, busqueda repetida, orden dentro de bucle, concatenacion, recursion sin memo)",
+          "patrones de fuga de memoria: listeners, intervals y suscripciones sin cleanup, closures que capturan el scope",
+          "paralelizar peticiones independientes con Promise.all",
+          "N+1 y proyeccion en SQL"
+        ],
+        "rejected": [
+          "checklist que prescribe useMemo/useCallback/React.memo por defecto (invertido: ahora exige justificacion)",
+          "npx lighthouse, bundle-analyzer, source-map-explorer, node --prof (instalan o requieren red)",
+          "plantilla de reporte de 60 lineas",
+          "13.4 KB de ejemplos de codigo copiables"
+        ]
+      },
+      {
+        "source": "https://github.com/NousResearch/hermes-agent",
+        "upstream_path": "skills/software-development/simplify-code/SKILL.md",
+        "commit": "cf64ca20c5ab99ebf7e8ca272c69edc7ea0636ed",
+        "license": "MIT",
+        "mode": "adapted-guidance",
+        "adopted": [
+          "las cuatro perspectivas: reuse, quality, efficiency, altitude",
+          "campo 'coste' obligatorio en cada hallazgo para que se justifique a si mismo",
+          "Cerca de Chesterton: git blame antes de proponer borrar; confianza baja si no se averigua",
+          "orden de resolucion de conflictos: correccion > foco del usuario > legibilidad/reuso > micro-perf",
+          "aplicar por niveles de riesgo, revertir lo que rompa",
+          "es una pasada de limpieza, no una caza de bugs; los bugs se reportan aparte",
+          "no todo caso especial es un parche: shims, migraciones por fases y aislamiento son deliberados"
+        ],
+        "rejected": [
+          "fan-out automatico de 4 subagentes en paralelo (politica local: recorrido secuencial, delegar solo bajo peticion)",
+          "delegate_task en modo batch (API del runtime de Hermes, sin equivalente directo)",
+          "referencias a toolsets terminal/file/search de Hermes"
+        ]
+      }
+    ],
+    "frontend-director": [
+      {
+        "source": "https://github.com/affaan-m/ECC",
+        "upstream_path": "agents/react-reviewer.md",
+        "commit": "06c5e118c4d3e6c3b7f9445f973a2194c82de193",
+        "license": "MIT",
+        "mode": "adapted-guidance",
+        "adopted": [
+          "correccion de hooks: condicionales, dependencias faltantes, efecto para estado derivado, cleanup ausente, closure obsoleto, mutacion directa",
+          "key={index} en listas dinamicas, estado duplicado, cadenas de efectos, estado inicializado desde prop sin key",
+          "seguridad de cliente: dangerouslySetInnerHTML sin sanitizar, esquemas javascript:/data:, secretos en VITE_/NEXT_PUBLIC_/REACT_APP_, tokens de sesion en localStorage",
+          "sobre-memoizacion como hallazgo, no como buena practica",
+          "prop drilling >3 niveles, componentes >200 lineas",
+          "target=_blank sin rel=noopener noreferrer"
+        ],
+        "rejected": [
+          "division de carriles react-reviewer vs typescript-reviewer (aqui hay un solo agente)",
+          "recomendar instalar eslint-plugin-react-hooks / jsx-a11y durante la revision",
+          "criterios de aprobacion de PR con gh pr view"
+        ]
+      },
+      {
+        "source": "https://github.com/affaan-m/ECC",
+        "upstream_path": "agents/a11y-architect.md",
+        "commit": "06c5e118c4d3e6c3b7f9445f973a2194c82de193",
+        "license": "MIT",
+        "mode": "adapted-guidance",
+        "adopted": [
+          "WCAG 2.2: apariencia de foco, tamano de objetivo 24x24 CSS px (44x44 nativo), entrada redundante",
+          "contraste 4.5:1 texto y 3:1 componentes/graficos",
+          "reflujo usable al 400% de zoom",
+          "antipatrones: enlaces 'click aqui', contenedores de tamano fijo, trampas de teclado, media con autoplay, botones vacios",
+          "cambios dinamicos anunciados con aria-live",
+          "ARIA solo cuando el HTML nativo no basta"
+        ],
+        "rejected": [
+          "cobertura de SwiftUI y Jetpack Compose (el proyecto es web/Electron)",
+          "plantilla ADR-ACC completa",
+          "ejemplos de codigo extensos"
+        ]
+      },
+      {
+        "source": "https://github.com/affaan-m/ECC",
+        "upstream_path": "agents/type-design-analyzer.md",
+        "commit": "06c5e118c4d3e6c3b7f9445f973a2194c82de193",
+        "license": "MIT",
+        "mode": "adapted-guidance",
+        "adopted": [
+          "cuatro dimensiones: encapsulacion, expresion de invariantes, utilidad de los invariantes, aplicacion por el compilador",
+          "detectar escotillas faciles como as any"
+        ],
+        "rejected": ["formato de puntuacion por dimension"]
+      }
+    ],
+    "security-auditor": [
+      {
+        "source": "https://github.com/affaan-m/ECC",
+        "upstream_path": "agents/security-reviewer.md",
+        "commit": "06c5e118c4d3e6c3b7f9445f973a2194c82de193",
+        "license": "MIT",
+        "mode": "adapted-guidance-hardened",
+        "adopted": [
+          "cobertura OWASP: inyeccion, auth rota, datos sensibles, control de acceso, misconfiguracion, XSS, deserializacion, dependencias, logging",
+          "tabla de patrones de alta severidad: secretos hardcodeados, shell con entrada de usuario, SQL concatenado, innerHTML, fetch con URL de usuario, comparacion de password en claro, ruta sin auth, comprobacion de saldo sin bloqueo",
+          "lista explicita de falsos positivos habituales (.env.example, credenciales de test, claves publicas, MD5/SHA1 como checksum)",
+          "verificar siempre el contexto antes de senalar"
+        ],
+        "rejected": [
+          "tool Bash (el auditor local es de solo lectura estricta)",
+          "ejecutar npm audit y eslint-plugin-security (instalan o requieren red)",
+          "no prohibia leer .env: aqui esta prohibido explicitamente",
+          "seccion Emergency Response con rotacion de secretos"
+        ],
+        "hardened": [
+          "metodo obligatorio source -> transformaciones -> sink -> mitigaciones -> impacto",
+          "campo 'confianza' (confirmado/probable/hipotesis) para no afirmar por coincidencia de patron"
+        ]
+      },
+      {
+        "source": "https://github.com/affaan-m/ECC",
+        "upstream_path": "agents/silent-failure-hunter.md",
+        "commit": "06c5e118c4d3e6c3b7f9445f973a2194c82de193",
+        "license": "MIT",
+        "mode": "adapted-guidance",
+        "adopted": [
+          "catch vacio, errores convertidos a null o array vacio sin contexto",
+          "fallbacks peligrosos como .catch(() => [])",
+          "perdida de stack en rethrow generico, manejo async ausente",
+          "ausencia de timeout o rollback en rutas de red/fs/db"
+        ],
+        "rejected": ["existir como agente independiente: fusionado en security-auditor"]
+      }
+    ],
+    "test-verifier": [
+      {
+        "source": "https://github.com/affaan-m/ECC",
+        "upstream_path": "agents/pr-test-analyzer.md",
+        "commit": "06c5e118c4d3e6c3b7f9445f973a2194c82de193",
+        "license": "MIT",
+        "mode": "adapted-guidance",
+        "adopted": [
+          "cobertura conductual sobre cobertura de lineas",
+          "preferir asertos significativos frente a comprobaciones de no-lanza",
+          "detectar patrones flaky",
+          "clasificar huecos por impacto"
+        ],
+        "rejected": ["alcance de revision de PR: aqui el agente ejecuta y reporta, no revisa PRs"]
+      }
+    ],
+    "stack-maintainer": [
+      {
+        "source": "https://github.com/affaan-m/ECC",
+        "upstream_path": "agents/harness-optimizer.md",
+        "commit": "06c5e118c4d3e6c3b7f9445f973a2194c82de193",
+        "license": "MIT",
+        "mode": "adapted-guidance",
+        "adopted": [
+          "mejorar el harness sin reescribir codigo de producto",
+          "identificar las areas de mayor palanca",
+          "cambios minimos, medibles y reversibles",
+          "reportar deltas antes/despues"
+        ],
+        "rejected": [
+          "dependencia del comando /harness-audit de ECC (no existe sin ECC completo instalado)"
+        ]
+      }
+    ],
+    "CLAUDE.md": [
+      {
+        "source": "https://github.com/NousResearch/hermes-agent",
+        "upstream_path": "skills/software-development/systematic-debugging/SKILL.md",
+        "commit": "cf64ca20c5ab99ebf7e8ca272c69edc7ea0636ed",
+        "license": "MIT",
+        "mode": "delta-only",
+        "rationale": "El SKILL.md de Hermes se declara 'adapted from obra/superpowers'. El plugin superpowers 6.3.0 ya esta instalado y provee systematic-debugging. Duplicarlo seria colision de nombre y contexto redundante, asi que solo se capturan los cuatro incrementos reales de Hermes sobre la version de superpowers.",
+        "adopted": [
+          "The Feedback Loop Rule: construir un comando tight capaz de ponerse rojo con el sintoma exacto ANTES de teorizar",
+          "Minimizar el repro recortando de uno en uno hasta que quitar cualquier cosa lo ponga verde",
+          "Generar 3-5 hipotesis falsables ranqueadas por probabilidad y coste de descarte, en vez de una sola",
+          "Etiquetar logs temporales con prefijo unico tipo [DEBUG-a4f2] para limpiar de una busqueda"
+        ],
+        "rejected": [
+          "el resto del skill, ya cubierto por superpowers:systematic-debugging",
+          "seccion Hermes Agent Integration (delegate_task, toolsets, search_files)",
+          "metricas de Real-World Impact sin fuente verificable"
+        ]
+      }
+    ]
+  },
+  "evaluated_not_imported": [
+    {
+      "path": "ECC agents/typescript-reviewer.md",
+      "reason": "No leido en detalle. Omitido por redundancia: sus carriles (seguridad de tipos, correccion async, XSS generico) quedan cubiertos entre frontend-director y code-optimizer. Registrado para reevaluar en la proxima actualizacion."
+    },
+    {
+      "path": "ECC: los otros 56 agentes (java-reviewer, flutter-reviewer, gan-*, marketing-agent, seo-specialist, homelab-architect, ...)",
+      "reason": "Fuera del stack del proyecto o fuera del alcance de las prioridades declaradas."
+    },
+    {
+      "path": "Hermes skills/software-development/{test-driven-development,requesting-code-review,plan,spike}",
+      "reason": "Redundancia demostrable con el plugin superpowers 6.3.0 ya instalado, del que derivan."
+    },
+    {
+      "path": "Hermes skills/index-cache/",
+      "reason": "Idea de indice bajo demanda adoptada como principio (no precargar catalogos ni indices JSON en contexto activo). No se copio ningun indice."
+    },
+    {
+      "path": "Hermes trajectory_compressor.py",
+      "reason": "70 KB de codigo Python de runtime. No leido, no ejecutado, no integrado. Solo inspiracion conceptual: resumir conservando evidencia y eliminando ruido intermedio."
+    },
+    {
+      "path": "Hermes AGENTS.md",
+      "reason": "83 KB. Demasiado grande para importar; sus reglas utiles ya estan cubiertas por este stack."
+    },
+    {
+      "path": "claude-plugins-official/frontend-design",
+      "reason": "Un SKILL.md de 8.2 KB sin hooks, riesgo bajo, pero solapa >70% con anti-ai-design y su direccion visual es generica. Referencia, no instalacion."
+    },
+    {
+      "path": "claude-plugins-official/security-guidance",
+      "reason": "BLOQUEADOR: incluye hooks/hooks.json con ~400 KB de Python ejecutable en eventos de sesion. Requiere aprobacion explicita del usuario."
+    },
+    {
+      "path": "vercel-labs/agent-skills (react-best-practices, web-design-guidelines)",
+      "reason": "No evaluado en esta pasada. Copiar material sustancial exige verificar la licencia vigente primero."
+    }
+  ]
+}

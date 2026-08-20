@@ -9,7 +9,6 @@ import {
   validateId,
   validateImageUrl,
   validateLocalServiceUrl,
-  validateSafePath,
   validatePayloadSize,
   validateUserListInput
 } from '../validators';
@@ -143,27 +142,6 @@ describe('validateImageUrl', () => {
 
   it('acepta URL vacía (usará placeholder)', () => {
     expect(validateImageUrl('').valid).toBe(true);
-  });
-});
-
-describe('validateSafePath', () => {
-  it('rechaza path traversal con ../', () => {
-    const result = validateSafePath('/data/../../etc/passwd', '/data/downloads');
-    expect(result.safe).toBe(false);
-  });
-
-  it('rechaza path traversal codificado con caracteres nulos', () => {
-    const result = validateSafePath('/data/downloads\x00/../etc/passwd', '/data/downloads');
-    expect(result.safe).toBe(false);
-  });
-
-  it('acepta path dentro del directorio permitido', () => {
-    // Nota: en Windows paths, el test puede variar
-    // Usamos un path relativo que se resolverá
-    const base = process.cwd();
-    const safe = `${base}/subdir/file.sqlite`;
-    const result = validateSafePath(safe, base);
-    expect(result.safe).toBe(true);
   });
 });
 

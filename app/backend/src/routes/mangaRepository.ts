@@ -54,6 +54,15 @@ function buildWhere(filters: MangaListFilters): { whereSql: string; params: any[
     params.push(filters.format.trim());
   }
 
+  if (filters.readStatus?.trim()) {
+    clauses.push('mul.read_status = ?');
+    params.push(filters.readStatus.trim());
+  }
+
+  if (filters.favoriteOnly) {
+    clauses.push('mul.favorite = 1');
+  }
+
   return {
     whereSql: clauses.length ? `WHERE ${clauses.join(' AND ')}` : '',
     params

@@ -57,7 +57,7 @@ export const AnimeDetailHero: React.FC<AnimeDetailHeroProps> = ({
 
         {/* Floating title details */}
         <div className="absolute bottom-5 left-6 right-6">
-          <span className="px-2 py-0.5 bg-violet-600/20 text-[var(--accent-primary)] text-[9px] font-bold border border-violet-500/10 rounded uppercase tracking-wider mb-2 inline-block">
+          <span className="px-2 py-0.5 bg-[var(--accent-primary)]/20 text-[var(--accent-primary)] text-[9px] font-bold border border-[var(--accent-primary)]/10 rounded uppercase tracking-wider mb-2 inline-block">
             {anime.studio || 'Estudio Desconocido'}
           </span>
           <h2 className="text-xl sm:text-2xl font-black text-white leading-tight drop-shadow-md">
@@ -180,7 +180,7 @@ export const AnimeDetailHero: React.FC<AnimeDetailHeroProps> = ({
           )}
 
           {/* Personal Progress Manager */}
-          <div className="p-4 border border-violet-500/10 bg-violet-650/5 rounded-xl space-y-4">
+          <div className="p-4 border border-[var(--accent-primary)]/10 bg-[var(--accent-primary)]/5 rounded-xl space-y-4">
             <div className="flex items-center justify-between border-b border-[var(--border-light)]/50 pb-2">
               <h3 className="text-xs font-bold text-[var(--accent-primary)] flex items-center">
                 <Bookmark className="h-4 w-4 mr-1.5" />

@@ -3,6 +3,7 @@ import { api } from '../services/api';
 import type { UserListItem, Anime } from '../types';
 import { AnimeCard } from '../components/anime/AnimeCard';
 import { showConfirm } from '../utils/dialog';
+import { notifications } from '../utils/notify';
 import { 
   UserRound, 
   Clock, 
@@ -42,19 +43,26 @@ export const Mylist: React.FC<MylistProps> = ({ onViewDetails, refreshTrigger, i
       setLoading(true);
       
       let data: UserListItem[] = [];
+      let allItems: UserListItem[] = [];
       if (activeTab === 'favorite') {
-        data = await api.getUserList({ favorite: 1 });
+        [data, allItems] = await Promise.all([
+          api.getUserList({ favorite: 1 }),
+          api.getUserList()
+        ]);
       } else if (activeTab === 'all') {
         data = await api.getUserList();
+        allItems = data;
       } else {
-        data = await api.getUserList({ status: activeTab });
+        [data, allItems] = await Promise.all([
+          api.getUserList({ status: activeTab }),
+          api.getUserList()
+        ]);
       }
 
       setListItems(data);
 
       // Calcular estadísticas acumuladas (usando toda la lista del usuario)
-      const allItems = await api.getUserList();
-      
+
       // 1. Promedio de puntaje (excluyendo 0 que es 'sin nota')
       const scoredItems = allItems.filter((item: UserListItem) => item.user_score > 0);
       const scoreSum = scoredItems.reduce((sum: number, item: UserListItem) => sum + item.user_score, 0);
@@ -115,7 +123,7 @@ export const Mylist: React.FC<MylistProps> = ({ onViewDetails, refreshTrigger, i
       loadUserList();
     } catch (err) {
       console.error('Error eliminando de lista:', err);
-      alert('No se pudo eliminar el anime de la lista.');
+      notifications.error('No se pudo eliminar el anime de la lista.');
     }
   };
 

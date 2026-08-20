@@ -22,6 +22,7 @@ const shadeMangaDetailsMock = vi.fn();
 const shadeMangaChaptersMock = vi.fn();
 const shadeMangaPagesMock = vi.fn();
 const shadeMangaDownloadMock = vi.fn();
+const translationMock = vi.fn();
 
 let server: Server;
 let baseUrl: string;
@@ -37,6 +38,15 @@ async function requestJson(requestPath: string) {
 async function requestJsonPost(requestPath: string, body: unknown) {
   const response = await fetch(`${baseUrl}${requestPath}`, {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  return { response, json: await response.json() };
+}
+
+async function requestJsonPut(requestPath: string, body: unknown) {
+  const response = await fetch(`${baseUrl}${requestPath}`, {
+    method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });
@@ -86,7 +96,8 @@ describe('Manga HTTP router', () => {
         getChapters: shadeMangaChaptersMock,
         getPages: shadeMangaPagesMock,
         downloadPages: shadeMangaDownloadMock
-      } as any
+      } as any,
+      translationProvider: translationMock
     }));
 
     await new Promise<void>(resolve => {
@@ -124,6 +135,13 @@ describe('Manga HTTP router', () => {
     shadeMangaChaptersMock.mockResolvedValue([]);
     shadeMangaPagesMock.mockResolvedValue({ chapterId: 'Chap02', quality: 'data-saver', pages: [] });
     shadeMangaDownloadMock.mockResolvedValue(Buffer.from('zip'));
+    translationMock.mockImplementation(async ({ text }: { text: string }) => ({
+      text,
+      translated: false,
+      cached: false,
+      status: 'spanish_source',
+      provider: 'libretranslate'
+    }));
   });
 
   it('expone MangaDex como servidor principal y tres proveedores operativos', async () => {
@@ -185,6 +203,32 @@ describe('Manga HTTP router', () => {
 
     expect(response.status).toBe(404);
     expect(json).toEqual({ error: 'Manga no encontrado.' });
+  });
+
+  it('traduce la sinopsis al abrir una ficha de la biblioteca local', async () => {
+    queryGetMock.mockResolvedValueOnce({
+      id: 8,
+      title: 'Saved Manga',
+      synopsis: 'This saved synopsis is long enough to require a translation into Spanish.',
+      genre_names: null
+    });
+    translationMock.mockResolvedValueOnce({
+      text: 'Esta sinopsis guardada está traducida al español.',
+      translated: true,
+      cached: false,
+      status: 'translated',
+      provider: 'libretranslate'
+    });
+
+    const { response, json } = await requestJson('/manga/8');
+
+    expect(response.status).toBe(200);
+    expect(json.synopsis).toBe('Esta sinopsis guardada está traducida al español.');
+    expect(json.synopsis_original).toContain('saved synopsis');
+    expect(translationMock).toHaveBeenCalledWith(expect.objectContaining({
+      entityKey: 'manga:local:8',
+      field: 'synopsis'
+    }));
   });
 
   it('expone búsqueda remota y limita el contrato a MangaDex', async () => {
@@ -269,6 +313,32 @@ describe('Manga HTTP router', () => {
     expect(shadeMangaDetailsMock).toHaveBeenCalledWith('3DySaf');
   });
 
+  it('traduce al español la sinopsis de la ficha remota', async () => {
+    mangaDexDetailsMock.mockResolvedValueOnce({
+      id: '11111111-1111-1111-1111-111111111111',
+      title: 'Remote Manga',
+      synopsis: 'This synopsis is written in English and contains enough text to require translation.'
+    });
+    translationMock.mockResolvedValueOnce({
+      text: 'Esta sinopsis fue traducida al español.',
+      translated: true,
+      cached: false,
+      status: 'translated',
+      provider: 'libretranslate'
+    });
+
+    const { response, json } = await requestJson('/manga/online/11111111-1111-1111-1111-111111111111/details');
+
+    expect(response.status).toBe(200);
+    expect(json.manga.synopsis).toBe('Esta sinopsis fue traducida al español.');
+    expect(json.manga.synopsis_original).toContain('written in English');
+    expect(json.manga.translation).toMatchObject({ translated: true, status: 'translated' });
+    expect(translationMock).toHaveBeenCalledWith(expect.objectContaining({
+      entityKey: 'manga:mangadex:11111111-1111-1111-1111-111111111111',
+      field: 'synopsis'
+    }));
+  });
+
   it('devuelve páginas de manga con URL absoluta del backend para el lector', async () => {
     mangaDexPagesMock.mockResolvedValueOnce({
       chapterId: '22222222-2222-2222-2222-222222222222',
@@ -281,5 +351,50 @@ describe('Manga HTTP router', () => {
     expect(response.status).toBe(200);
     expect(json.pages[0]).toMatch(new RegExp(`^${baseUrl}/manga/online/page-proxy\\?`));
     expect(json.pages[0]).toContain('provider=mangadex');
+  });
+
+  it('filtra la biblioteca local por estado de lectura y favoritos', async () => {
+    await requestJson('/manga?readStatus=reading');
+    expect(queryAllMock).toHaveBeenLastCalledWith(
+      expect.stringContaining('mul.read_status = ?'),
+      expect.arrayContaining(['reading'])
+    );
+
+    await requestJson('/manga?favorite=true');
+    expect(queryAllMock).toHaveBeenLastCalledWith(
+      expect.stringContaining('mul.favorite = 1'),
+      expect.anything()
+    );
+  });
+
+  it('actualiza el estado de lectura y favorito de una serie en biblioteca', async () => {
+    const { response, json } = await requestJsonPut('/manga/7/user-list', {
+      read_status: 'reading',
+      favorite: true
+    });
+
+    expect(response.status).toBe(200);
+    expect(json).toMatchObject({ message: expect.any(String) });
+    expect(mangaRunMock).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE manga_user_list'),
+      expect.arrayContaining(['reading', 1, 7])
+    );
+  });
+
+  it('rechaza un estado de lectura no soportado', async () => {
+    const { response, json } = await requestJsonPut('/manga/7/user-list', {
+      read_status: 'not-a-real-status'
+    });
+
+    expect(response.status).toBe(400);
+    expect(json.error).toBeTruthy();
+  });
+
+  it('responde 404 si la serie no está en la biblioteca local', async () => {
+    mangaRunMock.mockResolvedValueOnce({ lastID: 0, changes: 0 });
+
+    const { response } = await requestJsonPut('/manga/999/user-list', { read_status: 'dropped' });
+
+    expect(response.status).toBe(404);
   });
 });

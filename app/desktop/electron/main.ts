@@ -1,9 +1,8 @@
-import { app, BrowserWindow, ipcMain, shell, dialog, Tray, Menu, nativeImage, type MessageBoxOptions } from 'electron';
+import { app, BrowserWindow, WebContentsView, ipcMain, shell, dialog, Tray, Menu, nativeImage, type MessageBoxOptions } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import axios from 'axios';
-import unzipper from 'unzipper';
 import net from 'net';
 import { spawn, ChildProcess } from 'child_process';
 import { 
@@ -23,6 +22,12 @@ import {
 } from './adblock/playerProtection';
 import { resolveDesktopAssetPath, resolveWindowIconPath } from './desktopAssets';
 import {
+  getMangaDownloadRoot,
+  listOfflineMangaChapters,
+  readOfflineMangaChapter,
+  saveMangaArchive
+} from './mangaOfflineStorage';
+import {
   getSafePlayerReferer,
   getSafePlayerUrl,
   getSafePlayerWindowMode,
@@ -31,8 +36,8 @@ import {
 } from './playerRequest';
 
 let mainWindow: BrowserWindow | null = null;
-let playerWindow: BrowserWindow | null = null;
-let playerDirectOrigin: string | null = null;
+let playerView: WebContentsView | null = null;
+let playerViewDirectOrigin: string | null = null;
 let backendProcess: ChildProcess | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
@@ -60,212 +65,154 @@ interface StartupSettings {
   reason?: string;
 }
 
-async function openPlayerWindow(request: PlayerOpenRequest): Promise<{
-  opened: boolean;
+interface PlayerViewBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+// Límite defensivo: el panel del reproductor vive dentro de la ventana de la
+// app, nunca debería pedir un area mayor que una pantalla 8K.
+const MAX_PLAYER_VIEW_DIMENSION = 8000;
+
+function getMainWindowContentSize(): { width: number; height: number } | null {
+  if (!mainWindow || mainWindow.isDestroyed()) return null;
+  const contentBounds = mainWindow.getContentBounds();
+  return { width: contentBounds.width, height: contentBounds.height };
+}
+
+function getSafePlayerBounds(value: unknown): PlayerViewBounds | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Record<string, unknown>;
+  const x = Math.round(Number(raw.x));
+  const y = Math.round(Number(raw.y));
+  const width = Math.round(Number(raw.width));
+  const height = Math.round(Number(raw.height));
+  if (![x, y, width, height].every(Number.isFinite)) return null;
+  if (width <= 0 || height <= 0 || width > MAX_PLAYER_VIEW_DIMENSION || height > MAX_PLAYER_VIEW_DIMENSION) return null;
+
+  // Defensa en profundidad: el panel nunca debe caer fuera del área de contenido de
+  // la ventana principal ni superponerse a los controles nativos del marco (frame:false).
+  const containerSize = getMainWindowContentSize();
+  if (!containerSize) return null;
+  const clampedX = Math.min(Math.max(x, 0), Math.max(0, containerSize.width - 1));
+  const clampedY = Math.min(Math.max(y, 0), Math.max(0, containerSize.height - 1));
+  const clampedWidth = Math.min(width, containerSize.width - clampedX);
+  const clampedHeight = Math.min(height, containerSize.height - clampedY);
+  if (clampedWidth <= 0 || clampedHeight <= 0) return null;
+
+  return { x: clampedX, y: clampedY, width: clampedWidth, height: clampedHeight };
+}
+
+function ensurePlayerView(): WebContentsView {
+  if (playerView) return playerView;
+
+  playerView = new WebContentsView({
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+      backgroundThrottling: false,
+      partition: PLAYER_SESSION_PARTITION
+    }
+  });
+  const keepPlayerViewOnAllowedOrigin = (event: Electron.Event, navigationUrl: string) => {
+    try {
+      const isAllowed = playerViewDirectOrigin
+        ? new URL(navigationUrl).origin === playerViewDirectOrigin
+        : navigationUrl.startsWith('file:');
+      if (!isAllowed) event.preventDefault();
+    } catch {
+      event.preventDefault();
+    }
+  };
+  playerView.webContents.on('will-navigate', keepPlayerViewOnAllowedOrigin);
+  playerView.webContents.on('will-redirect', keepPlayerViewOnAllowedOrigin);
+  return playerView;
+}
+
+/**
+ * Adjunta (o reutiliza) el WebContentsView del reproductor dentro de la
+ * ventana principal, en vez de abrir una BrowserWindow aparte. La carga usa
+ * player.html + iframe interno para modo 'embedded' (el Referer correcto lo
+ * inyecta la sesión PLAYER_SESSION_PARTITION vía playerProtection.ts), o
+ * loadURL directo con httpReferrer para modo 'direct'.
+ */
+async function attachPlayerView(request: PlayerOpenRequest & { bounds?: unknown }): Promise<{
+  attached: boolean;
   error?: string;
 }> {
   const url = getSafePlayerUrl(request?.url);
-  if (!url) {
-    return { opened: false, error: 'La URL del reproductor no es valida.' };
+  if (!url) return { attached: false, error: 'La URL del reproductor no es válida.' };
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return { attached: false, error: 'La ventana principal no está disponible.' };
   }
+
+  const bounds = getSafePlayerBounds(request?.bounds);
+  if (!bounds) return { attached: false, error: 'El área del reproductor no es válida.' };
 
   const animeTitle = sanitizePlayerLabel(request?.title, 'Anime');
   const server = sanitizePlayerLabel(request?.server, 'Servidor');
   const referer = getSafePlayerReferer(request?.referer);
   const mode = getSafePlayerWindowMode(request?.mode);
   if (mode === 'direct' && !referer) {
-    return { opened: false, error: 'La fuente directa no proporcionó un origen válido.' };
-  }
-  const windowTitle = `MapleVault Player - ${animeTitle} - ${server}`;
-
-  if (!playerWindow || playerWindow.isDestroyed()) {
-    playerWindow = new BrowserWindow({
-      width: 960,
-      height: 540,
-      minWidth: 640,
-      minHeight: 360,
-      useContentSize: true,
-      title: windowTitle,
-      icon: resolveWindowIconPath(),
-      backgroundColor: '#000000',
-      show: false,
-      autoHideMenuBar: true,
-      fullscreenable: true,
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-        sandbox: true,
-        backgroundThrottling: false,
-        partition: PLAYER_SESSION_PARTITION
-      }
-    });
-    playerWindow.setMenu(null);
-    playerWindow.webContents.on('page-title-updated', event => event.preventDefault());
-    const keepPlayerOnAllowedOrigin = (event: Electron.Event, navigationUrl: string) => {
-      try {
-        const isAllowed = playerDirectOrigin
-          ? new URL(navigationUrl).origin === playerDirectOrigin
-          : navigationUrl.startsWith('file:');
-        if (!isAllowed) event.preventDefault();
-      } catch {
-        event.preventDefault();
-      }
-    };
-    playerWindow.webContents.on('will-navigate', keepPlayerOnAllowedOrigin);
-    playerWindow.webContents.on('will-redirect', keepPlayerOnAllowedOrigin);
-    playerWindow.on('closed', () => {
-      setPlayerRequestContext(null);
-      playerDirectOrigin = null;
-      playerWindow = null;
-    });
+    return { attached: false, error: 'La fuente directa no proporcionó un origen válido.' };
   }
 
-  playerWindow.hide();
-  playerWindow.setTitle(windowTitle);
+  const view = ensurePlayerView();
+  if (!mainWindow.contentView.children.includes(view)) {
+    mainWindow.contentView.addChildView(view);
+  }
+  view.setBounds(bounds);
+
   setPlayerRequestContext(referer ? { targetUrl: url, referer } : null);
   try {
     if (mode === 'direct') {
-      playerDirectOrigin = new URL(url).origin;
-      await playerWindow.loadURL(url, { httpReferrer: referer! });
+      playerViewDirectOrigin = new URL(url).origin;
+      await view.webContents.loadURL(url, { httpReferrer: referer! });
     } else {
-      playerDirectOrigin = null;
-      await playerWindow.loadFile(path.join(__dirname, 'player.html'), {
+      playerViewDirectOrigin = null;
+      await view.webContents.loadFile(path.join(__dirname, 'player.html'), {
         query: {
           url,
-          title: windowTitle
+          title: `MapleVault Player - ${animeTitle} - ${server}`
         }
       });
     }
   } catch (error) {
     setPlayerRequestContext(null);
-    playerDirectOrigin = null;
-    throw error;
+    playerViewDirectOrigin = null;
+    // No dejar el contenido previamente cargado (de un servidor anterior) visible por
+    // encima del mensaje de error que muestra el renderer: se retira la vista.
+    if (mainWindow.contentView.children.includes(view)) {
+      mainWindow.contentView.removeChildView(view);
+    }
+    return { attached: false, error: 'No se pudo cargar el reproductor.' };
   }
 
-  playerWindow.setTitle(windowTitle);
-  if (playerWindow.isMinimized()) playerWindow.restore();
-  playerWindow.show();
-  playerWindow.focus();
-  return { opened: true };
+  return { attached: true };
+}
+
+function repositionPlayerView(request: { bounds?: unknown }): { ok: boolean } {
+  if (!playerView || !mainWindow || mainWindow.isDestroyed()) return { ok: false };
+  const bounds = getSafePlayerBounds(request?.bounds);
+  if (!bounds) return { ok: false };
+  playerView.setBounds(bounds);
+  return { ok: true };
+}
+
+function detachPlayerView(): { ok: boolean } {
+  if (playerView && mainWindow && !mainWindow.isDestroyed() && mainWindow.contentView.children.includes(playerView)) {
+    mainWindow.contentView.removeChildView(playerView);
+  }
+  setPlayerRequestContext(null);
+  playerViewDirectOrigin = null;
+  return { ok: true };
 }
 
 function normalizeCloseBehavior(value: unknown): CloseBehavior {
   return value === 'minimize' || value === 'quit' || value === 'ask' ? value : 'ask';
-}
-
-function sanitizeMangaPathPart(value: unknown, fallback: string): string {
-  const cleaned = String(value || fallback)
-    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/[. ]+$/g, '');
-  return (cleaned || fallback).slice(0, 120);
-}
-
-async function saveMangaArchive(request: {
-  series?: unknown;
-  fileName?: unknown;
-  data?: unknown;
-}): Promise<{ saved: boolean; path?: string; extractedPages?: number; error?: string }> {
-  const rawData = request?.data;
-  if (!rawData || (!ArrayBuffer.isView(rawData) && !(rawData instanceof ArrayBuffer))) {
-    return { saved: false, error: 'El archivo de manga no es válido.' };
-  }
-
-  const data = rawData instanceof ArrayBuffer
-    ? Buffer.from(rawData)
-    : Buffer.from(rawData.buffer, rawData.byteOffset, rawData.byteLength);
-  if (data.length === 0 || data.length > 256 * 1024 * 1024) {
-    return { saved: false, error: 'El archivo de manga supera el tamaño permitido.' };
-  }
-
-  const series = sanitizeMangaPathPart(request.series, 'Manga');
-  const fileName = sanitizeMangaPathPart(request.fileName, 'capitulo.zip').replace(/\.zip$/i, '') + '.zip';
-  const targetDirectory = path.join(app.getPath('downloads'), 'MapleVault', 'Mangas', series);
-  const targetPath = path.join(targetDirectory, fileName);
-  await fs.promises.mkdir(targetDirectory, { recursive: true });
-  await fs.promises.writeFile(targetPath, data, { flag: 'w' });
-  const chapterDirectory = path.join(targetDirectory, fileName.replace(/\.zip$/i, ''));
-  const archive = await unzipper.Open.buffer(data);
-  let extractedPages = 0;
-  let extractedBytes = 0;
-  for (const entry of archive.files) {
-    if (entry.type !== 'File' || extractedPages >= 500) continue;
-    const relative = entry.path.replace(/\\/g, '/').replace(/^\/+/, '');
-    const extension = path.extname(relative).toLowerCase();
-    if (!/^\.(png|jpe?g|webp|gif)$/.test(extension) || relative.split('/').some((part: string) => part === '..')) continue;
-    const destination = path.resolve(chapterDirectory, relative);
-    if (!destination.startsWith(`${path.resolve(chapterDirectory)}${path.sep}`)) continue;
-    const pageData = await entry.buffer();
-    extractedBytes += pageData.length;
-    if (extractedBytes > 256 * 1024 * 1024) break;
-    await fs.promises.mkdir(path.dirname(destination), { recursive: true });
-    await fs.promises.writeFile(destination, pageData, { flag: 'w' });
-    extractedPages += 1;
-  }
-  return { saved: true, path: targetPath, extractedPages };
-}
-
-function getMangaDownloadRoot(): string {
-  return path.join(app.getPath('downloads'), 'MapleVault', 'Mangas');
-}
-
-function getSafeMangaSeriesDirectory(series: unknown): string | null {
-  const normalized = sanitizeMangaPathPart(series, 'Manga');
-  const root = path.resolve(getMangaDownloadRoot());
-  const target = path.resolve(root, normalized);
-  return target.startsWith(`${root}${path.sep}`) ? target : null;
-}
-
-async function listOfflineMangaChapters(request: { series?: unknown }): Promise<{ chapters: Array<{ key: string; label: string; pages: number }> }> {
-  const directory = getSafeMangaSeriesDirectory(request?.series);
-  if (!directory || !fs.existsSync(directory)) return { chapters: [] };
-  const entries = await fs.promises.readdir(directory, { withFileTypes: true });
-  const chapters: Array<{ key: string; label: string; pages: number }> = [];
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const chapterDirectory = path.join(directory, entry.name);
-    const files = await fs.promises.readdir(chapterDirectory, { withFileTypes: true });
-    const pages = files.filter(file => file.isFile() && /\.(png|jpe?g|webp|gif)$/i.test(file.name)).length;
-    if (pages > 0) chapters.push({ key: entry.name, label: entry.name, pages });
-  }
-  return { chapters: chapters.sort((left, right) => left.label.localeCompare(right.label, undefined, { numeric: true })) };
-}
-
-async function readOfflineMangaChapter(request: {
-  series?: unknown;
-  chapter?: unknown;
-  offset?: unknown;
-  limit?: unknown;
-}): Promise<{ pages: string[]; total: number; offset: number; hasMore: boolean }> {
-  const directory = getSafeMangaSeriesDirectory(request?.series);
-  const chapter = sanitizeMangaPathPart(request?.chapter, '');
-  const offset = Math.max(0, Math.min(500, Number(request?.offset) || 0));
-  const limit = Math.max(1, Math.min(12, Number(request?.limit) || 1));
-  if (!directory || !chapter || !fs.existsSync(directory)) return { pages: [], total: 0, offset, hasMore: false };
-  const entries = await fs.promises.readdir(directory, { withFileTypes: true });
-  const chapterLower = chapter.toLowerCase();
-  const selected = entries.find(entry => entry.isDirectory() && entry.name.toLowerCase() === chapterLower)
-    || entries.find(entry => entry.isDirectory() && entry.name.toLowerCase().includes(`capitulo ${chapterLower}`));
-  if (!selected) return { pages: [], total: 0, offset, hasMore: false };
-  const chapterDirectory = path.join(directory, selected.name);
-  const files = (await fs.promises.readdir(chapterDirectory, { withFileTypes: true }))
-    .filter(file => file.isFile() && /\.(png|jpe?g|webp|gif)$/i.test(file.name))
-    .sort((left, right) => left.name.localeCompare(right.name, undefined, { numeric: true }));
-  const pages: string[] = [];
-  const boundedFiles = files.slice(0, 500);
-  for (const file of boundedFiles.slice(offset, offset + limit)) {
-    const data = await fs.promises.readFile(path.join(chapterDirectory, file.name));
-    const extension = path.extname(file.name).toLowerCase();
-    const mime = extension === '.png' ? 'image/png' : extension === '.webp' ? 'image/webp' : extension === '.gif' ? 'image/gif' : 'image/jpeg';
-    pages.push(`data:${mime};base64,${data.toString('base64')}`);
-  }
-  return {
-    pages,
-    total: boundedFiles.length,
-    offset,
-    hasMore: offset + pages.length < boundedFiles.length
-  };
 }
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -578,6 +525,8 @@ function createMainWindow() {
   mainWindow.on('closed', () => {
     setPlayerProtectionMainWindow(null);
     mainWindow = null;
+    playerView = null;
+    playerViewDirectOrigin = null;
   });
 }
 
@@ -620,11 +569,16 @@ app.whenReady().then(async () => {
   ipcMain.handle('app-set-startup-settings', (_event, enabled: boolean) => setStartupSettings(Boolean(enabled)));
   ipcMain.handle('app-get-close-behavior', () => getCloseBehavior());
   ipcMain.handle('app-set-close-behavior', (_event, value: unknown) => setCloseBehavior(value));
-  ipcMain.handle('manga-save-archive', (_event, request) => saveMangaArchive(request));
-  ipcMain.handle('manga-list-offline-chapters', (_event, request) => listOfflineMangaChapters(request));
-  ipcMain.handle('manga-read-offline-chapter', (_event, request) => readOfflineMangaChapter(request));
-  ipcMain.handle('manga-open-folder', async () => ({ path: getMangaDownloadRoot(), error: await shell.openPath(getMangaDownloadRoot()) || undefined }));
-  ipcMain.handle('player-open', (_event, request: PlayerOpenRequest) => openPlayerWindow(request));
+  ipcMain.handle('manga-save-archive', (_event, request) => saveMangaArchive(request, app.getPath('downloads')));
+  ipcMain.handle('manga-list-offline-chapters', (_event, request) => listOfflineMangaChapters(getMangaDownloadRoot(app.getPath('downloads')), request));
+  ipcMain.handle('manga-read-offline-chapter', (_event, request) => readOfflineMangaChapter(getMangaDownloadRoot(app.getPath('downloads')), request));
+  ipcMain.handle('manga-open-folder', async () => {
+    const folder = getMangaDownloadRoot(app.getPath('downloads'));
+    return { path: folder, error: await shell.openPath(folder) || undefined };
+  });
+  ipcMain.handle('player-attach', (_event, request: PlayerOpenRequest & { bounds?: unknown }) => attachPlayerView(request));
+  ipcMain.handle('player-reposition', (_event, request: { bounds?: unknown }) => repositionPlayerView(request));
+  ipcMain.handle('player-detach', () => detachPlayerView());
 
   ipcMain.handle('show-confirm', async (_event, message: string) => {
     const options: MessageBoxOptions = {

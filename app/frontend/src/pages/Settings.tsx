@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '../services/api';
 import { showConfirm } from '../utils/dialog';
+import { notifications } from '../utils/notify';
 import type { ChatActionHistoryItem, DatabaseBackup, ScrapingJobStatus, SourceCandidatesOverview } from '../types';
 
 import { 
@@ -8,9 +9,8 @@ import {
   Download, 
   Upload, 
   Save, 
-  FolderLock, 
+  FolderLock,
   FolderOpen,
-  Moon,
   Globe,
   Database,
   BrainCircuit,
@@ -42,6 +42,8 @@ interface TranslationInstallStatus {
 
 export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
   const [selectedLang, setSelectedLang] = useState<'es' | 'en'>('es');
+  const [theme, setTheme] = useState<'violet' | 'ember'>('violet');
+  const [themeSaving, setThemeSaving] = useState(false);
   const [closeBehavior, setCloseBehavior] = useState<'ask' | 'minimize' | 'quit'>('ask');
   const [startupEnabled, setStartupEnabled] = useState(false);
   const [mangaFolderMessage, setMangaFolderMessage] = useState('');
@@ -200,11 +202,11 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
     try {
       setSaving(true);
       const res = await api.clearCatalog(keepUserList);
-      alert(res.message);
+      notifications.success(res.message);
       if (onRefreshData) onRefreshData();
     } catch (err: any) {
       console.error('Error al vaciar catálogo:', err);
-      alert('Error: ' + (err.response?.data?.error || err.message));
+      notifications.error('Error: ' + (err.response?.data?.error || err.message));
     } finally {
       setSaving(false);
     }
@@ -214,10 +216,10 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
     try {
       setSaving(true);
       const res = await api.clearBotMemory();
-      alert(res.message || 'Memoria borrada');
+      notifications.success(res.message || 'Memoria borrada');
     } catch (err: any) {
       console.error('Error al vaciar memoria bot:', err);
-      alert('Error: ' + (err.response?.data?.error || err.message));
+      notifications.error('Error: ' + (err.response?.data?.error || err.message));
     } finally {
       setSaving(false);
     }
@@ -227,6 +229,7 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
     try {
       const data = await api.getSettings();
       setSelectedLang('es');
+      setTheme(data.theme === 'ember' ? 'ember' : 'violet');
       const storedCloseBehavior = data.closeBehavior || 'ask';
       setCloseBehavior(storedCloseBehavior);
       await (window as any).electronAPI?.closeBehavior?.set?.(storedCloseBehavior);
@@ -249,6 +252,29 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
       if (aiData) setAiSettings(aiData);
     } catch (err) {
       console.error('Error al cargar ajustes:', err);
+    }
+  };
+
+  const THEME_LABELS: Record<'violet' | 'ember', string> = { violet: 'Violeta', ember: 'Ember' };
+
+  const handleThemeChange = async (next: 'violet' | 'ember') => {
+    if (next === theme) return;
+    const previous = theme;
+    // Aplicación inmediata: son variables CSS en document.documentElement,
+    // se propagan al instante a toda la interfaz sin recargar nada.
+    document.documentElement.dataset.theme = next;
+    setTheme(next);
+    setThemeSaving(true);
+    try {
+      await api.saveSettings({ theme: next });
+      notifications.success(`Tema cambiado a ${THEME_LABELS[next]}.`);
+    } catch (err) {
+      console.error('Error al guardar el tema:', err);
+      document.documentElement.dataset.theme = previous;
+      setTheme(previous);
+      notifications.error('No se pudo guardar el tema. Se restauró el anterior.');
+    } finally {
+      setThemeSaving(false);
     }
   };
 
@@ -412,7 +438,7 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
       setSaving(true);
       setSaveStatus('Guardando ajustes...');
       await api.saveSettings({
-        theme: 'dark',
+        theme,
         language: 'es',
         closeBehavior,
         translation: translationSettings
@@ -453,7 +479,7 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Error al exportar catálogo:', err);
-      alert('Error al exportar los datos.');
+      notifications.error('Error al exportar los datos.');
     }
   };
 
@@ -641,12 +667,12 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
         {/* Sección 2: Apariencia e Idioma */}
         <section className="p-6 bg-dark-card border border-dark-border/40 rounded-3xl space-y-4">
           <h3 className="text-sm font-bold text-slate-350 uppercase tracking-widest flex items-center">
-            <FolderOpen className="h-4.5 w-4.5 text-violet-400 mr-2" />
+            <FolderOpen className="h-4.5 w-4.5 text-[var(--accent-primary)] mr-2" />
             Capítulos de manga descargados
           </h3>
           <p className="text-xs text-slate-400">Abre directamente la carpeta local donde MapleVault guarda los capítulos empaquetados y sus páginas offline.</p>
           <div className="flex flex-wrap items-center gap-3">
-            <button type="button" onClick={() => void handleOpenMangaFolder()} className="inline-flex items-center gap-2 border border-violet-500/40 bg-violet-500/10 px-3 py-2 text-xs font-bold text-violet-200 hover:bg-violet-500/20"><FolderOpen className="h-4 w-4" /> Abrir carpeta de mangas</button>
+            <button type="button" onClick={() => void handleOpenMangaFolder()} className="inline-flex items-center gap-2 border border-[var(--accent-primary)]/40 bg-[var(--accent-primary)]/10 px-3 py-2 text-xs font-bold text-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/20"><FolderOpen className="h-4 w-4" /> Abrir carpeta de mangas</button>
             {mangaFolderMessage && <span className="text-xs text-emerald-300">{mangaFolderMessage}</span>}
           </div>
         </section>
@@ -658,15 +684,40 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
           </h3>
           
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 text-xs">
-            <div className="space-y-2">
+            <div className="space-y-2 sm:col-span-2 lg:col-span-1">
               <span className="block text-[10px] text-slate-500 font-bold uppercase tracking-wider">Tema Visual</span>
-              <div className="flex min-h-11 items-center gap-3 border border-dark-border/50 bg-slate-900/60 px-3 text-slate-200">
-                <Moon className="h-4 w-4 text-primary-400" />
-                <div>
-                  <span className="block font-semibold">Tema oscuro</span>
-                  <span className="block text-[9px] text-slate-500">Diseño único de MapleVault</span>
-                </div>
+              <div role="radiogroup" aria-label="Tema visual" className="grid grid-cols-2 gap-2">
+                {(['violet', 'ember'] as const).map(option => {
+                  const isActive = theme === option;
+                  const swatch = option === 'violet' ? '#8b5cf6' : '#e8590c';
+                  return (
+                    <button
+                      key={option}
+                      type="button"
+                      role="radio"
+                      aria-checked={isActive}
+                      disabled={themeSaving}
+                      onClick={() => void handleThemeChange(option)}
+                      className={`flex min-h-11 items-center gap-2.5 border px-3 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                        isActive
+                          ? 'border-[var(--accent-primary)] bg-[var(--accent-soft)]'
+                          : 'border-dark-border/50 bg-slate-900/60 hover:border-slate-600'
+                      }`}
+                    >
+                      <span className="h-4 w-4 shrink-0 rounded-full border border-white/20" style={{ backgroundColor: swatch }} aria-hidden="true" />
+                      <span className="min-w-0">
+                        <span className="block font-semibold text-slate-200">{THEME_LABELS[option]}</span>
+                        <span className="block truncate text-[9px] text-slate-500">
+                          {option === 'violet' ? 'Diseño original de MapleVault' : 'Oscuro y limpio, acento naranja'}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
+              <p className="text-[10px] leading-relaxed text-slate-500">
+                Se aplica al instante en toda la interfaz, sin reiniciar.
+              </p>
             </div>
 
             {/* Idioma */}
@@ -721,9 +772,9 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
                   checked={startupEnabled}
                   disabled={!startupSupported}
                   onChange={event => setStartupEnabled(event.target.checked)}
-                  className="h-4 w-4 accent-violet-500"
+                  className="h-4 w-4 accent-[var(--accent-primary)]"
                 />
-                <Power className="h-4 w-4 text-violet-400" />
+                <Power className="h-4 w-4 text-[var(--accent-primary)]" />
                 <span className="font-bold text-slate-200">Abrir MapleVault al iniciar Windows</span>
               </label>
               <p className="text-[10px] text-slate-500 leading-relaxed">
@@ -1031,7 +1082,7 @@ export const Settings: React.FC<SettingsProps> = ({ onRefreshData }) => {
             type="button"
             onClick={handleStartMassiveScraping}
             disabled={scrapingLoading || scrapingJob?.state === 'running'}
-            className="w-full sm:w-auto px-6 py-2 bg-violet-600 hover:bg-violet-500 disabled:bg-violet-850 text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center space-x-1.5"
+            className="w-full sm:w-auto px-6 py-2 bg-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] disabled:bg-[var(--accent-primary)]/50 text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center space-x-1.5"
           >
             {(scrapingLoading || scrapingJob?.state === 'running') && <span className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />}
             <span>

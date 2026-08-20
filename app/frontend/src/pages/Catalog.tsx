@@ -14,16 +14,18 @@ import {
   Lock
 } from 'lucide-react';
 import { showConfirm } from '../utils/dialog';
+import { notifications } from '../utils/notify';
 
 interface CatalogProps {
   onViewDetails: (id: number) => void;
   refreshTrigger: number;
   isAdultsOnly?: boolean;
+  searchValue?: string;
 }
 
 const CATALOG_PAGE_SIZE = 36;
 
-export const Catalog: React.FC<CatalogProps> = ({ onViewDetails, refreshTrigger, isAdultsOnly = false }) => {
+export const Catalog: React.FC<CatalogProps> = ({ onViewDetails, refreshTrigger, isAdultsOnly = false, searchValue }) => {
   const [animes, setAnimes] = useState<Anime[]>([]);
   const [genres, setGenres] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -149,6 +151,14 @@ export const Catalog: React.FC<CatalogProps> = ({ onViewDetails, refreshTrigger,
     loadGenres();
   }, [loadGenres]);
 
+  // La barra de búsqueda del encabezado (Topbar) filtra en vivo; se sincroniza aquí
+  // para que comparta el mismo estado que el buscador propio de esta página.
+  useEffect(() => {
+    if (searchValue === undefined) return;
+    setSearchQuery(searchValue);
+    setSubmittedSearchQuery(searchValue);
+  }, [searchValue]);
+
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (submittedSearchQuery === searchQuery) {
@@ -233,7 +243,7 @@ export const Catalog: React.FC<CatalogProps> = ({ onViewDetails, refreshTrigger,
       loadCatalog();
     } catch (err) {
       console.error('Error al crear anime:', err);
-      alert('Error al añadir anime');
+      notifications.error('Error al añadir anime');
     }
   };
 

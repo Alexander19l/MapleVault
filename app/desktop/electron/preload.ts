@@ -64,7 +64,9 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'manga-list-offline-chapters',
   'manga-read-offline-chapter',
   'manga-open-folder',
-  'player-open'
+  'player-attach',
+  'player-reposition',
+  'player-detach'
 ]);
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -132,17 +134,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   player: {
-    open: (request: {
+    attach: (request: {
       url: string;
       title?: string;
       server?: string;
       referer?: string;
       mode?: 'embedded' | 'direct';
+      bounds: { x: number; y: number; width: number; height: number };
     }): Promise<{
-      opened: boolean;
+      attached: boolean;
       error?: string;
     }> => {
-      return ipcRenderer.invoke('player-open', request);
+      return ipcRenderer.invoke('player-attach', request);
+    },
+    reposition: (bounds: { x: number; y: number; width: number; height: number }): Promise<{ ok: boolean }> => {
+      return ipcRenderer.invoke('player-reposition', { bounds });
+    },
+    detach: (): Promise<{ ok: boolean }> => {
+      return ipcRenderer.invoke('player-detach');
     }
   },
 

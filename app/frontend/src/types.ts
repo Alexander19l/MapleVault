@@ -233,7 +233,7 @@ export interface ChatActionHistoryItem {
 }
 
 export interface Settings {
-  theme: 'dark';
+  theme: 'violet' | 'ember';
   language: 'es';
   closeBehavior?: 'ask' | 'minimize' | 'quit';
   translation?: {
@@ -281,6 +281,12 @@ export interface MangaItem {
   chapters_read?: number | null;
   volumes_read?: number | null;
   notes?: string | null;
+  synopsis_original?: string | null;
+  translation?: {
+    translated: boolean;
+    cached?: boolean;
+    status?: string;
+  };
 }
 
 export interface MangaSourceOverview {

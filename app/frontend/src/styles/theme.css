@@ -82,6 +82,54 @@
   --accent-warm:  #f97316;
   --shadow-premium: var(--shadow-xl);
   --shadow-glow: 0 0 20px rgba(139, 92, 246, 0.06);
+
+  /* Vocabulario shadcn/base-ui (preset "base-nova" de components.json).
+     Mapeado a los tokens propios de MapleVault de arriba, no a colores nuevos,
+     para que las primitivas de components/ui/ no introduzcan una paleta paralela. */
+  --background:          var(--bg-main);
+  --foreground:           var(--text-main);
+  --primary:              var(--accent-primary);
+  --primary-foreground:   #ffffff;
+  --secondary:            var(--bg-card);
+  --secondary-foreground: var(--text-main);
+  --muted:                var(--bg-elevated);
+  --muted-foreground:     var(--text-muted);
+  --destructive:          var(--color-danger);
+  --border:               var(--border-medium);
+  --input:                var(--border-medium);
+  --ring:                 var(--accent-primary);
+}
+
+/* =====================================================
+   TEMA — Ember (inspirado en la estética oscura y limpia de
+   Crunchyroll, con el naranja de hoja de arce de MapleVault
+   como acento). Solo redefine los tokens "hoja" de arriba —
+   `--bg-primary`, `--background`, etc. son alias vía var() y
+   siguen la cascada automáticamente, sin duplicarlos aquí. */
+:root[data-theme='ember'] {
+  --bg-main:     #0b0a09;
+  --bg-elevated: #15110f;
+  --bg-panel:    #1b1512;
+  --bg-card:     #211a15;
+
+  --border-soft:   rgba(64, 51, 40, 0.5);
+  --border-medium: #3d2f24;
+  --border-strong: #52402f;
+  --border-glow:   rgba(232, 89, 12, 0.14);
+
+  --text-main:  #f8f2ec;
+  --text-muted: #bdac9c;
+  --text-dim:   #8c7a68;
+  --text-faint: #5c4d3f;
+
+  --accent-primary:       #e8590c;
+  --accent-primary-hover: #c74807;
+  --accent-soft:          rgba(232, 89, 12, 0.14);
+  --accent-soft-hover:    rgba(232, 89, 12, 0.20);
+  --accent-secondary:     #f2b846;
+  --accent-warm:          #e8590c;
+
+  --shadow-glow: 0 0 20px rgba(232, 89, 12, 0.08);
 }
 
 /* =====================================================

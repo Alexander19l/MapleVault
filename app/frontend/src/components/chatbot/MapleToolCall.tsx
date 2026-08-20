@@ -396,7 +396,7 @@ const MapleVisualCard: React.FC<{ args: any }> = ({ args }) => {
               type="button"
               onClick={() => submitPrompt(pageData.previousPrompt || 'página anterior')}
               disabled={!pageData.hasPrevious}
-              className="grid h-7 w-7 place-items-center rounded-md border border-[var(--border-light)] bg-slate-900/70 text-[var(--text-secondary)] transition-colors hover:border-violet-400/50 hover:text-white disabled:cursor-default disabled:opacity-35"
+              className="grid h-7 w-7 place-items-center rounded-md border border-[var(--border-light)] bg-slate-900/70 text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-primary)]/50 hover:text-white disabled:cursor-default disabled:opacity-35"
               title="Página anterior"
               aria-label="Página anterior"
             >
@@ -406,7 +406,7 @@ const MapleVisualCard: React.FC<{ args: any }> = ({ args }) => {
               value={pageData.page || 1}
               onChange={(event) => submitPrompt(`${pageData.pagePromptPrefix || 'ir a la página'} ${event.target.value}`)}
               disabled={(pageData.totalPages || 1) <= 1}
-              className="h-7 min-w-14 rounded-md border border-[var(--border-light)] bg-slate-900 px-2 text-[9px] font-bold text-white outline-none transition-colors focus:border-violet-400 disabled:opacity-50"
+              className="h-7 min-w-14 rounded-md border border-[var(--border-light)] bg-slate-900 px-2 text-[9px] font-bold text-white outline-none transition-colors focus:border-[var(--accent-primary)] disabled:opacity-50"
               title="Ir a una página"
               aria-label="Ir a una página"
             >
@@ -418,7 +418,7 @@ const MapleVisualCard: React.FC<{ args: any }> = ({ args }) => {
               type="button"
               onClick={() => submitPrompt(pageData.nextPrompt || 'ver más series')}
               disabled={!pageData.hasMore}
-              className="grid h-7 w-7 place-items-center rounded-md border border-violet-400/25 bg-violet-500/15 text-violet-300 transition-colors hover:bg-violet-500/25 disabled:cursor-default disabled:border-[var(--border-light)] disabled:bg-slate-900/70 disabled:text-[var(--text-dim)] disabled:opacity-35"
+              className="grid h-7 w-7 place-items-center rounded-md border border-[var(--accent-primary)]/25 bg-[var(--accent-primary)]/15 text-[var(--accent-primary)] transition-colors hover:bg-[var(--accent-primary)]/25 disabled:cursor-default disabled:border-[var(--border-light)] disabled:bg-slate-900/70 disabled:text-[var(--text-dim)] disabled:opacity-35"
               title="Página siguiente"
               aria-label="Página siguiente"
             >
@@ -461,17 +461,17 @@ const MapleVisualCard: React.FC<{ args: any }> = ({ args }) => {
                 aria-controls={`maple-help-category-${category.id}`}
                 className={`min-w-0 rounded-lg border p-2.5 text-left transition-colors ${
                   isActive
-                    ? 'border-violet-400/55 bg-violet-500/10'
-                    : 'border-[var(--border-light)] bg-slate-950/35 hover:border-violet-500/35 hover:bg-slate-950/55'
+                    ? 'border-[var(--accent-primary)]/55 bg-[var(--accent-primary)]/10'
+                    : 'border-[var(--border-light)] bg-slate-950/35 hover:border-[var(--accent-primary)]/35 hover:bg-slate-950/55'
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[10px] font-bold text-white">{category.label}</span>
                   <span className="flex shrink-0 items-center gap-1">
-                    <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-[8px] font-bold text-violet-300">
+                    <span className="rounded bg-[var(--accent-primary)]/10 px-1.5 py-0.5 text-[8px] font-bold text-[var(--accent-primary)]">
                       {count}
                     </span>
-                    <ChevronRight className={`h-3 w-3 text-violet-400 transition-transform ${isActive ? 'rotate-90' : ''}`} />
+                    <ChevronRight className={`h-3 w-3 text-[var(--accent-primary)] transition-transform ${isActive ? 'rotate-90' : ''}`} />
                   </span>
                 </div>
                 <p className="mt-1 line-clamp-2 text-[9px] leading-relaxed text-[var(--text-dim)]">
@@ -485,7 +485,7 @@ const MapleVisualCard: React.FC<{ args: any }> = ({ args }) => {
         {activeCategory && (
           <div
             id={`maple-help-category-${activeCategory.id}`}
-            className="space-y-2 rounded-xl border border-violet-500/25 bg-slate-950/35 p-2.5 animate-fadeIn"
+            className="space-y-2 rounded-xl border border-[var(--accent-primary)]/25 bg-slate-950/35 p-2.5 animate-fadeIn"
           >
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
@@ -494,7 +494,7 @@ const MapleVisualCard: React.FC<{ args: any }> = ({ args }) => {
                   {activeCategory.description}
                 </p>
               </div>
-              <span className="shrink-0 rounded-md bg-violet-500/10 px-2 py-1 text-[8px] font-bold text-violet-300">
+              <span className="shrink-0 rounded-md bg-[var(--accent-primary)]/10 px-2 py-1 text-[8px] font-bold text-[var(--accent-primary)]">
                 {activeIntents.length} comandos
               </span>
             </div>
@@ -505,14 +505,14 @@ const MapleVisualCard: React.FC<{ args: any }> = ({ args }) => {
                   key={intent.id || intent.internalIntent}
                   type="button"
                   onClick={() => submitPrompt(intent.example)}
-                  className="group min-w-0 rounded-lg border border-[var(--border-light)] bg-slate-900/55 p-2.5 text-left transition-colors hover:border-violet-400/45 hover:bg-slate-900"
+                  className="group min-w-0 rounded-lg border border-[var(--border-light)] bg-slate-900/55 p-2.5 text-left transition-colors hover:border-[var(--accent-primary)]/45 hover:bg-slate-900"
                   title={`Ejecutar: ${intent.example}`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <span className="min-w-0 text-[9.5px] font-bold leading-snug text-white">
                       {intent.description}
                     </span>
-                    <ChevronRight className="mt-0.5 h-3 w-3 shrink-0 text-violet-400 transition-transform group-hover:translate-x-0.5" />
+                    <ChevronRight className="mt-0.5 h-3 w-3 shrink-0 text-[var(--accent-primary)] transition-transform group-hover:translate-x-0.5" />
                   </div>
                   <p className="mt-1.5 rounded-md bg-black/20 px-2 py-1.5 text-[8.5px] font-semibold leading-snug text-slate-300">
                     “{intent.example}”
@@ -530,7 +530,7 @@ const MapleVisualCard: React.FC<{ args: any }> = ({ args }) => {
 
         <div>
           <div className="mb-1.5 flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-[var(--text-dim)]">
-            <BookOpen className="h-3.5 w-3.5 text-violet-400" />
+            <BookOpen className="h-3.5 w-3.5 text-[var(--accent-primary)]" />
             Consultas rápidas
           </div>
           <div className="grid grid-cols-1 gap-1.5 @md:grid-cols-2">
@@ -539,10 +539,10 @@ const MapleVisualCard: React.FC<{ args: any }> = ({ args }) => {
                 key={item.id || item.prompt}
                 type="button"
                 onClick={() => submitPrompt(item.prompt)}
-                className="flex min-h-10 items-center justify-between gap-2 rounded-lg border border-[var(--border-light)] bg-slate-950/25 px-2.5 py-2 text-left text-[9px] font-semibold leading-snug text-slate-300 transition-colors hover:border-violet-500/35 hover:text-white"
+                className="flex min-h-10 items-center justify-between gap-2 rounded-lg border border-[var(--border-light)] bg-slate-950/25 px-2.5 py-2 text-left text-[9px] font-semibold leading-snug text-slate-300 transition-colors hover:border-[var(--accent-primary)]/35 hover:text-white"
               >
                 <span>{item.prompt}</span>
-                <ChevronRight className="h-3 w-3 shrink-0 text-violet-400" />
+                <ChevronRight className="h-3 w-3 shrink-0 text-[var(--accent-primary)]" />
               </button>
             ))}
           </div>

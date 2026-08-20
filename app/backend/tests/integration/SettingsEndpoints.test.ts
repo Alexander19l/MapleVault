@@ -49,7 +49,7 @@ describe('Settings HTTP endpoints', () => {
     const { response, json } = await requestJson('/settings');
 
     expect(response.status).toBe(200);
-    expect(json.theme).toBe('dark');
+    expect(json.theme).toBe('violet');
     expect(json.language).toBe('es');
     expect(['ask', 'minimize', 'quit']).toContain(json.closeBehavior);
     expect(json.translation).toEqual(expect.objectContaining({
@@ -58,7 +58,7 @@ describe('Settings HTTP endpoints', () => {
     }));
   });
 
-  it('fuerza tema oscuro y guarda cierre y traducción normalizada', async () => {
+  it('acepta un tema soportado y guarda cierre y traducción normalizada', async () => {
     const payload = {
       theme: 'light',
       language: 'es',
@@ -84,7 +84,7 @@ describe('Settings HTTP endpoints', () => {
 
     const loaded = await requestJson('/settings');
     expect(loaded.json).toMatchObject({
-      theme: 'dark',
+      theme: 'violet',
       language: 'es',
       closeBehavior: 'minimize'
     });
@@ -110,7 +110,7 @@ describe('Settings HTTP endpoints', () => {
     });
 
     const loaded = await requestJson('/settings');
-    expect(loaded.json.theme).toBe('dark');
+    expect(loaded.json.theme).toBe('violet');
     expect(loaded.json.language).toBe('es');
     expect(['ask', 'minimize', 'quit']).toContain(loaded.json.closeBehavior);
     expect(loaded.json.translation.url).toMatch(/^https?:\/\//);

@@ -99,7 +99,7 @@ export const Home: React.FC<HomeProps> = ({ onViewDetails, onNavigate, refreshTr
           <button
             type="button"
             onClick={() => onNavigate('seasons')}
-            className="flex min-w-56 items-center justify-between gap-4 border border-[var(--border-medium)] bg-slate-950/30 px-4 py-3 text-left hover:border-violet-500/40 maple-interactive"
+            className="flex min-w-56 items-center justify-between gap-4 border border-[var(--border-medium)] bg-slate-950/30 px-4 py-3 text-left hover:border-[var(--accent-primary)]/40 maple-interactive"
           >
             <div className="flex items-center gap-3">
               <CalendarDays className="h-5 w-5 text-[var(--accent-primary)]" />
@@ -120,7 +120,7 @@ export const Home: React.FC<HomeProps> = ({ onViewDetails, onNavigate, refreshTr
       {/* Grid de Estadísticas */}
       <section className="grid grid-cols-2 border border-[var(--border-light)] bg-slate-950/20 sm:grid-cols-5">
         {[
-          { label: 'Colección', val: stats.total, color: 'text-violet-400', bg: 'bg-violet-500/10', border: 'border-violet-500/10', icon: Library },
+          { label: 'Colección', val: stats.total, color: 'text-[var(--accent-primary)]', bg: 'bg-[var(--accent-primary)]/10', border: 'border-[var(--accent-primary)]/10', icon: Library },
           { label: 'Viendo', val: stats.watching, color: 'text-primary-400', bg: 'bg-primary-500/10', border: 'border-primary-500/10', icon: Flame },
           { label: 'Pendientes', val: stats.pending, color: 'text-cyan-400', bg: 'bg-cyan-500/10', border: 'border-cyan-500/10', icon: Bookmark },
           { label: 'Vistos', val: stats.completed, color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/10', icon: CheckCircle2 },

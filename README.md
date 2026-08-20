@@ -1,8 +1,50 @@
-# MapleVault Local
+<div align="center">
 
-MapleVault Local es una aplicación de escritorio para gestionar una biblioteca personal de anime con almacenamiento local en SQLite. Usa Electron para el contenedor nativo, React/Vite para la interfaz y Express para la API local.
+<img src="app/desktop/assets/icon.png" width="96" alt="MapleVault" />
 
-## Launcher De Raiz
+# MapleVault
+
+**Tu biblioteca personal de anime y manga, 100% local.**
+
+[![Descargar para Windows](https://img.shields.io/badge/Descargar-Windows%20x64-6d28d9?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/Alexander19l/MapleVault/releases/latest)
+[![Última versión](https://img.shields.io/github/v/release/Alexander19l/MapleVault?label=versi%C3%B3n&color=6d28d9)](https://github.com/Alexander19l/MapleVault/releases/latest)
+
+</div>
+
+---
+
+## ¿Qué es MapleVault?
+
+MapleVault es una app de escritorio para organizar lo que ves y lees: guarda tu catálogo de anime y manga,
+sigue tu progreso capítulo a capítulo, lee y mira directamente desde la propia app, y descarga manga para
+leer sin conexión. Todo corre en tu computadora — sin cuentas, sin anuncios, sin que tus datos salgan de tu equipo.
+
+- **Catálogo y lista personal** — filtros, estados (viendo, pendiente, completado...), favoritos y puntuación.
+- **Reproductor integrado** — mira episodios desde varias fuentes sin que se abra ninguna ventana aparte.
+- **Lector de manga** — modo página o continuo, zoom, brillo y descargas para leer sin conexión.
+- **Maple Assistant** — pide recomendaciones y gestiona tu biblioteca por chat, con confirmación antes de cualquier cambio.
+- **Privado por diseño** — la base de datos vive en tu equipo; nada se sube a ningún servidor.
+
+## Descarga e instalación
+
+1. Descarga el instalador desde **[la página de versiones](https://github.com/Alexander19l/MapleVault/releases/latest)** (botón de arriba).
+2. Ejecuta `MapleVault-Setup-x64.exe`. No hace falta instalar Node, Python ni nada adicional — el traductor
+   de metadata es un componente opcional que solo se instala si lo activas.
+3. Abre MapleVault y empieza a añadir tus series. La biblioteca empieza vacía; nada de datos de ejemplo.
+
+Requiere Windows 10 u 11 de 64 bits.
+
+---
+
+## 🛠️ Notas técnicas
+
+Todo lo que sigue es documentación para quien quiera compilar, depurar o contribuir al proyecto.
+
+### Stack
+
+Electron para el contenedor nativo, React + Vite para la interfaz y Express con SQLite para la API local.
+
+### Launcher de raíz
 
 Para probar el programa desde Windows, usa el launcher de la carpeta raíz:
 
@@ -26,22 +68,24 @@ Las instalaciones nuevas comienzan con Inicio, Catálogo y Mi Lista vacíos. Las
 
 Al reinstalar, el instalador permite seleccionar **Iniciar con biblioteca y ajustes vacíos**. La opción está desmarcada para evitar pérdidas accidentales y elimina únicamente la base y configuración anteriores; el runtime pesado de LibreTranslate se conserva.
 
-## Capacidades Principales
+### Capacidades principales
 
 - Catálogo local con filtros por título, género, temporada, año, estado, tipo y puntuación.
 - Importación normalizada desde AniList y fuentes de scraping configuradas.
 - Lista personal con estados: viendo, pendiente, completado y abandonado.
 - Seguimiento de episodios vistos, progreso y estados personales.
+- Reproductor de episodios embebido en la propia ventana (sin ventanas aparte), con Referer y sesión aislados por fuente y Adblock integrado.
 - Manga con proveedores aislados, capítulos bajo demanda y lector interno configurable.
 - Lector de manga con modo página o continuo, dirección izquierda-derecha/derecha-izquierda, zoom, brillo, ajuste de ancho, pantalla completa y preferencias persistentes.
+- Descargas de manga concurrentes: varios capítulos a la vez sin bloquearse entre sí.
 - Maple Assistant con motor regex local y soporte opcional de Ollama.
 - Acciones del asistente protegidas por token de confirmación.
 - Endpoint `GET /chat/capabilities` para consultar funciones, acciones y ejemplos del asistente.
 - Backups SQLite mediante `VACUUM INTO`.
-- Electron con `contextIsolation`, `sandbox` y `nodeIntegration` desactivado en la ventana principal.
+- Electron con `contextIsolation`, `sandbox` y `nodeIntegration` desactivado en todas las ventanas y vistas.
 - Backend empaquetado aislado por instancia mediante puerto dinámico, token de sesión e identificador de salud; no reutiliza servidores de desarrollo que estén en el puerto 5000.
 
-## Estructura
+### Estructura
 
 ```text
 maplevault-local/
@@ -57,7 +101,7 @@ maplevault-local/
 `-- package.json   # Scripts raíz
 ```
 
-## Desarrollo
+### Desarrollo
 
 Requisitos:
 
@@ -76,7 +120,7 @@ Servicios por defecto:
 - Frontend Vite: `http://localhost:5173`
 - Ollama opcional: `http://localhost:11434`
 
-## Verificación
+### Verificación
 
 ```bash
 npm run typecheck
@@ -93,7 +137,7 @@ También se puede usar:
 npm run check
 ```
 
-## Instalador
+### Instalador
 
 El instalador de Windows se genera con:
 
@@ -106,7 +150,7 @@ Los comandos `npm run dist`, `npm run dist:win` y `npm run dist:linux`
 compilan y verifican sus entradas antes de empaquetar para evitar builds
 obsoletos o incompletos.
 
-## Datos Locales
+### Datos locales
 
 En producción, Electron usa `app.getPath('userData')` para la base de datos, logs y backups. En desarrollo, los datos se crean bajo `app/data` o la ruta definida por `DATABASE_PATH`.
 
@@ -115,7 +159,7 @@ Los archivos SQLite, backups, logs, instaladores y builds generados no deben ver
 MapleVault no incluye descarga de episodios. Los instaladores de la aplicacion
 se distribuiran desde un portal web y un repositorio de versiones verificadas.
 
-## Maple Assistant
+### Maple Assistant
 
 El asistente sigue este flujo:
 

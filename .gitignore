@@ -48,3 +48,10 @@ tmp-ui-validation/
 # Environment
 .env
 .env.local
+
+# Claude Code harness backups (rollback local, no versionar)
+.claude-backups/
+
+# Worktrees de sesiones aisladas de Claude Code: checkouts completos
+# temporales, no son contenido del proyecto.
+.claude/worktrees/

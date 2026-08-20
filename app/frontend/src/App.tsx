@@ -2,6 +2,7 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import { Sparkles } from 'lucide-react';
 import { AppShell } from './components/layout/AppShell';
 import { ToastContainer, useToast } from './components/ui/Toast';
+import { api } from './services/api';
 import type { NotifyDetail } from './utils/notify';
 
 const ChatPanel = lazy(() => import('./components/chatbot/ChatPanel').then(module => ({ default: module.ChatPanel })));
@@ -18,7 +19,7 @@ const Recommendations = lazy(() => import('./pages/Recommendations').then(module
 
 const PageFallback = () => (
   <div className="flex flex-col items-center justify-center py-20 space-y-3">
-    <div className="h-8 w-8 border-3 border-violet-500 border-t-transparent rounded-full animate-spin"></div>
+    <div className="h-8 w-8 border-3 border-[var(--accent-primary)] border-t-transparent rounded-full animate-spin"></div>
     <span className="text-xs text-slate-400">Cargando...</span>
   </div>
 );
@@ -34,8 +35,20 @@ function App() {
   const { toasts, dismissToast, toast } = useToast();
 
   useEffect(() => {
-    document.documentElement.dataset.theme = 'dark';
+    // Valor por defecto inmediato para el primer frame; se corrige en cuanto
+    // /settings responde si el usuario había elegido Ember anteriormente.
+    document.documentElement.dataset.theme = 'violet';
     document.documentElement.style.colorScheme = 'dark';
+
+    api.getSettings()
+      .then(settings => {
+        if (settings?.theme === 'ember') {
+          document.documentElement.dataset.theme = 'ember';
+        }
+      })
+      .catch(error => {
+        console.error('Error al cargar el tema guardado:', error);
+      });
 
     const handleOpenDetail = (e: any) => {
       handleViewDetails(e.detail.isExternal ? e.detail.data : e.detail.id);
@@ -108,9 +121,10 @@ function App() {
         return <Home onViewDetails={handleViewDetails} onNavigate={setActivePage} refreshTrigger={refreshTrigger} />;
       case 'catalog':
         return (
-          <Catalog 
-            onViewDetails={handleViewDetails} 
-            refreshTrigger={refreshTrigger} 
+          <Catalog
+            onViewDetails={handleViewDetails}
+            refreshTrigger={refreshTrigger}
+            searchValue={searchValue}
           />
         );
       case 'seasons':

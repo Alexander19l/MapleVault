@@ -1,10 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ArrowUpDown,
   BookOpen,
   Database,
-  Download,
   ExternalLink,
-  Filter,
   Loader2,
   Plus,
   RefreshCw,
@@ -12,6 +11,8 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { MangaReader } from '../components/manga/MangaReader';
+import { MangaGenrePanel } from '../components/manga/MangaGenrePanel';
+import { ChapterListItem } from '../components/manga/ChapterListItem';
 import { Modal } from '../components/ui/Modal';
 import { api } from '../services/api';
 import type {
@@ -78,16 +79,20 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
   const [statusFilter, setStatusFilter] = useState('');
   const [chapters, setChapters] = useState<MangaOnlineChapter[]>([]);
   const [chaptersLoading, setChaptersLoading] = useState(false);
+  const [chapterSort, setChapterSort] = useState<'asc' | 'desc'>('asc');
   const [reader, setReader] = useState<MangaOnlinePages | null>(null);
   const [readerChapter, setReaderChapter] = useState<MangaOnlineChapter | null>(null);
   const [offlineReaderKey, setOfflineReaderKey] = useState('');
   const [readerLoading, setReaderLoading] = useState(false);
-  const [downloadLoading, setDownloadLoading] = useState(false);
+  const [downloadingChapters, setDownloadingChapters] = useState<Set<string>>(new Set());
   const [selectedProviderId, setSelectedProviderId] = useState('mangadex');
   const [onlinePage, setOnlinePage] = useState(0);
   const [onlineHasMore, setOnlineHasMore] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
+  const [libraryFilter, setLibraryFilter] = useState<'all' | 'reading' | 'plan_to_read' | 'dropped' | 'favorite'>('all');
+  const [libraryFolderMessage, setLibraryFolderMessage] = useState('');
+  const [statusUpdating, setStatusUpdating] = useState(false);
 
   const loadManga = useCallback(async () => {
     setLoading(true);
@@ -95,7 +100,9 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
       const data = await api.getMangaListPage({
         q: submittedQuery || undefined,
         limit: PAGE_SIZE,
-        offset: 0
+        offset: 0,
+        readStatus: ['reading', 'plan_to_read', 'dropped'].includes(libraryFilter) ? libraryFilter : undefined,
+        favorite: libraryFilter === 'favorite' ? true : undefined
       });
       setManga(data.rows || []);
       setTotal(Number(data.total) || 0);
@@ -106,11 +113,17 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
     } finally {
       setLoading(false);
     }
-  }, [submittedQuery]);
+  }, [submittedQuery, libraryFilter]);
 
   useEffect(() => {
     loadManga();
   }, [loadManga, refreshTrigger]);
+
+  const handleOpenMangaLibraryFolder = async () => {
+    const result = await (window as any).electronAPI?.manga?.openFolder?.();
+    setLibraryFolderMessage(result?.error ? `No se pudo abrir la carpeta: ${result.error}` : 'Carpeta de mangas descargados abierta.');
+    window.setTimeout(() => setLibraryFolderMessage(''), 5000);
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -151,6 +164,18 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
 
   const genreTags = useMemo(() => tags.filter(tag => tag.group === 'genre'), [tags]);
   const topicTags = useMemo(() => tags.filter(tag => tag.group !== 'genre'), [tags]);
+
+  const sortChapters = useCallback((list: MangaOnlineChapter[]) => {
+    const sorted = [...list].sort((a, b) => {
+      const aNumber = a.number ?? Number.POSITIVE_INFINITY;
+      const bNumber = b.number ?? Number.POSITIVE_INFINITY;
+      return aNumber - bNumber;
+    });
+    return chapterSort === 'desc' ? sorted.reverse() : sorted;
+  }, [chapterSort]);
+
+  const sortedChapters = useMemo(() => sortChapters(chapters), [chapters, sortChapters]);
+  const sortedLocalChapters = useMemo(() => sortChapters(localChapters), [localChapters, sortChapters]);
 
   const activeOnlineProviderCount = useMemo(
     () => onlineProviders.filter(provider => provider.enabled).length,
@@ -222,12 +247,11 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
     setReader(null);
     setChaptersLoading(true);
     const providerId = selectedProvider.id;
-    const detailsRequest = item.synopsis
-      ? Promise.resolve({ manga: item })
-      : api.getMangaOnlineDetails(item.id, providerId);
-    const [detailsResult, chaptersResult] = await Promise.allSettled([
-      detailsRequest,
-      api.getMangaOnlineChapters(item.id, ['es', 'en'], providerId)
+    const offlineApi = (window as any).electronAPI?.manga;
+    const [detailsResult, chaptersResult, offlineResult] = await Promise.allSettled([
+      api.getMangaOnlineDetails(item.id, providerId),
+      api.getMangaOnlineChapters(item.id, ['es', 'en'], providerId),
+      offlineApi?.listOfflineChapters ? offlineApi.listOfflineChapters({ series: item.title }) : Promise.resolve(null)
     ]);
 
     if (detailsResult.status === 'fulfilled') {
@@ -243,6 +267,10 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
       console.error('Error al cargar capítulos de manga:', chaptersResult.reason);
       setChapters([]);
     }
+    // Mismo dato que ya se calculaba para la ficha local: si el usuario ya
+    // descargó capítulos de esta obra antes, la ficha online también debe
+    // marcarlos como descargados en vez de ofrecerlos como "solo online".
+    setOfflineChapters(offlineResult.status === 'fulfilled' ? offlineResult.value?.chapters || [] : []);
     setChaptersLoading(false);
     setDetailLoading(false);
   };
@@ -262,6 +290,24 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
     if (chaptersResult.status === 'fulfilled') setLocalChapters(chaptersResult.value.chapters || []);
     setOfflineChapters(offlineResult.status === 'fulfilled' ? offlineResult.value?.chapters || [] : []);
     setDetailLoading(false);
+  };
+
+  const handleUpdateMangaStatus = async (payload: { read_status?: 'reading' | 'plan_to_read' | 'dropped'; favorite?: boolean }) => {
+    if (!selectedLocal) return;
+    setStatusUpdating(true);
+    try {
+      await api.updateMangaUserList(selectedLocal.id, payload);
+      setSelectedLocal(current => current ? {
+        ...current,
+        ...(payload.read_status !== undefined ? { read_status: payload.read_status } : {}),
+        ...(payload.favorite !== undefined ? { favorite: payload.favorite ? 1 : 0 } : {})
+      } : current);
+      void loadManga();
+    } catch (error) {
+      console.error('Error al actualizar el estado de la serie:', error);
+    } finally {
+      setStatusUpdating(false);
+    }
   };
 
   const handleAddToLibrary = async () => {
@@ -293,54 +339,52 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
     }
   };
 
-  const handleOpenChapter = async (chapter: MangaOnlineChapter) => {
+  /**
+   * Apertura unificada: un capítulo se abre igual desde la ficha online o la
+   * local. Si ya está descargado, se lee offline sin importar desde dónde se
+   * entró; si no, cae a streaming online usando el proveedor de origen de la
+   * propia serie (no el que esté activo en la pestaña de búsqueda).
+   */
+  const handleOpenAnyChapter = async (chapter: MangaOnlineChapter, seriesTitle: string, providerId: string) => {
+    const offlineApi = (window as any).electronAPI?.manga;
+    const offlineChapter = findOfflineChapter(chapter, offlineChapters);
+
     setReaderLoading(true);
     setChapterError('');
     setReaderChapter(chapter);
-    setOfflineReaderKey('');
     setDetailOpen(false);
+
+    if (offlineChapter && offlineApi?.readChapter) {
+      setOfflineReaderKey(offlineChapter.key);
+      try {
+        const result = await offlineApi.readChapter({
+          series: seriesTitle,
+          chapter: offlineChapter.key,
+          offset: 0,
+          limit: 1
+        });
+        if (!result?.pages?.length) throw new Error('Capítulo offline vacío.');
+        setReader({ chapterId: chapter.id, quality: 'data', pages: result.pages, totalPages: result.total });
+      } catch (error) {
+        console.error('Error al abrir capítulo offline:', error);
+        setReader(null);
+        setReaderChapter(null);
+        setOfflineReaderKey('');
+        setChapterError('No se pudo leer el capítulo descargado.');
+      } finally {
+        setReaderLoading(false);
+      }
+      return;
+    }
+
+    setOfflineReaderKey('');
     try {
-      setReader(await api.getMangaOnlinePages(chapter.id, 'data-saver', selectedProvider.id));
+      setReader(await api.getMangaOnlinePages(chapter.id, 'data-saver', providerId));
     } catch (error) {
       console.error('Error al abrir capítulo de manga:', error);
       setReader(null);
       setReaderChapter(null);
       setChapterError('No se pudo abrir este capítulo. La fuente puede estar temporalmente ocupada. Intenta nuevamente.');
-    } finally {
-      setReaderLoading(false);
-    }
-  };
-
-  const handleOpenOfflineChapter = async (chapter: MangaOnlineChapter) => {
-    const apiOffline = (window as any).electronAPI?.manga;
-    if (!apiOffline?.readChapter || !selectedLocal) return;
-    const offlineChapter = findOfflineChapter(chapter, offlineChapters);
-    if (!offlineChapter) return;
-    setReaderLoading(true);
-    setChapterError('');
-    setReaderChapter(chapter);
-    setOfflineReaderKey(offlineChapter.key);
-    setDetailOpen(false);
-    try {
-      const result = await apiOffline.readChapter({
-        series: selectedLocal.title,
-        chapter: offlineChapter.key,
-        offset: 0,
-        limit: 1
-      });
-      if (!result?.pages?.length) throw new Error('Capítulo offline vacío.');
-      setReader({
-        chapterId: chapter.id,
-        quality: 'data',
-        pages: result.pages,
-        totalPages: result.total
-      });
-    } catch (error) {
-      console.error('Error al abrir capítulo offline:', error);
-      setReader(null);
-      setReaderChapter(null);
-      setOfflineReaderKey('');
-      setChapterError('No se pudo leer el capítulo descargado.');
     } finally {
       setReaderLoading(false);
     }
@@ -359,22 +403,22 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
     setOfflineChapters([]);
   };
 
-  const handleDownloadChapter = async (chapter: MangaOnlineChapter) => {
-    if (!selectedOnline) return;
-    setDownloadLoading(true);
+  const handleDownloadChapter = async (chapter: MangaOnlineChapter, seriesTitle: string, providerId: string) => {
+    if (!seriesTitle || downloadingChapters.has(chapter.id)) return;
+    setDownloadingChapters(prev => new Set(prev).add(chapter.id));
     try {
       const blob = await api.downloadMangaOnlineChapter(
         chapter.id,
-        selectedOnline.title,
+        seriesTitle,
         String(chapter.number ?? chapter.id.slice(0, 8)),
         'data-saver',
-        selectedProvider.id
+        providerId
       );
-      const fileName = `${selectedOnline.title} - Capitulo ${chapter.number ?? chapter.id.slice(0, 8)}.zip`;
+      const fileName = `${seriesTitle} - Capitulo ${chapter.number ?? chapter.id.slice(0, 8)}.zip`;
       const desktopMangaApi = (window as any).electronAPI?.manga;
       if (desktopMangaApi?.saveArchive) {
         const result = await desktopMangaApi.saveArchive({
-          series: selectedOnline.title,
+          series: seriesTitle,
           fileName,
           data: new Uint8Array(await blob.arrayBuffer())
         });
@@ -389,7 +433,11 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
     } catch (error) {
       console.error('Error al descargar capítulo de manga:', error);
     } finally {
-      setDownloadLoading(false);
+      setDownloadingChapters(prev => {
+        const next = new Set(prev);
+        next.delete(chapter.id);
+        return next;
+      });
     }
   };
 
@@ -477,7 +525,7 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
         </button>
       </div>
 
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="grid gap-4 md:grid-cols-2">
         <div className="rounded-lg border border-[var(--border-medium)] bg-slate-900/45 p-4">
           <div className="flex items-center gap-3">
             <Database className="h-5 w-5 text-sky-300" />
@@ -494,42 +542,22 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
           <p className="mt-3 text-2xl font-black">{activeOnlineProviderCount}</p>
           <p className="text-xs text-[var(--text-muted)]">Proveedores remotos operativos.</p>
         </div>
-        <div className="rounded-lg border border-[var(--border-medium)] bg-slate-900/45 p-4">
-          <div className="flex items-center gap-3">
-            <BookOpen className="h-5 w-5 text-violet-300" />
-            <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-dim)]">Candidatas</span>
-          </div>
-          <p className="mt-3 text-2xl font-black">{sources?.candidates.length || 0}</p>
-          <p className="text-xs text-[var(--text-muted)]">Pendientes de auditoría antes de integrarse.</p>
-        </div>
       </section>
 
       {mode === 'online' ? (
         <section className="space-y-4">
-          <section className="rounded-lg border border-[var(--border-medium)] bg-slate-900/45 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-sm font-bold text-[var(--text-main)]"><Filter className="h-4 w-4 text-[var(--accent-primary)]" /> Filtros de catálogo</div>
-              <button type="button" onClick={() => { setSelectedGenres([]); setSelectedTags([]); setStatusFilter(''); }} className="text-xs font-bold text-[var(--text-muted)] hover:text-[var(--text-main)]">Limpiar filtros</button>
-            </div>
-            <div className="mt-3 grid gap-3 md:grid-cols-3">
-              <label className="text-xs text-[var(--text-muted)]">Géneros
-                <select multiple value={selectedGenres} onChange={event => setSelectedGenres(Array.from(event.target.selectedOptions).slice(0, 4).map(option => option.value))} className="mt-1 h-20 w-full rounded-md border border-[var(--border-soft)] bg-slate-950/70 p-1 text-xs text-[var(--text-main)]" aria-label="Filtrar por géneros">
-                  {genreTags.map(tag => <option key={tag.id} value={tag.id}>{tag.name}</option>)}
-                </select>
-              </label>
-              <label className="text-xs text-[var(--text-muted)]">Temas y etiquetas
-                <select multiple value={selectedTags} onChange={event => setSelectedTags(Array.from(event.target.selectedOptions).slice(0, 4).map(option => option.value))} className="mt-1 h-20 w-full rounded-md border border-[var(--border-soft)] bg-slate-950/70 p-1 text-xs text-[var(--text-main)]" aria-label="Filtrar por etiquetas">
-                  {topicTags.map(tag => <option key={tag.id} value={tag.id}>{tag.name}</option>)}
-                </select>
-              </label>
-              <label className="text-xs text-[var(--text-muted)]">Estado
-                <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="mt-1 h-9 w-full rounded-md border border-[var(--border-soft)] bg-slate-950/70 px-2 text-xs text-[var(--text-main)]">
-                  <option value="">Cualquier estado</option><option value="ongoing">En publicación</option><option value="completed">Finalizado</option><option value="hiatus">En pausa</option>
-                </select>
-              </label>
-            </div>
-            {!tags.length && selectedProvider.id !== 'mangadex' && <p className="mt-2 text-[11px] text-[var(--text-dim)]">Esta fuente no expone filtros de etiquetas; la búsqueda por título sigue disponible.</p>}
-          </section>
+          <MangaGenrePanel
+            genreTags={genreTags}
+            topicTags={topicTags}
+            selectedGenres={selectedGenres}
+            selectedTags={selectedTags}
+            onGenresChange={setSelectedGenres}
+            onTagsChange={setSelectedTags}
+            statusFilter={statusFilter}
+            onStatusChange={setStatusFilter}
+            onSearch={() => void runOnlineSearch(0)}
+            hasNoSourceTags={!tags.length && selectedProvider.id !== 'mangadex'}
+          />
 
           {!onlineResults.length && !query.trim() && (
             <section className="space-y-3">
@@ -603,22 +631,35 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
               </div>
 
               <div className="mt-5 border-t border-[var(--border-soft)] pt-4">
-                <h3 className="text-sm font-bold text-[var(--text-main)]">Capítulos disponibles</h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-[var(--text-main)]">Capítulos disponibles</h3>
+                  {chapters.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setChapterSort(prev => prev === 'asc' ? 'desc' : 'asc')}
+                      className="flex items-center gap-1 rounded-md border border-[var(--border-medium)] bg-[var(--bg-elevated)] px-2 py-1 text-[var(--text-muted)] hover:text-[var(--text-main)]"
+                      title={chapterSort === 'asc' ? 'Orden ascendente' : 'Orden descendente'}
+                    >
+                      <ArrowUpDown className="h-3.5 w-3.5" />
+                      <span className="text-[10px] font-bold uppercase">{chapterSort === 'asc' ? 'Asc' : 'Desc'}</span>
+                    </button>
+                  )}
+                </div>
                 {chaptersLoading ? (
                   <div className="flex items-center gap-2 py-5 text-sm text-[var(--text-muted)]"><Loader2 className="h-4 w-4 animate-spin" /> Cargando capítulos...</div>
                 ) : chapters.length === 0 ? (
                   <p className="py-5 text-sm text-[var(--text-muted)]">No hay capítulos en español o inglés para esta obra.</p>
                 ) : (
                   <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    {chapters.map(chapter => (
-                      <div key={`${chapter.id}-${chapter.language}`} className="flex items-center justify-between gap-3 rounded-md border border-[var(--border-soft)] bg-slate-950/45 px-3 py-2">
-                        <button type="button" onClick={() => handleOpenChapter(chapter)} className="min-w-0 text-left text-sm font-bold text-[var(--text-main)] hover:text-[var(--accent-primary)]">
-                          Cap. {chapter.number ?? 'S/N'} <span className="ml-1 text-[10px] uppercase text-[var(--text-dim)]">{chapter.language}</span>
-                        </button>
-                        <button type="button" onClick={() => handleDownloadChapter(chapter)} disabled={downloadLoading} className="shrink-0 rounded-md p-2 text-[var(--text-muted)] hover:bg-slate-800 hover:text-white disabled:opacity-50" aria-label="Descargar capítulo" title="Descargar capítulo">
-                          {downloadLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                        </button>
-                      </div>
+                    {sortedChapters.map(chapter => (
+                      <ChapterListItem
+                        key={`${chapter.id}-${chapter.language}`}
+                        chapter={chapter}
+                        offline={Boolean(findOfflineChapter(chapter, offlineChapters))}
+                        onOpen={() => selectedOnline && handleOpenAnyChapter(chapter, selectedOnline.title, selectedProvider.id)}
+                        onDownload={() => selectedOnline && handleDownloadChapter(chapter, selectedOnline.title, selectedProvider.id)}
+                        downloadLoading={downloadingChapters.has(chapter.id)}
+                      />
                     ))}
                   </div>
                 )}
@@ -626,7 +667,23 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
             </Modal>
           )}
 
-          {chapterError && <div className="flex items-center justify-between gap-3 rounded-lg border border-rose-400/30 bg-rose-950/25 px-4 py-3 text-sm text-rose-200"><span>{chapterError}</span><button type="button" onClick={() => readerChapter && handleOpenChapter(readerChapter)} className="inline-flex items-center gap-2 rounded-md bg-rose-900/50 px-3 py-2 text-xs font-bold"><RefreshCw className="h-3.5 w-3.5" /> Reintentar</button></div>}
+          {chapterError && (
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-rose-400/30 bg-rose-950/25 px-4 py-3 text-sm text-rose-200">
+              <span>{chapterError}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!readerChapter) return;
+                  const seriesTitle = selectedOnline?.title || selectedLocal?.title || '';
+                  const providerId = selectedOnline ? selectedProvider.id : (selectedLocal?.source || selectedProvider.id);
+                  void handleOpenAnyChapter(readerChapter, seriesTitle, providerId);
+                }}
+                className="inline-flex items-center gap-2 rounded-md bg-rose-900/50 px-3 py-2 text-xs font-bold"
+              >
+                <RefreshCw className="h-3.5 w-3.5" /> Reintentar
+              </button>
+            </div>
+          )}
 
           {readerLoading && (
             <div className="flex items-center justify-center gap-2 rounded-lg border border-[var(--border-medium)] bg-slate-950/40 py-8 text-sm text-[var(--text-muted)]">
@@ -642,32 +699,89 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
               pages={reader.pages}
               totalPages={reader.totalPages}
               onPageRequest={selectedLocal && offlineReaderKey ? loadOfflinePage : undefined}
-              downloadLoading={downloadLoading}
+              downloadLoading={readerChapter ? downloadingChapters.has(readerChapter.id) : false}
               onClose={() => { setReader(null); setReaderChapter(null); setOfflineReaderKey(''); }}
-              onDownload={selectedOnline ? () => handleDownloadChapter(readerChapter) : undefined}
+              onDownload={() => {
+                if (!readerChapter) return;
+                const seriesTitle = selectedOnline?.title || selectedLocal?.title || '';
+                const providerId = selectedOnline ? selectedProvider.id : (selectedLocal?.source || selectedProvider.id);
+                if (seriesTitle) void handleDownloadChapter(readerChapter, seriesTitle, providerId);
+              }}
             />
           )}
         </section>
-      ) : loading ? (
-        <div className="flex min-h-72 items-center justify-center text-sm text-[var(--text-muted)]">
-          Cargando biblioteca de manga...
-        </div>
-      ) : manga.length === 0 ? (
-        <section className="rounded-lg border border-dashed border-[var(--border-medium)] bg-slate-950/40 p-8 text-center">
-          <BookOpen className="mx-auto h-10 w-10 text-[var(--text-dim)]" />
-          <h2 className="mt-4 text-lg font-bold text-[var(--text-main)]">La sección de manga está lista, pero vacía</h2>
-          <p className="mx-auto mt-2 max-w-2xl text-sm text-[var(--text-muted)]">
-            Busca una obra en MangaDex, ZonaTMO o ShadeManga para consultar su ficha y capítulos sin llenar automáticamente tu biblioteca local.
-          </p>
-        </section>
       ) : (
-        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {manga.map(item => (
-            <button key={item.id} type="button" onClick={() => void handleSelectLocal(item)} className="group overflow-hidden rounded-lg border border-[var(--border-medium)] bg-slate-900/55 text-left transition-transform hover:-translate-y-0.5 hover:border-[var(--accent-primary)]">
-              <div className="aspect-[3/4] bg-slate-950">{item.cover_image ? <img src={item.cover_image} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-full w-full object-cover transition-transform group-hover:scale-[1.02]" /> : <div className="flex h-full items-center justify-center"><BookOpen className="h-10 w-10 text-[var(--text-dim)]" /></div>}</div>
-              <div className="p-4"><h2 className="line-clamp-2 text-sm font-bold text-[var(--text-main)]">{item.title}</h2><p className="mt-2 text-xs text-[var(--text-muted)]">{[item.format, item.year, item.chapters ? `${item.chapters} capítulos` : null].filter(Boolean).join(' · ') || 'Dato no disponible'}</p></div>
-            </button>
-          ))}
+        <section className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div role="tablist" aria-label="Filtrar biblioteca local" className="flex flex-wrap gap-1.5">
+              {([
+                { id: 'all', label: 'Todos' },
+                { id: 'reading', label: 'Viendo' },
+                { id: 'plan_to_read', label: 'Pendiente' },
+                { id: 'dropped', label: 'Abandonado' },
+                { id: 'favorite', label: 'Favorito' }
+              ] as const).map(tab => {
+                const isActive = libraryFilter === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    onClick={() => setLibraryFilter(tab.id)}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      isActive
+                        ? 'border-[var(--accent-primary)] bg-[var(--accent-soft)] text-[var(--accent-primary)]'
+                        : 'border-[var(--border-soft)] bg-slate-900/60 text-[var(--text-muted)] hover:border-[var(--border-strong)] hover:text-[var(--text-main)]'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void handleOpenMangaLibraryFolder()}
+                className="inline-flex items-center gap-2 rounded-md border border-[var(--border-medium)] bg-[var(--bg-elevated)] px-3 py-1.5 text-xs font-bold text-[var(--text-muted)] hover:text-[var(--text-main)]"
+              >
+                <Database className="h-3.5 w-3.5" /> Ver carpeta de descargas
+              </button>
+              {libraryFolderMessage && <span className="text-[11px] text-emerald-300">{libraryFolderMessage}</span>}
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="flex min-h-72 items-center justify-center text-sm text-[var(--text-muted)]">
+              Cargando biblioteca de manga...
+            </div>
+          ) : manga.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-[var(--border-medium)] bg-slate-950/40 p-8 text-center">
+              <BookOpen className="mx-auto h-10 w-10 text-[var(--text-dim)]" />
+              <h2 className="mt-4 text-lg font-bold text-[var(--text-main)]">
+                {libraryFilter === 'all' ? 'La sección de manga está lista, pero vacía' : 'Nada con este filtro todavía'}
+              </h2>
+              <p className="mx-auto mt-2 max-w-2xl text-sm text-[var(--text-muted)]">
+                {libraryFilter === 'all'
+                  ? 'Busca una obra en MangaDex, ZonaTMO o ShadeManga para consultar su ficha y capítulos sin llenar automáticamente tu biblioteca local.'
+                  : 'Cambia el estado de alguna serie guardada o prueba con otra pestaña.'}
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {manga.map(item => (
+                <button key={item.id} type="button" onClick={() => void handleSelectLocal(item)} className="group overflow-hidden rounded-lg border border-[var(--border-medium)] bg-slate-900/55 text-left transition-transform hover:-translate-y-0.5 hover:border-[var(--accent-primary)]">
+                  <div className="aspect-[3/4] bg-slate-950">{item.cover_image ? <img src={item.cover_image} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-full w-full object-cover transition-transform group-hover:scale-[1.02]" /> : <div className="flex h-full items-center justify-center"><BookOpen className="h-10 w-10 text-[var(--text-dim)]" /></div>}</div>
+                  <div className="p-4">
+                    <h2 className="line-clamp-2 text-sm font-bold text-[var(--text-main)]">{item.title}</h2>
+                    <p className="mt-2 text-xs text-[var(--text-muted)]">{[item.format, item.year, item.chapters ? `${item.chapters} capítulos` : null].filter(Boolean).join(' · ') || 'Dato no disponible'}</p>
+                    {Boolean(item.favorite) && <span className="mt-2 inline-block status-badge bg-amber-500/15 text-amber-300">Favorito</span>}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </section>
       )}
 
@@ -675,9 +789,102 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
         <Modal isOpen={detailOpen && mode === 'local'} onClose={clearDetail} title={`Ficha de ${selectedLocal.title}`} size="xl">
           <div className="flex flex-col gap-4 md:flex-row">
             {selectedLocal.cover_image && <img src={selectedLocal.cover_image} alt="" referrerPolicy="no-referrer" className="h-40 w-28 rounded-md object-cover" />}
-            <div className="min-w-0 flex-1"><h2 className="text-xl font-black text-[var(--text-main)]">{selectedLocal.title}</h2><p className="mt-1 text-xs text-[var(--text-muted)]">Biblioteca local · {selectedLocal.year || 'Año no disponible'}</p>{detailLoading ? <div className="mt-4 flex items-center gap-2 text-sm text-[var(--text-muted)]"><Loader2 className="h-4 w-4 animate-spin" /> Cargando información...</div> : <p className="mt-3 text-sm leading-6 text-[var(--text-muted)]">{selectedLocal.synopsis || 'Sinopsis no disponible.'}</p>}</div>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-xl font-black text-[var(--text-main)]">{selectedLocal.title}</h2>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">Biblioteca local · {selectedLocal.year || 'Año no disponible'}</p>
+              {detailLoading ? (
+                <div className="mt-4 flex items-center gap-2 text-sm text-[var(--text-muted)]"><Loader2 className="h-4 w-4 animate-spin" /> Cargando información...</div>
+              ) : (
+                <>
+                  <p className="mt-3 text-sm leading-6 text-[var(--text-muted)]">{selectedLocal.synopsis || 'Sinopsis no disponible.'}</p>
+                  {selectedLocal.translation?.translated && <p className="mt-2 text-[11px] font-bold text-emerald-300">Sinopsis traducida al español por LibreTranslate.</p>}
+
+                  <div className="mt-4 flex flex-wrap items-center gap-1.5">
+                    {([
+                      { id: 'reading', label: 'Viendo' },
+                      { id: 'plan_to_read', label: 'Pendiente' },
+                      { id: 'dropped', label: 'Abandonado' }
+                    ] as const).map(status => {
+                      const isActive = selectedLocal.read_status === status.id;
+                      return (
+                        <button
+                          key={status.id}
+                          type="button"
+                          disabled={statusUpdating}
+                          onClick={() => void handleUpdateMangaStatus({ read_status: status.id })}
+                          className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors disabled:opacity-50 ${
+                            isActive
+                              ? 'border-[var(--accent-primary)] bg-[var(--accent-soft)] text-[var(--accent-primary)]'
+                              : 'border-[var(--border-soft)] bg-slate-900/60 text-[var(--text-muted)] hover:border-[var(--border-strong)] hover:text-[var(--text-main)]'
+                          }`}
+                        >
+                          {status.label}
+                        </button>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      disabled={statusUpdating}
+                      onClick={() => void handleUpdateMangaStatus({ favorite: !selectedLocal.favorite })}
+                      aria-pressed={Boolean(selectedLocal.favorite)}
+                      className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors disabled:opacity-50 ${
+                        selectedLocal.favorite
+                          ? 'border-amber-400 bg-amber-500/15 text-amber-300'
+                          : 'border-[var(--border-soft)] bg-slate-900/60 text-[var(--text-muted)] hover:border-[var(--border-strong)] hover:text-[var(--text-main)]'
+                      }`}
+                    >
+                      {selectedLocal.favorite ? '★ Favorito' : '☆ Favorito'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleOpenMangaLibraryFolder()}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-soft)] bg-slate-900/60 px-2.5 py-1 text-[11px] font-semibold text-[var(--text-muted)] hover:border-[var(--border-strong)] hover:text-[var(--text-main)]"
+                      title="Abre la carpeta donde se guardan los capítulos descargados"
+                    >
+                      <Database className="h-3 w-3" /> Ver carpeta
+                    </button>
+                  </div>
+                  {libraryFolderMessage && <p className="mt-1.5 text-[11px] text-emerald-300">{libraryFolderMessage}</p>}
+                </>
+              )}
+            </div>
           </div>
-          <div className="mt-5 border-t border-[var(--border-soft)] pt-4"><h3 className="text-sm font-bold text-[var(--text-main)]">Capítulos de la biblioteca</h3>{localChapters.length === 0 ? <p className="py-5 text-sm text-[var(--text-muted)]">Esta obra todavía no tiene capítulos sincronizados.</p> : <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{localChapters.map(chapter => { const offline = Boolean(findOfflineChapter(chapter, offlineChapters)); return <div key={`${chapter.id}-${chapter.language}`} className="flex items-center justify-between gap-3 rounded-md border border-[var(--border-soft)] bg-slate-950/45 px-3 py-2"><button type="button" disabled={!offline} onClick={() => void handleOpenOfflineChapter(chapter)} className="min-w-0 text-left text-sm font-bold text-[var(--text-main)] hover:text-[var(--accent-primary)] disabled:cursor-not-allowed disabled:opacity-50">Cap. {chapter.number ?? 'S/N'} {offline ? <span className="ml-1 text-[10px] text-emerald-300">offline</span> : <span className="ml-1 text-[10px] text-[var(--text-dim)]">descarga requerida</span>}</button></div>; })}</div>}</div>
+          <div className="mt-5 border-t border-[var(--border-soft)] pt-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-[var(--text-main)]">Capítulos de la biblioteca</h3>
+              {localChapters.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setChapterSort(prev => prev === 'asc' ? 'desc' : 'asc')}
+                  className="flex items-center gap-1 rounded-md border border-[var(--border-medium)] bg-[var(--bg-elevated)] px-2 py-1 text-[var(--text-muted)] hover:text-[var(--text-main)]"
+                  title={chapterSort === 'asc' ? 'Orden ascendente' : 'Orden descendente'}
+                >
+                  <ArrowUpDown className="h-3.5 w-3.5" />
+                  <span className="text-[10px] font-bold uppercase">{chapterSort === 'asc' ? 'Asc' : 'Desc'}</span>
+                </button>
+              )}
+            </div>
+            {localChapters.length === 0 ? (
+              <p className="py-5 text-sm text-[var(--text-muted)]">Esta obra todavía no tiene capítulos sincronizados.</p>
+            ) : (
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {sortedLocalChapters.map(chapter => {
+                  const offline = Boolean(findOfflineChapter(chapter, offlineChapters));
+                  return (
+                    <ChapterListItem
+                      key={`${chapter.id}-${chapter.language}`}
+                      chapter={chapter}
+                      offline={offline}
+                      showOnlineFallbackHint
+                      onOpen={() => selectedLocal && handleOpenAnyChapter(chapter, selectedLocal.title, selectedLocal.source || selectedProvider.id)}
+                      onDownload={() => selectedLocal && handleDownloadChapter(chapter, selectedLocal.title, selectedLocal.source || selectedProvider.id)}
+                      downloadLoading={downloadingChapters.has(chapter.id)}
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </Modal>
       )}
 
@@ -688,29 +895,12 @@ export const Manga: React.FC<MangaProps> = ({ refreshTrigger = 0 }) => {
           pages={reader.pages}
           totalPages={reader.totalPages}
           onPageRequest={offlineReaderKey ? loadOfflinePage : undefined}
+          downloadLoading={downloadingChapters.has(readerChapter.id)}
           onClose={() => { setReader(null); setReaderChapter(null); setOfflineReaderKey(''); }}
+          onDownload={() => readerChapter && selectedLocal && handleDownloadChapter(readerChapter, selectedLocal.title, selectedLocal.source || selectedProvider.id)}
         />
       )}
 
-      {sources && (
-        <section className="rounded-lg border border-[var(--border-medium)] bg-slate-900/35 p-5">
-          <h2 className="text-sm font-bold text-[var(--text-main)]">Fuentes candidatas para manga</h2>
-          <p className="mt-1 text-xs text-[var(--text-muted)]">{sources.policy}</p>
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            {sources.candidates.map(source => (
-              <div key={source.id} className="rounded-lg border border-[var(--border-soft)] bg-slate-950/45 p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm font-bold text-[var(--text-main)]">{source.name}</span>
-                  <span className="rounded-full bg-slate-800 px-2 py-1 text-[10px] uppercase text-[var(--text-muted)]">
-                    riesgo {source.risk}
-                  </span>
-                </div>
-                <p className="mt-2 text-xs text-[var(--text-muted)]">{source.notes}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
     </div>
   );
 };

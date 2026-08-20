@@ -77,24 +77,27 @@ describe('MangaDexProvider', () => {
       attributes: { translatedLanguage: 'es', chapter: String(index + 101) }
     }));
     const get = vi.fn()
-      .mockResolvedValueOnce({ data: { result: 'ok', data: firstPage } })
-      .mockResolvedValueOnce({ data: { result: 'ok', data: secondPage } });
+      .mockResolvedValueOnce({ data: { result: 'ok', data: firstPage, total: 125 } })
+      .mockResolvedValueOnce({ data: { result: 'ok', data: secondPage, total: 125 } });
     const provider = new MangaDexProvider({ get } as any);
 
     const result = await provider.getChapters(mangaId);
 
     expect(result).toHaveLength(125);
     expect(get).toHaveBeenCalledTimes(2);
+    expect(get.mock.calls[0][0]).toBe(`/manga/${mangaId}/feed`);
     expect(get.mock.calls[1][1].params.offset).toBe(100);
   });
 
-  it('descarta capítulos fuera de español e inglés', async () => {
+  it('incluye español latino como español y descarta otros idiomas', async () => {
     const get = vi.fn().mockResolvedValue({
       data: {
         result: 'ok',
+        total: 3,
         data: [
           { id: chapterId, type: 'chapter', attributes: { translatedLanguage: 'es', chapter: '1' } },
-          { id: '33333333-3333-3333-3333-333333333333', type: 'chapter', attributes: { translatedLanguage: 'fr', chapter: '2' } }
+          { id: '33333333-3333-3333-3333-333333333333', type: 'chapter', attributes: { translatedLanguage: 'es-la', chapter: '2' } },
+          { id: '44444444-4444-4444-4444-444444444444', type: 'chapter', attributes: { translatedLanguage: 'fr', chapter: '3' } }
         ]
       }
     });
@@ -102,10 +105,11 @@ describe('MangaDexProvider', () => {
 
     const result = await provider.getChapters(mangaId);
 
-    expect(result).toHaveLength(1);
+    expect(result).toHaveLength(2);
     expect(result[0]).toMatchObject({ id: chapterId, language: 'es', number: 1 });
-    expect(get).toHaveBeenCalledWith('/chapter', expect.objectContaining({
-      params: expect.objectContaining({ manga: mangaId })
+    expect(result[1]).toMatchObject({ language: 'es', number: 2 });
+    expect(get).toHaveBeenCalledWith(`/manga/${mangaId}/feed`, expect.objectContaining({
+      params: expect.objectContaining({ 'translatedLanguage[]': ['es', 'es-la', 'en'] })
     }));
   });
 
@@ -135,5 +139,24 @@ describe('MangaDexProvider', () => {
     expect(archive.readUInt32LE(0)).toBe(0x04034b50);
     expect(archive.readUInt32LE(archive.length - 22)).toBe(0x06054b50);
     expect(sanitizeDownloadName('Serie: ../capitulo?', 'Manga')).toBe('Serie .. capitulo');
+  });
+
+  it('excluye la etiqueta Loli del panel de géneros/temas', async () => {
+    const get = vi.fn().mockResolvedValue({
+      data: {
+        result: 'ok',
+        data: [
+          { id: 'tag-action', attributes: { name: { en: 'Action' }, group: 'genre' } },
+          { id: 'tag-loli', attributes: { name: { en: 'Loli' }, group: 'theme' } },
+          { id: 'tag-isekai', attributes: { name: { en: 'Isekai' }, group: 'theme' } }
+        ]
+      }
+    });
+    const provider = new MangaDexProvider({ get } as any);
+
+    const tags = await provider.getTags();
+
+    expect(tags.map(tag => tag.name)).toEqual(['Action', 'Isekai']);
+    expect(tags.some(tag => tag.name.toLowerCase() === 'loli')).toBe(false);
   });
 });

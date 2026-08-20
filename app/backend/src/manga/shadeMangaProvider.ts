@@ -7,8 +7,6 @@ import {
 } from './mangadexProvider';
 import type { MangaCatalogProvider } from './mangaProviderTypes';
 import type { MangaSearchFilters } from './mangaProviderTypes';
-import * as cheerio from 'cheerio';
-
 const SHADEMANGA_SITE_URL = 'https://shademanga.com';
 const SHADEMANGA_API_URL = `${SHADEMANGA_SITE_URL}/api`;
 const SHADEMANGA_CDN_HOST = 'cdn.shademanga.com';
@@ -21,10 +19,6 @@ const PUBLIC_ID_PATTERN = /^[A-Za-z0-9]{4,32}$/;
 const USER_AGENT = 'Mozilla/5.0 MapleVault/1.0';
 
 interface ShadeMangaHttpClient {
-  get<T = unknown>(url: string, config?: Record<string, unknown>): Promise<{ data: T }>;
-}
-
-interface ShadeMangaSiteClient {
   get<T = unknown>(url: string, config?: Record<string, unknown>): Promise<{ data: T }>;
 }
 
@@ -130,11 +124,6 @@ export class ShadeMangaProvider implements MangaCatalogProvider {
       timeout: 15_000,
       maxContentLength: MAX_DOWNLOAD_BYTES,
       headers: { 'User-Agent': USER_AGENT }
-    }),
-    private readonly siteHttp: ShadeMangaSiteClient = axios.create({
-      baseURL: SHADEMANGA_SITE_URL,
-      timeout: 15_000,
-      headers: { 'User-Agent': USER_AGENT }
     })
   ) {}
 
@@ -151,20 +140,15 @@ export class ShadeMangaProvider implements MangaCatalogProvider {
   }
 
   async getRecent(limit = 8): Promise<MangaDexSearchItem[]> {
+    // La portada pública (`/`) es una SPA que carga las imágenes por JS
+    // después de la carga inicial: el HTML servido nunca contiene <img>,
+    // así que scrapearla nunca podía devolver coverUrl. El propio bundle
+    // del sitio expone `series-locales/novedades-recientes`, con la misma
+    // forma que search()/getDetails(), portada incluida.
     const take = Math.min(Math.max(Math.floor(limit), 1), MAX_SEARCH_LIMIT);
-    const response = await this.gate(() => this.siteHttp.get<string>('/'));
-    const doc = cheerio.load(String(response.data));
-    const results: MangaDexSearchItem[] = [];
-    doc('a[href^="/serie/"]').each((_, element) => {
-      if (results.length >= take) return;
-      const href = String(doc(element).attr('href') || '');
-      const id = href.split('/').filter(Boolean).pop() || '';
-      const title = doc(element).find('h2,h3,h4,.title,.name').first().text().replace(/\s+/g, ' ').trim() || doc(element).text().replace(/\s+/g, ' ').trim();
-      if (!PUBLIC_ID_PATTERN.test(id) || !title || results.some(item => item.id === id)) return;
-      const coverUrl = getSafeImageUrl(doc(element).find('img').first().attr('src')) || undefined;
-      results.push({ id, title: title.slice(0, 240), coverUrl, sourceUrl: `${SHADEMANGA_SITE_URL}/serie/${encodeURIComponent(id)}` });
-    });
-    return results;
+    const response = await this.gate(() => this.http.get<ShadeMangaSeries[]>('/series-locales/novedades-recientes'));
+    if (!Array.isArray(response.data)) return [];
+    return response.data.map(toSearchItem).filter((item): item is MangaDexSearchItem => Boolean(item)).slice(0, take);
   }
 
   async getDetails(mangaId: string): Promise<MangaDexSearchItem> {
