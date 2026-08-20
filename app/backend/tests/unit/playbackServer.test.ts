@@ -40,6 +40,35 @@ describe('playback server metadata', () => {
     expect(result[0].playbackMode).toBe('inline');
   });
 
+  it('manda a ventana propia solo los hosts comprobados y deja el resto embebido', () => {
+    const result = decoratePlaybackServers({
+      SUB: [
+        // Servidor "HLS" de AnimeAV1: se comprobó que no se reproduce embebido.
+        { server: 'HLS', url: 'https://player.zilla-networks.com/play/abc123' },
+        { server: 'Pdrain', url: 'https://pixeldrain.com/u/abc123' },
+        { server: 'Voe', url: 'https://voe.sx/e/abc123' },
+        // Estos sí funcionan dentro de la app y deben seguir embebidos.
+        { server: 'MP4Upload', url: 'https://www.mp4upload.com/embed-abc123.html' },
+        { server: 'YourUpload', url: 'https://www.yourupload.com/embed/abc123' }
+      ]
+    }, {
+      providerId: 'animeav1',
+      language: 'es',
+      referer: 'https://animeav1.com/media/serie/1'
+    });
+
+    const modes = Object.fromEntries(
+      result.SUB.map((server: { server: string; playbackMode: string }) => [server.server, server.playbackMode])
+    );
+    expect(modes).toEqual({
+      HLS: 'window',
+      Pdrain: 'window',
+      Voe: 'window',
+      MP4Upload: 'inline',
+      YourUpload: 'inline'
+    });
+  });
+
   it('conserva el modo de ventana directa declarado por un adaptador verificado', () => {
     const result = decoratePlaybackServers([
       {

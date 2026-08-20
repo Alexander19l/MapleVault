@@ -17,6 +17,30 @@ interface PlaybackServerContext {
   forceWindow?: boolean | ((serverName: string, url: string) => boolean);
 }
 
+/**
+ * Servidores que no se reproducen dentro del panel embebido y sí lo hacen en una ventana
+ * independiente. Se mantiene deliberadamente corta: solo los hosts en los que se ha
+ * comprobado el problema. El resto (mp4upload, yourupload, etc.) sigue embebido, que es
+ * la experiencia preferida.
+ */
+const STANDALONE_WINDOW_HOSTS = [
+  'zilla-networks.com', // el servidor "HLS" de AnimeAV1
+  'pixeldrain.com',     // "Pdrain"
+  'voe.sx'              // Voe: su pantalla completa solo funciona en ventana propia
+];
+
+function matchesHost(hostname: string, domains: string[]): boolean {
+  return domains.some(domain => hostname === domain || hostname.endsWith(`.${domain}`));
+}
+
+export function requiresStandaloneWindowPlayer(url: string): boolean {
+  try {
+    return matchesHost(new URL(url).hostname.toLowerCase(), STANDALONE_WINDOW_HOSTS);
+  } catch {
+    return false;
+  }
+}
+
 function getSafeHttpUrl(value: unknown): string | null {
   if (typeof value !== 'string' || value.length === 0 || value.length > 4096) return null;
 
@@ -43,7 +67,7 @@ function normalizeServer(value: any, context: PlaybackServerContext): PlaybackSe
   const requestedMode = value?.playbackMode;
   const playbackMode: PlaybackMode = requestedMode === 'direct-window' || requestedMode === 'window'
     ? requestedMode
-    : forceWindow
+    : requiresStandaloneWindowPlayer(url) || forceWindow
       ? 'window'
       : 'inline';
 
@@ -78,6 +102,10 @@ export function decoratePlaybackServers(value: any, context: PlaybackServerConte
   return value;
 }
 
+/**
+ * Respaldo por nombre para el servidor "HLS" de AnimeAV1, por si cambia de host.
+ * mp4upload se retiró de esta lista: se reproduce correctamente embebido.
+ */
 export function requiresStandaloneAnimeAV1Player(serverName: string): boolean {
-  return /(?:^|\s)(?:hls|mp4upload)(?:\s|$)/i.test(serverName);
+  return /(?:^|\s)hls(?:\s|$)/i.test(serverName);
 }

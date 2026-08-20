@@ -64,6 +64,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'manga-list-offline-chapters',
   'manga-read-offline-chapter',
   'manga-open-folder',
+  'player-open',
   'player-attach',
   'player-reposition',
   'player-detach'
@@ -134,6 +135,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   player: {
+    open: (request: {
+      url: string;
+      title?: string;
+      server?: string;
+      referer?: string;
+      mode?: 'embedded' | 'direct';
+    }): Promise<{
+      opened: boolean;
+      error?: string;
+    }> => {
+      return ipcRenderer.invoke('player-open', request);
+    },
     attach: (request: {
       url: string;
       title?: string;

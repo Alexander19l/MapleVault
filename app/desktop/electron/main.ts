@@ -38,6 +38,12 @@ import {
 let mainWindow: BrowserWindow | null = null;
 let playerView: WebContentsView | null = null;
 let playerViewDirectOrigin: string | null = null;
+let playerWindow: BrowserWindow | null = null;
+let playerWindowDirectOrigin: string | null = null;
+/** URL ya cargada en la ventana, para no recargar si se reabre el mismo capítulo. */
+let playerWindowLoadedUrl: string | null = null;
+/** Identifica la carga en curso: descarta resultados de clics anteriores. */
+let playerWindowLoadToken = 0;
 let playerViewPreFullscreenBounds: { x: number; y: number; width: number; height: number } | null = null;
 let isPlayerViewFullscreen = false;
 let backendProcess: ChildProcess | null = null;
@@ -65,6 +71,112 @@ interface StartupSettings {
   supported: boolean;
   enabled: boolean;
   reason?: string;
+}
+
+/**
+ * Reproductor en ventana independiente. Es el camino conocido-bueno: funciona con
+ * fuentes que rechazan mostrarse dentro del panel embebido, y al ser una ventana real
+ * del sistema la pantalla completa es nativa. Se conserva como alternativa a un clic
+ * para cualquier servidor que se quede en negro embebido.
+ */
+async function openPlayerWindow(request: PlayerOpenRequest): Promise<{
+  opened: boolean;
+  error?: string;
+}> {
+  const url = getSafePlayerUrl(request?.url);
+  if (!url) return { opened: false, error: 'La URL del reproductor no es válida.' };
+
+  const animeTitle = sanitizePlayerLabel(request?.title, 'Anime');
+  const server = sanitizePlayerLabel(request?.server, 'Servidor');
+  const referer = getSafePlayerReferer(request?.referer);
+  const mode = getSafePlayerWindowMode(request?.mode);
+  if (mode === 'direct' && !referer) {
+    return { opened: false, error: 'La fuente directa no proporcionó un origen válido.' };
+  }
+  const windowTitle = `MapleVault Player - ${animeTitle} - ${server}`;
+
+  if (!playerWindow || playerWindow.isDestroyed()) {
+    playerWindow = new BrowserWindow({
+      width: 960,
+      height: 540,
+      minWidth: 640,
+      minHeight: 360,
+      useContentSize: true,
+      title: windowTitle,
+      icon: resolveWindowIconPath(),
+      backgroundColor: '#000000',
+      show: false,
+      autoHideMenuBar: true,
+      fullscreenable: true,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true,
+        backgroundThrottling: false,
+        partition: PLAYER_SESSION_PARTITION
+      }
+    });
+    playerWindow.setMenu(null);
+    playerWindow.webContents.on('page-title-updated', event => event.preventDefault());
+    playerWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+      try {
+        const isAllowed = playerWindowDirectOrigin
+          ? new URL(navigationUrl).origin === playerWindowDirectOrigin
+          : navigationUrl.startsWith('file:');
+        if (!isAllowed) event.preventDefault();
+      } catch {
+        event.preventDefault();
+      }
+    });
+    playerWindow.on('closed', () => {
+      // Al cerrar se descarta todo el estado: la siguiente apertura arranca limpia y no
+      // arrastra el origen ni el Referer del capítulo anterior.
+      playerWindowDirectOrigin = null;
+      playerWindowLoadedUrl = null;
+      playerWindowLoadToken += 1;
+      setPlayerRequestContext(null);
+      playerWindow = null;
+    });
+  }
+
+  playerWindow.setTitle(windowTitle);
+
+  // La ventana se muestra de inmediato, sin esperar a que cargue la página: así reabrir
+  // se siente instantáneo en vez de dejar unos segundos sin respuesta tras el clic.
+  if (playerWindow.isMinimized()) playerWindow.restore();
+  playerWindow.show();
+  playerWindow.focus();
+
+  // Si ya está cargado ese mismo capítulo (por ejemplo al volver a entrar a la fuente),
+  // basta con traer la ventana al frente: no se recarga ni se reinicia la reproducción.
+  if (playerWindowLoadedUrl === url) {
+    return { opened: true };
+  }
+
+  const loadToken = ++playerWindowLoadToken;
+  setPlayerRequestContext(referer ? { targetUrl: url, referer } : null);
+  try {
+    if (mode === 'direct') {
+      playerWindowDirectOrigin = new URL(url).origin;
+      await playerWindow.loadURL(url, { httpReferrer: referer! });
+    } else {
+      playerWindowDirectOrigin = null;
+      await playerWindow.loadFile(path.join(__dirname, 'player.html'), {
+        query: { url, title: windowTitle }
+      });
+    }
+    // Un clic posterior ya pidió otro capítulo: este resultado quedó obsoleto.
+    if (loadToken !== playerWindowLoadToken) return { opened: true };
+    playerWindowLoadedUrl = url;
+  } catch {
+    if (loadToken !== playerWindowLoadToken) return { opened: true };
+    playerWindowDirectOrigin = null;
+    playerWindowLoadedUrl = null;
+    return { opened: false, error: 'No se pudo abrir el reproductor en ventana.' };
+  }
+
+  playerWindow.setTitle(windowTitle);
+  return { opened: true };
 }
 
 interface PlayerViewBounds {
@@ -119,7 +231,12 @@ function ensurePlayerView(): WebContentsView {
       partition: PLAYER_SESSION_PARTITION
     }
   });
-  const keepPlayerViewOnAllowedOrigin = (event: Electron.Event, navigationUrl: string) => {
+  // Solo se restringe la navegación del marco principal (will-navigate no se dispara para
+  // iframes): impide que el reproductor se lleve la vista a otro sitio.
+  // NO se bloquean las redirecciones: muchos reproductores redirigen a su propio CDN o a
+  // una URL firmada, y cortarlas dejaba el capítulo en negro sin ningún aviso. Las
+  // redirecciones hacia dominios de anuncios las sigue bloqueando playerProtection.
+  playerView.webContents.on('will-navigate', (event, navigationUrl) => {
     try {
       const isAllowed = playerViewDirectOrigin
         ? new URL(navigationUrl).origin === playerViewDirectOrigin
@@ -128,9 +245,7 @@ function ensurePlayerView(): WebContentsView {
     } catch {
       event.preventDefault();
     }
-  };
-  playerView.webContents.on('will-navigate', keepPlayerViewOnAllowedOrigin);
-  playerView.webContents.on('will-redirect', keepPlayerViewOnAllowedOrigin);
+  });
 
   // Reproductores por segmentos (HLS, mp4upload) suelen pausar la carga cuando detectan
   // que la página no tiene el foco/está oculta (Page Visibility). Al estar anidado dentro
@@ -641,6 +756,7 @@ app.whenReady().then(async () => {
     const folder = getMangaDownloadRoot(app.getPath('downloads'));
     return { path: folder, error: await shell.openPath(folder) || undefined };
   });
+  ipcMain.handle('player-open', (_event, request: PlayerOpenRequest) => openPlayerWindow(request));
   ipcMain.handle('player-attach', (_event, request: PlayerOpenRequest & { bounds?: unknown }) => attachPlayerView(request));
   ipcMain.handle('player-reposition', (_event, request: { bounds?: unknown }) => repositionPlayerView(request));
   ipcMain.handle('player-detach', () => detachPlayerView());
