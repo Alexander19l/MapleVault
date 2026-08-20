@@ -90,11 +90,14 @@ function shouldBlockRequest(url: string, resourceType?: string): boolean {
 const ADBLOCK_CSS = `
   /* === MapleVault AdBlock CSS === */
   /* Overlays transparentes de captura de clics */
-  div[style*="z-index: 2147483647"],
-  div[style*="z-index: 999999"],
-  div[style*="z-index: 99999"],
-  div[style*="z-index: 9999"][style*="position: fixed"],
-  div[style*="z-index: 9999"][style*="position: absolute"] {
+  /* :not(:has(...)) protege al reproductor: estas reglas son estructurales (solo miran
+     z-index/position), así que sin el guardia ocultaban también la capa de controles de
+     players legítimos y dejaban el video en negro. */
+  div[style*="z-index: 2147483647"]:not(:has(video, iframe, canvas, object, embed)),
+  div[style*="z-index: 999999"]:not(:has(video, iframe, canvas, object, embed)),
+  div[style*="z-index: 99999"]:not(:has(video, iframe, canvas, object, embed)),
+  div[style*="z-index: 9999"][style*="position: fixed"]:not(:has(video, iframe, canvas, object, embed)),
+  div[style*="z-index: 9999"][style*="position: absolute"]:not(:has(video, iframe, canvas, object, embed)) {
     display: none !important;
     pointer-events: none !important;
   }
@@ -123,9 +126,9 @@ const ADBLOCK_CSS = `
   a[href*="/ads/"], a[href*="/adserver/"],
   a[onclick*="popunder"], a[onclick*="popup"],
   a[target="_blank"][rel*="nofollow"][style*="z-index"],
-  /* Capas transparentes encima del video */
-  div[style*="opacity: 0"][style*="position: absolute"][style*="z-index"],
-  div[style*="background: transparent"][style*="position: absolute"][style*="cursor: pointer"],
+  /* Capas transparentes encima del video (nunca las que contienen el reproductor) */
+  div[style*="opacity: 0"][style*="position: absolute"][style*="z-index"]:not(:has(video, iframe, canvas, object, embed)),
+  div[style*="background: transparent"][style*="position: absolute"][style*="cursor: pointer"]:not(:has(video, iframe, canvas, object, embed)),
   a[style*="position: absolute"][style*="z-index"][style*="width: 100%"][style*="height: 100%"] {
     display: none !important;
     pointer-events: none !important;
@@ -169,7 +172,19 @@ const ADBLOCK_JS = `
       return el;
     };
 
-    // Eliminar overlays sospechosos periódicamente
+    // Eliminar overlays sospechosos periódicamente.
+    // IMPORTANTE: un contenedor de reproductor es un div posicionado y SIN texto (dentro
+    // lleva un <video>, no palabras). Por eso "no tiene texto" no puede usarse como prueba
+    // de que algo es publicidad: hacerlo borraba el reproductor cada 2 segundos y el
+    // capitulo se quedaba congelado tras el primer fotograma. Ahora se exige una senal real
+    // de capa transparente de clickjacking y nunca se toca nada que contenga o este dentro
+    // de un reproductor.
+    const MEDIA_SELECTOR = 'video, audio, iframe, canvas, object, embed';
+
+    function holdsMedia(element) {
+      return Boolean(element.querySelector(MEDIA_SELECTOR) || element.closest(MEDIA_SELECTOR));
+    }
+
     function cleanOverlays() {
       const allDivs = document.querySelectorAll('div[style]');
       allDivs.forEach(div => {
@@ -178,7 +193,7 @@ const ADBLOCK_JS = `
           (style.includes('position: fixed') || style.includes('position: absolute')) &&
           (style.includes('width: 100%') || style.includes('inset: 0') || style.includes('top: 0'));
         const isTransparent = style.includes('opacity: 0') || style.includes('background: transparent');
-        if (isOverlay && (isTransparent || !div.textContent?.trim())) {
+        if (isOverlay && isTransparent && !holdsMedia(div)) {
           div.remove();
         }
       });
@@ -264,11 +279,12 @@ function installPlayerRequestHeaders(): void {
     const requestHeaders = { ...details.requestHeaders };
     const context = playerRequestContext;
 
-    // No solo la navegación inicial del iframe (resourceType 'subFrame'): al pulsar play,
-    // el propio reproductor lanza peticiones xhr/fetch/media aparte para el manifiesto y
-    // los segmentos del video, y esas también necesitan el Referer correcto o el servidor
-    // las rechaza en silencio — carga el primer frame/poster pero el capítulo nunca arranca.
-    if (context) {
+    // Solo la navegación inicial del iframe ('subFrame') lleva el Referer de la web de
+    // anime, que es lo que esperan los reproductores con anti-hotlinking.
+    // NO ampliar esto a xhr/fetch/media: esas peticiones (manifiesto y segmentos) las hace
+    // el propio reproductor, y su Referer correcto es su propia página embed. Sobrescribirlo
+    // con el de la web de anime hace que el CDN las rechace y el video quede en negro.
+    if (context && details.resourceType === 'subFrame') {
       try {
         const requested = new URL(details.url);
         const target = new URL(context.targetUrl);
@@ -289,8 +305,14 @@ function installPlayerSessionSafeguards(): void {
   if (playerSessionSafeguardsInstalled) return;
 
   const playerSession = session.fromPartition(PLAYER_SESSION_PARTITION);
-  playerSession.setPermissionCheckHandler(() => false);
-  playerSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+  // 'fullscreen' es un permiso de Electron: denegarlo todo bloqueaba la pantalla completa
+  // del reproductor antes incluso de que el proceso principal pudiera reaccionar. Se
+  // permite solo ese, que no da acceso a datos ni hardware; el resto (cámara, micrófono,
+  // geolocalización, portapapeles, USB...) sigue denegado.
+  playerSession.setPermissionCheckHandler((_webContents, permission) => permission === 'fullscreen');
+  playerSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    callback(permission === 'fullscreen');
+  });
   playerSession.on('will-download', event => event.preventDefault());
   playerSessionSafeguardsInstalled = true;
 }

@@ -30,6 +30,16 @@ interface ExternalEpisodeRouterDependencies {
 export const EXTERNAL_EPISODE_LIST_CACHE_TTL_MS = 60_000;
 const MAX_EXTERNAL_EPISODE_LIST_CACHE_ENTRIES = 128;
 
+/**
+ * Cuando una fuente no tiene la serie, findSeries puede llegar a encadenar varios
+ * sondeos HTTP secuenciales antes de rendirse. Sin recordar ese "no la tengo", cada
+ * visita a esa fuente repetía el recorrido completo y la pestaña tardaba muchísimo.
+ * Se recuerda el fallo un rato: menos peticiones a la fuente y respuesta inmediata.
+ * El TTL es corto a propósito, para que una serie recién publicada aparezca sola.
+ */
+export const EXTERNAL_SERIES_MISS_CACHE_TTL_MS = 5 * 60_000;
+const MAX_EXTERNAL_SERIES_MISS_CACHE_ENTRIES = 256;
+
 interface EpisodeListCacheEntry {
   expiresAt: number;
   episodes: ExternalEpisode[];
@@ -45,7 +55,8 @@ function getProvider(
 async function resolveBinding(
   queryClient: ExternalEpisodeQueryClient,
   provider: ExternalEpisodeProvider,
-  animeId: number
+  animeId: number,
+  seriesMissCache: Map<string, number>
 ): Promise<EpisodeSourceBinding | null | undefined> {
   const anime = await getAnimeEpisodeIdentity(queryClient, animeId);
   if (!anime) return undefined;
@@ -63,8 +74,25 @@ async function resolveBinding(
     await clearEpisodeSourceBinding(queryClient, animeId, provider.descriptor.id);
   }
 
+  // Un fallo reciente evita repetir toda la búsqueda contra la fuente.
+  const missKey = `${provider.descriptor.id}:${animeId}`;
+  const missedAt = seriesMissCache.get(missKey);
+  if (missedAt !== undefined) {
+    if (missedAt > Date.now()) return null;
+    seriesMissCache.delete(missKey);
+  }
+
   const resolved = await provider.findSeries(anime);
-  if (!resolved) return null;
+  if (!resolved) {
+    seriesMissCache.set(missKey, Date.now() + EXTERNAL_SERIES_MISS_CACHE_TTL_MS);
+    while (seriesMissCache.size > MAX_EXTERNAL_SERIES_MISS_CACHE_ENTRIES) {
+      const oldestKey = seriesMissCache.keys().next().value;
+      if (typeof oldestKey !== 'string') break;
+      seriesMissCache.delete(oldestKey);
+    }
+    return null;
+  }
+  seriesMissCache.delete(missKey);
   await saveEpisodeSourceBinding(queryClient, resolved);
   return resolved;
 }
@@ -122,6 +150,7 @@ export function createExternalEpisodeRouter({
 }: ExternalEpisodeRouterDependencies = {}) {
   const router = Router();
   const episodeListCache = new Map<string, EpisodeListCacheEntry>();
+  const seriesMissCache = new Map<string, number>();
 
   router.get('/episode-sources', (_req, res) => {
     res.json([...providers.values()].map(provider => provider.descriptor));
@@ -134,7 +163,7 @@ export function createExternalEpisodeRouter({
     if (!animeId) return res.status(400).json({ error: 'ID de anime inválido.' });
 
     try {
-      const binding = await resolveBinding(queryClient, provider, animeId);
+      const binding = await resolveBinding(queryClient, provider, animeId, seriesMissCache);
       if (binding === undefined) return res.status(404).json({ error: 'Anime no encontrado.' });
       if (binding === null) {
         return res.status(404).json({
@@ -170,7 +199,7 @@ export function createExternalEpisodeRouter({
     }
 
     try {
-      const binding = await resolveBinding(queryClient, provider, animeId);
+      const binding = await resolveBinding(queryClient, provider, animeId, seriesMissCache);
       if (binding === undefined) return res.status(404).json({ error: 'Anime no encontrado.' });
       if (binding === null) {
         return res.status(404).json({

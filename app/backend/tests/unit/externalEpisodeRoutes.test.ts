@@ -185,6 +185,19 @@ describe('external episode routes', () => {
     expect(findSeries).toHaveBeenCalledOnce();
   });
 
+  it('no repite la búsqueda contra la fuente cuando ya se sabe que no tiene la serie', async () => {
+    findSeries.mockResolvedValue(null);
+
+    const first = await fetch(`${baseUrl}/episode-sources/aniwatch/anime/4321/episodes`);
+    const second = await fetch(`${baseUrl}/episode-sources/aniwatch/anime/4321/episodes`);
+
+    expect(first.status).toBe(404);
+    expect(second.status).toBe(404);
+    expect(await second.json()).toMatchObject({ code: 'EXTERNAL_SOURCE_IDENTITY_NOT_VERIFIED' });
+    // El sondeo contra la fuente solo debe ocurrir la primera vez.
+    expect(findSeries).toHaveBeenCalledOnce();
+  });
+
   it('rechaza proveedores y números de episodio no permitidos', async () => {
     const missingProvider = await fetch(`${baseUrl}/episode-sources/unknown/anime/9/episodes`);
     const invalidEpisode = await fetch(`${baseUrl}/episode-sources/aniwatch/anime/9/episodes/1--force/servers`);
