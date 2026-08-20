@@ -19,11 +19,11 @@ MapleVault es una app de escritorio para organizar lo que ves y lees: guarda tu 
 sigue tu progreso capítulo a capítulo, lee y mira directamente desde la propia app, y descarga manga para
 leer sin conexión. Todo corre en tu computadora — sin cuentas, sin anuncios, sin que tus datos salgan de tu equipo.
 
-- 📚 **Catálogo y lista personal** — filtros, estados (viendo, pendiente, completado...), favoritos y puntuación.
-- 🎬 **Reproductor integrado** — mira episodios desde varias fuentes sin que se abra ninguna ventana aparte.
-- 📖 **Lector de manga** — modo página o continuo, zoom, brillo y descargas para leer sin conexión.
-- 🤖 **Maple Assistant** — pide recomendaciones y gestiona tu biblioteca por chat, con confirmación antes de cualquier cambio.
-- 🔒 **Privado por diseño** — la base de datos vive en tu equipo; nada se sube a ningún servidor.
+- **Catálogo y lista personal** — filtros, estados (viendo, pendiente, completado...), favoritos y puntuación.
+- **Reproductor integrado** — mira episodios desde varias fuentes sin que se abra ninguna ventana aparte.
+- **Lector de manga** — modo página o continuo, zoom, brillo y descargas para leer sin conexión.
+- **Maple Assistant** — pide recomendaciones y gestiona tu biblioteca por chat, con confirmación antes de cualquier cambio.
+- **Privado por diseño** — la base de datos vive en tu equipo; nada se sube a ningún servidor.
 
 ## Descarga e instalación
 
