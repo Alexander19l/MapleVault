@@ -12,6 +12,7 @@ import {
   BLOCKED_RESOURCE_TYPES,
   SAFE_RESOURCE_TYPES,
 } from './filterRules';
+import { findPlayerRequestReferer } from '../playerRequestContext';
 import {
   logBlockedEvent,
   getBlockedCount,
@@ -26,16 +27,12 @@ let mainWindowRef: BrowserWindow | null = null;
 
 export const PLAYER_SESSION_PARTITION = 'maplevault-player';
 
+export { setPlayerRequestContext, type PlayerRequestOwner } from '../playerRequestContext';
+
 /** Identidad de navegador estandar para el reproductor, igual que la que ya usa el backend. */
 const PLAYER_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
-interface PlayerRequestContext {
-  targetUrl: string;
-  referer: string;
-}
-
-let playerRequestContext: PlayerRequestContext | null = null;
 let playerRequestHeadersInstalled = false;
 let playerSessionSafeguardsInstalled = false;
 
@@ -240,10 +237,6 @@ export function setPlayerProtectionMainWindow(mainWindow: BrowserWindow | null):
   mainWindowRef = mainWindow;
 }
 
-export function setPlayerRequestContext(context: PlayerRequestContext | null): void {
-  playerRequestContext = context;
-}
-
 async function installGhosteryAdblocker() {
   try {
     const blocker = await ElectronBlocker.fromPrebuiltAdsAndTracking(fetch);
@@ -281,27 +274,21 @@ function installPlayerRequestHeaders(): void {
   const playerSession = session.fromPartition(PLAYER_SESSION_PARTITION);
   playerSession.webRequest.onBeforeSendHeaders((details, callback) => {
     const requestHeaders = { ...details.requestHeaders };
-    const context = playerRequestContext;
 
-    // Solo la navegación inicial del iframe ('subFrame') lleva el Referer de la web de
-    // anime, que es lo que esperan los reproductores con anti-hotlinking.
+    // Solo la navegacion inicial del iframe ('subFrame') lleva el Referer de la web de
+    // anime, que es lo que esperan los reproductores con anti-hotlinking. Sin el, hosts
+    // detras de Cloudflare (zilla-networks) responden 403 y el capitulo queda en negro.
     // NO ampliar esto a xhr/fetch/media: esas peticiones (manifiesto y segmentos) las hace
-    // el propio reproductor, y su Referer correcto es su propia página embed. Sobrescribirlo
+    // el propio reproductor, y su Referer correcto es su propia pagina embed. Sobrescribirlo
     // con el de la web de anime hace que el CDN las rechace y el video quede en negro.
-    if (context && details.resourceType === 'subFrame') {
-      try {
-        const requested = new URL(details.url);
-        const target = new URL(context.targetUrl);
-        if (requested.origin === target.origin) {
-          requestHeaders.Referer = context.referer;
-        }
-      } catch {
-        // La validación principal ya rechazó URLs malformadas.
-      }
+    if (details.resourceType === 'subFrame') {
+      const referer = findPlayerRequestReferer(details.url);
+      if (referer) requestHeaders.Referer = referer;
     }
 
     callback({ requestHeaders });
   });
+
   playerRequestHeadersInstalled = true;
 }
 

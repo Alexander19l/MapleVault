@@ -61,14 +61,23 @@
   <body>
     <div id="loader" class="loader" aria-label="Cargando reproductor"></div>
     <div id="error" class="error">No se pudo abrir el reproductor.</div>
-    <!-- allowfullscreen (atributo antiguo) ademas de allow="fullscreen": algunos
-         reproductores como Voe siguen comprobando el atributo y sin el su boton de
-         pantalla completa no hace nada. -->
+    <!-- allowfullscreen (atributo antiguo) ademas de allow: algunos reproductores como Voe
+         siguen comprobando el atributo y sin el su boton de pantalla completa no hace nada.
+
+         El "*" de cada permiso es imprescindible y no es decorativo: sin origen explicito,
+         allow="fullscreen" significa allow="fullscreen 'src'", o sea que el permiso solo se
+         delega al origen que aparece en src. Varios servidores son un simple trampolin que
+         se redirige por JavaScript a un dominio espejo distinto (voe.sx hace
+         window.location.href = 'https://<espejo>/e/<id>'), y en cuanto la pagina cambia de
+         origen pierde el permiso: requestFullscreen() queda rechazado y el reproductor se
+         limita a cambiar el icono de su boton sin que la ventana llegue a maximizarse. Con
+         "*" el permiso se delega a cualquier origen del subarbol, que es justo lo que
+         necesitan estos reproductores. -->
     <iframe
       id="player"
       title="Reproductor de video"
       allowfullscreen
-      allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+      allow="autoplay *; encrypted-media *; fullscreen *; picture-in-picture *"
     ></iframe>
     <script src="./player-renderer.js"></script>
   </body>
