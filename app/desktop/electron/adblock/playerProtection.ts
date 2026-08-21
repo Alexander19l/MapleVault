@@ -12,6 +12,7 @@ import {
   BLOCKED_RESOURCE_TYPES,
   SAFE_RESOURCE_TYPES,
 } from './filterRules';
+import { findPlayerRequestReferer } from '../playerRequestContext';
 import {
   logBlockedEvent,
   getBlockedCount,
@@ -26,12 +27,12 @@ let mainWindowRef: BrowserWindow | null = null;
 
 export const PLAYER_SESSION_PARTITION = 'maplevault-player';
 
-interface PlayerRequestContext {
-  targetUrl: string;
-  referer: string;
-}
+export { setPlayerRequestContext, type PlayerRequestOwner } from '../playerRequestContext';
 
-let playerRequestContext: PlayerRequestContext | null = null;
+/** Identidad de navegador estandar para el reproductor, igual que la que ya usa el backend. */
+const PLAYER_USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
 let playerRequestHeadersInstalled = false;
 let playerSessionSafeguardsInstalled = false;
 
@@ -90,11 +91,14 @@ function shouldBlockRequest(url: string, resourceType?: string): boolean {
 const ADBLOCK_CSS = `
   /* === MapleVault AdBlock CSS === */
   /* Overlays transparentes de captura de clics */
-  div[style*="z-index: 2147483647"],
-  div[style*="z-index: 999999"],
-  div[style*="z-index: 99999"],
-  div[style*="z-index: 9999"][style*="position: fixed"],
-  div[style*="z-index: 9999"][style*="position: absolute"] {
+  /* :not(:has(...)) protege al reproductor: estas reglas son estructurales (solo miran
+     z-index/position), así que sin el guardia ocultaban también la capa de controles de
+     players legítimos y dejaban el video en negro. */
+  div[style*="z-index: 2147483647"]:not(:has(video, iframe, canvas, object, embed)),
+  div[style*="z-index: 999999"]:not(:has(video, iframe, canvas, object, embed)),
+  div[style*="z-index: 99999"]:not(:has(video, iframe, canvas, object, embed)),
+  div[style*="z-index: 9999"][style*="position: fixed"]:not(:has(video, iframe, canvas, object, embed)),
+  div[style*="z-index: 9999"][style*="position: absolute"]:not(:has(video, iframe, canvas, object, embed)) {
     display: none !important;
     pointer-events: none !important;
   }
@@ -123,9 +127,9 @@ const ADBLOCK_CSS = `
   a[href*="/ads/"], a[href*="/adserver/"],
   a[onclick*="popunder"], a[onclick*="popup"],
   a[target="_blank"][rel*="nofollow"][style*="z-index"],
-  /* Capas transparentes encima del video */
-  div[style*="opacity: 0"][style*="position: absolute"][style*="z-index"],
-  div[style*="background: transparent"][style*="position: absolute"][style*="cursor: pointer"],
+  /* Capas transparentes encima del video (nunca las que contienen el reproductor) */
+  div[style*="opacity: 0"][style*="position: absolute"][style*="z-index"]:not(:has(video, iframe, canvas, object, embed)),
+  div[style*="background: transparent"][style*="position: absolute"][style*="cursor: pointer"]:not(:has(video, iframe, canvas, object, embed)),
   a[style*="position: absolute"][style*="z-index"][style*="width: 100%"][style*="height: 100%"] {
     display: none !important;
     pointer-events: none !important;
@@ -169,7 +173,19 @@ const ADBLOCK_JS = `
       return el;
     };
 
-    // Eliminar overlays sospechosos periódicamente
+    // Eliminar overlays sospechosos periódicamente.
+    // IMPORTANTE: un contenedor de reproductor es un div posicionado y SIN texto (dentro
+    // lleva un <video>, no palabras). Por eso "no tiene texto" no puede usarse como prueba
+    // de que algo es publicidad: hacerlo borraba el reproductor cada 2 segundos y el
+    // capitulo se quedaba congelado tras el primer fotograma. Ahora se exige una senal real
+    // de capa transparente de clickjacking y nunca se toca nada que contenga o este dentro
+    // de un reproductor.
+    const MEDIA_SELECTOR = 'video, audio, iframe, canvas, object, embed';
+
+    function holdsMedia(element) {
+      return Boolean(element.querySelector(MEDIA_SELECTOR) || element.closest(MEDIA_SELECTOR));
+    }
+
     function cleanOverlays() {
       const allDivs = document.querySelectorAll('div[style]');
       allDivs.forEach(div => {
@@ -178,7 +194,7 @@ const ADBLOCK_JS = `
           (style.includes('position: fixed') || style.includes('position: absolute')) &&
           (style.includes('width: 100%') || style.includes('inset: 0') || style.includes('top: 0'));
         const isTransparent = style.includes('opacity: 0') || style.includes('background: transparent');
-        if (isOverlay && (isTransparent || !div.textContent?.trim())) {
+        if (isOverlay && isTransparent && !holdsMedia(div)) {
           div.remove();
         }
       });
@@ -221,10 +237,6 @@ export function setPlayerProtectionMainWindow(mainWindow: BrowserWindow | null):
   mainWindowRef = mainWindow;
 }
 
-export function setPlayerRequestContext(context: PlayerRequestContext | null): void {
-  playerRequestContext = context;
-}
-
 async function installGhosteryAdblocker() {
   try {
     const blocker = await ElectronBlocker.fromPrebuiltAdsAndTracking(fetch);
@@ -262,22 +274,21 @@ function installPlayerRequestHeaders(): void {
   const playerSession = session.fromPartition(PLAYER_SESSION_PARTITION);
   playerSession.webRequest.onBeforeSendHeaders((details, callback) => {
     const requestHeaders = { ...details.requestHeaders };
-    const context = playerRequestContext;
 
-    if (context && details.resourceType === 'subFrame') {
-      try {
-        const requested = new URL(details.url);
-        const target = new URL(context.targetUrl);
-        if (requested.origin === target.origin) {
-          requestHeaders.Referer = context.referer;
-        }
-      } catch {
-        // La validación principal ya rechazó URLs malformadas.
-      }
+    // Solo la navegacion inicial del iframe ('subFrame') lleva el Referer de la web de
+    // anime, que es lo que esperan los reproductores con anti-hotlinking. Sin el, hosts
+    // detras de Cloudflare (zilla-networks) responden 403 y el capitulo queda en negro.
+    // NO ampliar esto a xhr/fetch/media: esas peticiones (manifiesto y segmentos) las hace
+    // el propio reproductor, y su Referer correcto es su propia pagina embed. Sobrescribirlo
+    // con el de la web de anime hace que el CDN las rechace y el video quede en negro.
+    if (details.resourceType === 'subFrame') {
+      const referer = findPlayerRequestReferer(details.url);
+      if (referer) requestHeaders.Referer = referer;
     }
 
     callback({ requestHeaders });
   });
+
   playerRequestHeadersInstalled = true;
 }
 
@@ -285,8 +296,21 @@ function installPlayerSessionSafeguards(): void {
   if (playerSessionSafeguardsInstalled) return;
 
   const playerSession = session.fromPartition(PLAYER_SESSION_PARTITION);
-  playerSession.setPermissionCheckHandler(() => false);
-  playerSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+  // Por defecto Electron se anuncia como "Electron/<version> MapleVault/<version>", una
+  // identidad que varios reproductores rechazan directamente: la pagina responde con un
+  // bloqueo y el capitulo se queda en negro sin ningun aviso. El resto de la aplicacion ya
+  // se presenta como un navegador normal (SOURCE_USER_AGENT en el backend); el reproductor
+  // era la unica pieza que no lo hacia. Se le da la misma identidad estandar por coherencia.
+  playerSession.setUserAgent(PLAYER_USER_AGENT);
+
+  // 'fullscreen' es un permiso de Electron: denegarlo todo bloqueaba la pantalla completa
+  // del reproductor antes incluso de que el proceso principal pudiera reaccionar. Se
+  // permite solo ese, que no da acceso a datos ni hardware; el resto (cámara, micrófono,
+  // geolocalización, portapapeles, USB...) sigue denegado.
+  playerSession.setPermissionCheckHandler((_webContents, permission) => permission === 'fullscreen');
+  playerSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    callback(permission === 'fullscreen');
+  });
   playerSession.on('will-download', event => event.preventDefault());
   playerSessionSafeguardsInstalled = true;
 }

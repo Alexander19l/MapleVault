@@ -91,6 +91,9 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
   const [playerAttachState, setPlayerAttachState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [playerErrorMessage, setPlayerErrorMessage] = useState('');
   const hasPlayerViewApi = typeof window !== 'undefined' && Boolean((window as any).electronAPI?.player?.attach);
+  // El backend marca así los servidores que se comprobó que no se reproducen embebidos.
+  const isStandaloneServer = selectedServer?.playbackMode === 'window'
+    || selectedServer?.playbackMode === 'direct-window';
 
   // Rich Episode detail states
   const [watchedEpisodes, setWatchedEpisodes] = useState<number[]>([]);
@@ -351,7 +354,9 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
     const panel = playerPanelRef.current;
     const isPanelActive = activeTab === 'episodes' && selectedEpisode !== null && Boolean(selectedServer?.url) && Boolean(panel);
 
-    if (!playerApi?.attach || !isPanelActive) {
+    // Los servidores marcados para ventana independiente no se adjuntan al panel: se
+    // comprobó que no se reproducen embebidos, así que usan la ventana propia.
+    if (!playerApi?.attach || !isPanelActive || isStandaloneServer) {
       setPlayerAttachState('idle');
       return;
     }
@@ -417,7 +422,16 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
       window.removeEventListener('scroll', reposition, true);
       void playerApi.detach?.();
     };
-  }, [activeTab, selectedEpisode, selectedServer, anime?.title]);
+  }, [activeTab, selectedEpisode, selectedServer, anime?.title, isStandaloneServer]);
+
+  // Servidores que solo funcionan en ventana propia: se abre en cuanto se seleccionan,
+  // sin exigir un clic extra. Reabrir el mismo capítulo reutiliza la ventana ya cargada.
+  useEffect(() => {
+    if (!isStandaloneServer || activeTab !== 'episodes' || selectedEpisode === null) return;
+    if (!selectedServer?.url) return;
+    void handleOpenPlayerWindow();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isStandaloneServer, activeTab, selectedEpisode, selectedServer?.url]);
 
   const handleToggleWatch = async (episodeNumber: number, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -533,6 +547,35 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
       label: `Disponible en ${getEpisodeProvider(provider).label}`,
       type: 'aired'
     };
+  };
+
+  /**
+   * Abre el capítulo en una ventana independiente. Es la vía de rescate para servidores
+   * que se niegan a reproducirse dentro del panel embebido: al ser una ventana real del
+   * sistema, la pantalla completa también es nativa.
+   */
+  const handleOpenPlayerWindow = async () => {
+    if (!selectedServer?.url) return;
+    const playerApi = (window as any).electronAPI?.player;
+    if (!playerApi?.open) {
+      handleOpenExternal(selectedServer.url);
+      return;
+    }
+    try {
+      const result = await playerApi.open({
+        url: selectedServer.url,
+        title: `${anime?.title || 'Anime'} - Capitulo ${selectedEpisode ?? ''}`.trim(),
+        server: selectedServer.server,
+        referer: selectedServer.referer,
+        mode: selectedServer.playbackMode === 'direct-window' ? 'direct' : 'embedded'
+      });
+      if (!result?.opened) {
+        notifications.error(result?.error || 'No se pudo abrir el reproductor en ventana.');
+      }
+    } catch (error) {
+      console.error('Error al abrir el reproductor en ventana:', error);
+      notifications.error('No se pudo abrir el reproductor en ventana.');
+    }
   };
 
   const filteredEpisodes = episodes
@@ -1011,6 +1054,24 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({ animeId, ext
                             <div className="flex flex-col items-center space-y-2">
                               <div className="h-8 w-8 border-3 border-[var(--accent-secondary)] border-t-transparent rounded-full animate-spin"></div>
                               <p className="text-xs text-[var(--text-dim)] font-semibold">Cargando servidores...</p>
+                            </div>
+                          ) : selectedServer && isStandaloneServer ? (
+                            <div className="flex max-w-sm flex-col items-center gap-3 px-6 text-center">
+                              <MonitorPlay className="h-8 w-8 text-[var(--accent-secondary)]" />
+                              <div>
+                                <p className="text-sm font-bold text-[var(--text-main)]">Reproduciéndose en su propia ventana</p>
+                                <p className="mt-1 text-xs text-[var(--text-dim)]">
+                                  Este servidor no se reproduce dentro de la app, así que se abre aparte. Ahí también funciona la pantalla completa.
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => void handleOpenPlayerWindow()}
+                                className="h-9 px-4 text-xs text-white bg-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] flex items-center gap-2 cursor-pointer font-bold transition-colors rounded-md"
+                              >
+                                <MonitorPlay className="h-4 w-4 shrink-0" />
+                                <span>Volver a abrir</span>
+                              </button>
                             </div>
                           ) : selectedServer ? (
                             <>
