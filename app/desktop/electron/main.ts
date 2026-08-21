@@ -134,7 +134,7 @@ async function openPlayerWindow(request: PlayerOpenRequest): Promise<{
       playerWindowDirectOrigin = null;
       playerWindowLoadedUrl = null;
       playerWindowLoadToken += 1;
-      setPlayerRequestContext(null);
+      setPlayerRequestContext('window', null);
       playerWindow = null;
     });
   }
@@ -154,7 +154,7 @@ async function openPlayerWindow(request: PlayerOpenRequest): Promise<{
   }
 
   const loadToken = ++playerWindowLoadToken;
-  setPlayerRequestContext(referer ? { targetUrl: url, referer } : null);
+  setPlayerRequestContext('window', referer ? { targetUrl: url, referer } : null);
   try {
     if (mode === 'direct') {
       playerWindowDirectOrigin = new URL(url).origin;
@@ -313,7 +313,7 @@ async function attachPlayerView(request: PlayerOpenRequest & { bounds?: unknown 
   }
   view.setBounds(bounds);
 
-  setPlayerRequestContext(referer ? { targetUrl: url, referer } : null);
+  setPlayerRequestContext('view', referer ? { targetUrl: url, referer } : null);
   try {
     if (mode === 'direct') {
       playerViewDirectOrigin = new URL(url).origin;
@@ -328,7 +328,7 @@ async function attachPlayerView(request: PlayerOpenRequest & { bounds?: unknown 
       });
     }
   } catch (error) {
-    setPlayerRequestContext(null);
+    setPlayerRequestContext('view', null);
     playerViewDirectOrigin = null;
     // No dejar el contenido previamente cargado (de un servidor anterior) visible por
     // encima del mensaje de error que muestra el renderer: se retira la vista.
@@ -370,7 +370,7 @@ async function detachPlayerView(): Promise<{ ok: boolean }> {
       // El objetivo es dejar de reproducir; si la navegación en sí falla no hay más que hacer.
     }
   }
-  setPlayerRequestContext(null);
+  setPlayerRequestContext('view', null);
   playerViewDirectOrigin = null;
   return { ok: true };
 }
